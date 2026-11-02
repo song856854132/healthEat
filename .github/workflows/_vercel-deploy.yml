@@ -77,8 +77,8 @@ jobs:
           else
             npx vercel build --cwd apps/${{ inputs.app }} --token=${{ secrets.VERCEL_TOKEN }}
           fi
-      - name: vendor shared package for the prebuilt upload
-        run: bash scripts/vendor-shared.sh ${{ inputs.app }}
+      - name: fix workspace package in the build output
+        run: bash scripts/fix-vercel-output.sh ${{ inputs.app }}
       - name: vercel deploy
         id: deploy
         run: |

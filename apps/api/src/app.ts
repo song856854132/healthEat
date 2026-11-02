@@ -3,8 +3,8 @@
 // deployable entry; src/index.ts only adds `listen` for local development.
 import express from "express";
 import cookieParser from "cookie-parser";
-import { healthRouter } from "./routes/health";
-import { spikeRouter } from "./routes/spike";
+import { healthRouter } from "./routes/health.js";
+import { spikeRouter } from "./routes/spike.js";
 
 const app = express();
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { HealthResponse } from "@healtheat/shared";
-import app from "../src/app";
+import app from "../src/app.js";
 
 describe("GET /api/health", () => {
   it("returns a schema-valid payload", async () => {
