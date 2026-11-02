@@ -1,6 +1,6 @@
 {
   "name": "healtheat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "healthEat: a weekly nutrient-and-sensitivity coach (Next.js + Express + MongoDB)",
   "engines": {
@@ -20,7 +20,8 @@
     "test": "npm run build:shared && vitest run",
     "dev:api": "npm run dev -w @healtheat/api",
     "dev:web": "npm run dev -w @healtheat/web",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "clean:vercel": "rm -rf apps/*/.vercel/output apps/*/node_modules"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

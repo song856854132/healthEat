@@ -52,7 +52,6 @@ jobs:
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      API_ORIGIN: ${{ inputs.api_origin }}
     outputs:
       url: ${{ steps.deploy.outputs.url }}
       alias_url: ${{ steps.alias.outputs.alias_url }}
@@ -72,6 +71,9 @@ jobs:
         run: npx vercel pull --yes --environment=${{ inputs.environment }} --cwd apps/${{ inputs.app }} --token=${{ secrets.VERCEL_TOKEN }}
       - name: vercel build
         run: |
+          # Only override API_ORIGIN when the caller passed one; an exported empty value would
+          # shadow the project env var that `vercel pull` fetched.
+          if [ -n "${{ inputs.api_origin }}" ]; then export API_ORIGIN="${{ inputs.api_origin }}"; fi
           if [ "${{ inputs.environment }}" = "production" ]; then
             npx vercel build --prod --cwd apps/${{ inputs.app }} --token=${{ secrets.VERCEL_TOKEN }}
           else

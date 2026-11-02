@@ -43,9 +43,9 @@ jobs:
     with:
       app: web
       environment: production
-      # Production API_ORIGIN comes from the Vercel production env (vercel pull); this input
-      # is left empty on purpose so the project setting wins.
-      api_origin: ""
+      # Production API domain of the healtheat-api project (also set in the web project's
+      # production env; passing it explicitly keeps the release deterministic).
+      api_origin: https://healtheat-api.vercel.app
       gh_environment: production
     secrets:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
