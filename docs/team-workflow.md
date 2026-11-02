@@ -116,6 +116,14 @@ the VM at login) and in Vercel's preview environment.
 
 Notes:
 
+- Every Vercel CLI call runs with `--cwd apps/<app>`; each app is its own project with root
+  directory `.`, and CI uploads prebuilt output, so no Vercel root-directory setting is needed.
+  After `vercel build`, `scripts/vendor-shared.sh <app>` copies `packages/shared` into the app's
+  own `node_modules` because the prebuilt upload rejects the npm-workspace symlink.
+- Deployment Protection (Vercel Authentication) must be **Disabled** on both projects
+  (Project → Settings → Deployment Protection); it is on by default and would block Playwright
+  and the web-to-API rewrite with a 302 to a login page. Previews are then public URLs with
+  random names; nothing sensitive runs on them.
 - Deploy the API before the web in every workflow because the web rewrite needs
   `API_ORIGIN`. For previews, pass that PR's API URL with `--env`; for staging and
   production the environment variable is fixed in the Vercel project.

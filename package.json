@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "build:shared": "npm run build -w @healtheat/shared",
-    "build": "npm run build:shared && npm run build -w @healtheat/api && npm run build -w @healtheat/web",
+    "build": "npm run build:shared && npm run build -w @healtheat/web",
     "typecheck": "npm run build:shared && npm run typecheck -ws --if-present",
     "lint": "eslint .",
     "format": "prettier --check .",
