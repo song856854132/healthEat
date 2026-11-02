@@ -56,5 +56,5 @@ proxy) and, after merge, `staging` and `release`. Dates and results live in `CHA
 
 ```bash
 # on main, after the staging checklist in docs/team-workflow.md passes
-git tag v0.1.0 && git push --tags
+git tag v0.2.0 && git push --tags
 ```
