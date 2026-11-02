@@ -47,6 +47,11 @@ Vercel projects so previews are reachable by Playwright and by the web app's `/a
 metadata SSH keys, stopped nightly at 01:00 New York time; start it with
 `gcloud compute instances start instance-20260914-165802 --zone us-central1-a`.
 
+## Pipeline status
+
+The first pull request on this repo exercised `ci`, `preview` (Vercel previews + Playwright through the
+proxy) and, after merge, `staging` and `release`. Dates and results live in `CHANGELOG.md`.
+
 ## Release
 
 ```bash
