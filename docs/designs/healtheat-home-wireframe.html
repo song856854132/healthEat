@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>healthEat wireframe: Home by role</title>
+    <!--
+  WIREFRAME, intentionally rough. System fonts, gray borders, no color except
+  the three semantic states (low / ok / high) which are rendered as hatch
+  density, not hue, so the layout is judged on hierarchy alone.
+
+  Design decisions encoded here:
+  1. Hierarchy on Member Home: (a) today's coarse calorie meter, because it is
+     the daily reminder the user asked for; (b) the 7-day nutrient coverage
+     band, the hero; (c) exposure meter; (d) foods that close the gap; (e) log
+     a meal. The log control is a persistent bottom bar on phone widths so the
+     daily habit is never more than one tap away.
+  2. Every band cell carries a confidence dot. Photo-logged days are hollow
+     dots, text-logged days are solid. Precision is never implied.
+  3. True allergies render as a hard alert strip at the very top when any
+     trace was detected today. Sensitivities render as a cumulative meter.
+     The two never share a widget, by premise.
+  4. Curator Home is the dictionary's health page: one row per allergen with
+     synonym count, foods matched, and re-match state; a queue of unmatched
+     ingredient phrases below it (phase 3). The Curator never sees a member's
+     logs. There is no human coach role: the platform is the coach.
+  5. Admin Home is an accounts table with inline actions. Admin's job is
+     accounts only: roles, suspend, delete. No dictionary, no logs, no charts.
+  6. Nav shows: brand, who is logged in, active role, Home, Profile, Privacy.
+     Anonymous visitors see the same page with sample data and a sign-in CTA
+     in place of the log bar (rubric: Home is public, dynamic, explains the site).
+-->
+    <style>
+      :root {
+        --ink: #222;
+        --line: #9a9a9a;
+        --soft: #e9e9e9;
+        --paper: #fff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          15px/1.4 -apple-system,
+          system-ui,
+          "Segoe UI",
+          sans-serif;
+        color: var(--ink);
+        background: #f4f4f4;
+      }
+      .screen {
+        max-width: 960px;
+        margin: 24px auto;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        padding: 16px;
+      }
+      .screen h1 {
+        font-size: 14px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #666;
+        margin: 0 0 12px;
+      }
+      nav {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        border: 1px dashed var(--line);
+        padding: 8px 12px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      nav .brand {
+        font-weight: 700;
+      }
+      nav .spacer {
+        flex: 1;
+      }
+      nav .who {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 13px;
+      }
+      .alert {
+        border: 2px solid var(--ink);
+        padding: 10px 12px;
+        margin-bottom: 16px;
+        font-weight: 600;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 16px;
+      }
+      @media (max-width: 700px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        border: 1px solid var(--line);
+        padding: 12px;
+      }
+      .card h2 {
+        font-size: 15px;
+        margin: 0 0 8px;
+      }
+      .card .sub {
+        font-size: 12px;
+        color: #666;
+        margin: 0 0 8px;
+      }
+      .meter {
+        height: 18px;
+        border: 1px solid var(--ink);
+        position: relative;
+        background: repeating-linear-gradient(
+          90deg,
+          transparent 0 32%,
+          var(--soft) 32% 34%,
+          transparent 34% 66%,
+          var(--soft) 66% 68%,
+          transparent 68%
+        );
+      }
+      .meter .fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 58%;
+        background: repeating-linear-gradient(45deg, #bbb 0 3px, transparent 3px 6px);
+      }
+      .meter .tick {
+        position: absolute;
+        top: -18px;
+        font-size: 11px;
+        color: #666;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        border: 1px solid var(--soft);
+        padding: 5px 6px;
+        text-align: left;
+        vertical-align: middle;
+      }
+      th {
+        font-weight: 600;
+        color: #555;
+      }
+      td.num,
+      th.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .cell {
+        width: 26px;
+        height: 18px;
+        border: 1px solid #bbb;
+        display: inline-block;
+        position: relative;
+      }
+      .low {
+        background: repeating-linear-gradient(45deg, #777 0 2px, transparent 2px 4px);
+      }
+      .ok {
+        background: #fff;
+      }
+      .high {
+        background:
+          repeating-linear-gradient(-45deg, #444 0 1px, transparent 1px 3px),
+          repeating-linear-gradient(45deg, #444 0 1px, transparent 1px 3px);
+      }
+      .dot {
+        position: absolute;
+        right: 1px;
+        bottom: 1px;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        border: 1px solid #222;
+        background: #222;
+      }
+      .dot.hollow {
+        background: #fff;
+      }
+      .band-row td:first-child {
+        white-space: nowrap;
+      }
+      .pill {
+        display: inline-block;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 12px;
+        margin: 2px 2px 0 0;
+      }
+      .logbar {
+        display: flex;
+        gap: 8px;
+        border: 1px dashed var(--line);
+        padding: 10px;
+        margin-top: 16px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .logbar input {
+        flex: 1;
+        min-width: 180px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        font: inherit;
+      }
+      button {
+        font: inherit;
+        padding: 8px 12px;
+        border: 1px solid var(--ink);
+        background: #fff;
+        cursor: pointer;
+      }
+      .legend {
+        font-size: 12px;
+        color: #666;
+        margin-top: 8px;
+      }
+      .spark {
+        font-family: ui-monospace, monospace;
+        letter-spacing: 1px;
+      }
+      .muted {
+        color: #777;
+      }
+      .footer-note {
+        font-size: 12px;
+        color: #666;
+        border-top: 1px dashed var(--line);
+        margin-top: 16px;
+        padding-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ===================== SCREEN 1: MEMBER HOME ===================== -->
+    <section class="screen">
+      <h1>Screen 1 of 3: Member Home (logged in)</h1>
+      <nav>
+        <span class="brand">healthEat</span>
+        <a href="#">Home</a> <a href="#">Search</a> <a href="#">Profile</a>
+        <span class="spacer"></span>
+        <span class="who">Hung-Ju · Member</span>
+        <a href="#">Log out</a>
+      </nav>
+
+      <!-- Hard alert strip: true allergies only. Hidden when nothing detected. -->
+      <div class="alert">
+        ⚠ Soy detected today in "Dark chocolate 70%" (ingredient: soy lecithin). Soy is on your
+        avoid list.
+      </div>
+
+      <div class="grid">
+        <div>
+          <div class="card">
+            <h2>Today's calories</h2>
+            <p class="sub">A reminder, not a measurement. Target band 1,900 to 2,300 kcal.</p>
+            <div class="meter" style="margin-top: 22px">
+              <span class="tick" style="left: 32%">under</span
+              ><span class="tick" style="left: 66%">over</span>
+              <div class="fill"></div>
+            </div>
+            <p class="sub" style="margin-top: 8px">
+              About 1,650 kcal so far · 3 meals logged ·
+              <span class="muted">estimates from 1 photo, 2 searches</span>
+            </p>
+          </div>
+
+          <div class="card" style="margin-top: 16px">
+            <h2>Sensitivity exposure, last 7 days</h2>
+            <p class="sub">Counts ingredient hits weighted by grams. Not a measured dose.</p>
+            <table>
+              <tr>
+                <th>Sensitivity</th>
+                <th>Hits</th>
+                <th>vs. your threshold</th>
+              </tr>
+              <tr>
+                <td>Gluten</td>
+                <td class="num">9</td>
+                <td><span class="cell high"></span> above (6/wk)</td>
+              </tr>
+              <tr>
+                <td>Lactose</td>
+                <td class="num">4</td>
+                <td><span class="cell ok"></span> within (8/wk)</td>
+              </tr>
+              <tr>
+                <td>Histamine-rich foods</td>
+                <td class="num">5</td>
+                <td><span class="cell ok"></span> within (7/wk)</td>
+              </tr>
+            </table>
+            <p class="legend">
+              Thresholds are yours to set in Profile. This is a pattern aid, not medical advice.
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <h2>Nutrient coverage, rolling 7 days</h2>
+            <p class="sub">
+              Each cell is one day's share of your target (sex, age band). Read the row, not the
+              cell.
+            </p>
+            <table>
+              <tr>
+                <th>Nutrient</th>
+                <th>Mon</th>
+                <th>Tue</th>
+                <th>Wed</th>
+                <th>Thu</th>
+                <th>Fri</th>
+                <th>Sat</th>
+                <th>Sun</th>
+                <th class="num">7-day</th>
+              </tr>
+              <tr class="band-row">
+                <td>Vitamin E</td>
+                <td>
+                  <span class="cell low"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot hollow"></span></span>
+                </td>
+                <td class="num">41%</td>
+              </tr>
+              <tr class="band-row">
+                <td>Magnesium</td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot hollow"></span></span>
+                </td>
+                <td class="num">78%</td>
+              </tr>
+              <tr class="band-row">
+                <td>Iron</td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot hollow"></span></span>
+                </td>
+                <td class="num">104%</td>
+              </tr>
+              <tr class="band-row">
+                <td>Sodium</td>
+                <td>
+                  <span class="cell high"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell high"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell high"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell high"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell high"><span class="dot hollow"></span></span>
+                </td>
+                <td class="num">163%</td>
+              </tr>
+              <tr class="band-row">
+                <td>Fiber</td>
+                <td>
+                  <span class="cell low"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot hollow"></span></span>
+                </td>
+                <td>
+                  <span class="cell ok"><span class="dot"></span></span>
+                </td>
+                <td>
+                  <span class="cell low"><span class="dot hollow"></span></span>
+                </td>
+                <td class="num">62%</td>
+              </tr>
+              <tr class="band-row">
+                <td class="muted">+ 11 more nutrients</td>
+                <td colspan="7" class="muted">collapsed: show all</td>
+                <td class="num muted">…</td>
+              </tr>
+            </table>
+            <p class="legend">
+              Hatched = below 70% · plain = 70 to 130% · cross-hatched = above 130%. ● text-logged
+              day, ○ photo-estimated day.
+            </p>
+          </div>
+
+          <div class="card" style="margin-top: 16px">
+            <h2>Close the gap: Vitamin E (41%)</h2>
+            <p class="sub">
+              Highest density per 100 kcal, filtered by your avoid list (soy excluded).
+            </p>
+            <span class="pill">Sunflower seeds, 28 g · 7.4 mg</span>
+            <span class="pill">Almonds, 28 g · 7.3 mg</span>
+            <span class="pill">Spinach, cooked, 180 g · 3.7 mg</span>
+            <span class="pill">Avocado, 150 g · 3.1 mg</span>
+            <p class="legend">
+              Tap a food to see details (USDA FoodData Central) and add it to today's log.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Persistent log bar: the daily habit control -->
+      <div class="logbar">
+        <input placeholder="Log a meal: search USDA foods, e.g. 'grilled salmon'" />
+        <button>Search</button>
+        <button>📷 Photo</button>
+        <span class="muted" style="font-size: 12px"
+          >Photo returns a list of foods and grams you confirm before anything is saved.</span
+        >
+      </div>
+      <p class="footer-note">
+        Anonymous visitors see this same layout with sample data, a "what this site does" line under
+        the nav, and "Sign in to log" in place of the log bar. Privacy policy link in footer; shown
+        once on first visit.
+      </p>
+    </section>
+
+    <!-- ===================== SCREEN 2: CURATOR HOME ===================== -->
+    <section class="screen">
+      <h1>Screen 2 of 3: Curator Home (role: Curator)</h1>
+      <nav>
+        <span class="brand">healthEat</span>
+        <a href="#">Dictionary</a> <a href="#">Unmatched</a> <a href="#">Search</a>
+        <a href="#">Profile</a>
+        <span class="spacer"></span>
+        <span class="who">dana.rd · Curator</span>
+        <a href="#">Log out</a>
+      </nav>
+      <div class="card">
+        <h2>Allergen dictionary (14 allergens · 212 synonyms)</h2>
+        <p class="sub">
+          Ingredient text from USDA branded foods is matched against these synonyms. Seeded from the
+          Open Food Facts allergens taxonomy (license to verify). Saving an edit re-matches cached
+          foods in the same request.
+        </p>
+        <table>
+          <tr>
+            <th>Allergen</th>
+            <th>Tier</th>
+            <th>Synonyms (ingredient text)</th>
+            <th class="num">Foods matched</th>
+            <th>Re-match</th>
+            <th></th>
+          </tr>
+          <tr>
+            <td>Soy</td>
+            <td>allergy or sensitivity</td>
+            <td>
+              soy lecithin, soya, soybean oil, tofu, edamame, miso, tempeh, textured vegetable
+              protein
+            </td>
+            <td class="num">1,284</td>
+            <td>done</td>
+            <td><a href="#">Edit</a></td>
+          </tr>
+          <tr>
+            <td>Milk</td>
+            <td>allergy or sensitivity</td>
+            <td>whey, casein, caseinate, lactose, butterfat, ghee, curds</td>
+            <td class="num">3,902</td>
+            <td>done</td>
+            <td><a href="#">Edit</a></td>
+          </tr>
+          <tr>
+            <td>Gluten</td>
+            <td>sensitivity</td>
+            <td>wheat, barley, rye, malt, semolina, spelt, farro, seitan</td>
+            <td class="num">5,117</td>
+            <td><span class="pill">410 remaining</span> <a href="#">Continue</a></td>
+            <td><a href="#">Edit</a></td>
+          </tr>
+          <tr>
+            <td class="muted" colspan="6">+ 11 more · <a href="#">Add allergen</a></td>
+          </tr>
+        </table>
+        <p class="legend">
+          Curator sees dictionary data and aggregate match counts only, never a member's log. Edits
+          are attributed (updatedBy) and counted on the Curator profile.
+        </p>
+      </div>
+      <div class="card" style="margin-top: 16px">
+        <h2>Unmatched ingredient phrases (phase 3)</h2>
+        <p class="sub">
+          Phrases from cached foods that hit no synonym, most frequent first. Map one to an allergen
+          or ignore it.
+        </p>
+        <table>
+          <tr>
+            <th>Phrase</th>
+            <th class="num">Foods</th>
+            <th>Sample</th>
+            <th></th>
+          </tr>
+          <tr>
+            <td>sodium caseinate</td>
+            <td class="num">212</td>
+            <td>Coffee creamer, original</td>
+            <td><a href="#">Map → Milk</a> · <a href="#">Ignore</a></td>
+          </tr>
+          <tr>
+            <td>xanthan gum</td>
+            <td class="num">1,930</td>
+            <td>Salad dressing, ranch</td>
+            <td><a href="#">Map</a> · <a href="#">Ignore</a></td>
+          </tr>
+          <tr>
+            <td class="muted" colspan="4">+ 1,204 more</td>
+          </tr>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== SCREEN 3: ADMIN HOME ===================== -->
+    <section class="screen">
+      <h1>Screen 3 of 3: Admin Home (role: Admin)</h1>
+      <nav>
+        <span class="brand">healthEat</span>
+        <a href="#">Users</a> <a href="#">Search</a> <a href="#">Profile</a>
+        <span class="spacer"></span>
+        <span class="who">root · Admin</span>
+        <a href="#">Log out</a>
+      </nav>
+      <div class="card">
+        <h2>Users (41)</h2>
+        <p class="sub">
+          Filter by username or role. Admin sees account fields only: username, email, roles,
+          status, dates. Never logs, never the dictionary.
+        </p>
+        <table>
+          <tr>
+            <th>Username</th>
+            <th>Roles</th>
+            <th>Status</th>
+            <th>Joined</th>
+            <th></th>
+          </tr>
+          <tr>
+            <td>hungju</td>
+            <td><span class="pill">Member</span></td>
+            <td>active</td>
+            <td>2026-10-12</td>
+            <td><a href="#">Roles</a> · <a href="#">Suspend</a> · <a href="#">Delete</a></td>
+          </tr>
+          <tr>
+            <td>dana.rd</td>
+            <td><span class="pill">Curator</span><span class="pill">Member</span></td>
+            <td>active</td>
+            <td>2026-10-14</td>
+            <td><a href="#">Roles</a> · <a href="#">Suspend</a> · <a href="#">Delete</a></td>
+          </tr>
+          <tr>
+            <td>spam.bot</td>
+            <td><span class="pill">Member</span></td>
+            <td>suspended</td>
+            <td>2026-10-15</td>
+            <td><a href="#">Roles</a> · <a href="#">Reactivate</a> · <a href="#">Delete</a></td>
+          </tr>
+          <tr>
+            <td class="muted" colspan="5">+ 38 more</td>
+          </tr>
+        </table>
+        <p class="legend">
+          Username is immutable (rubric). Admin can grant or revoke Curator and Admin; Member is
+          implicit for everyone. Delete runs the same cascade as a self-delete.
+        </p>
+      </div>
+      <div class="card" style="margin-top: 16px">
+        <h2>This week</h2>
+        <span class="pill">6 new registrations</span>
+        <span class="pill">1 pending deletion</span>
+        <span class="pill">2 role grants</span>
+      </div>
+    </section>
+  </body>
+</html>

@@ -1,0 +1,103 @@
+name: preview
+
+on:
+  pull_request:
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gate:
+    name: secrets present?
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else echo "ready=false" >> "$GITHUB_OUTPUT"; echo "::notice::VERCEL_TOKEN not set; preview deploy skipped"; fi
+
+  api:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    uses: ./.github/workflows/_vercel-deploy.yml
+    with:
+      app: api
+      environment: preview
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
+
+  web:
+    needs: [gate, api]
+    if: needs.gate.outputs.ready == 'true'
+    uses: ./.github/workflows/_vercel-deploy.yml
+    with:
+      app: web
+      environment: preview
+      api_origin: ${{ needs.api.outputs.url }}
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+
+  e2e:
+    name: playwright against the preview
+    needs: [gate, api, web]
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+        env:
+          BASE_URL: ${{ needs.web.outputs.url }}
+          CI: "true"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+
+  comment:
+    name: comment URLs on the PR
+    needs: [gate, api, web, e2e]
+    if: always() && needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          API_URL: ${{ needs.api.outputs.url }}
+          WEB_URL: ${{ needs.web.outputs.url }}
+          E2E: ${{ needs.e2e.result }}
+        with:
+          script: |
+            const marker = "<!-- healtheat-preview -->";
+            const body = [
+              marker,
+              "### Preview",
+              `- web: ${process.env.WEB_URL || "(deploy failed)"}`,
+              `- api: ${process.env.API_URL || "(deploy failed)"}`,
+              `- Playwright through the proxy (cookie + 65 s): **${process.env.E2E}**`,
+            ].join("\n");
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 });
+            const mine = comments.find((c) => c.body && c.body.startsWith(marker));
+            if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });

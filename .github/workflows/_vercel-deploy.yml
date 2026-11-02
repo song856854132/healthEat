@@ -1,0 +1,99 @@
+# Reusable: pull, build and deploy one Vercel project (api or web) from this monorepo.
+# Outputs the deployment URL. Secrets are passed in by the caller.
+name: _vercel-deploy
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: "api or web"
+        required: true
+        type: string
+      environment:
+        description: "preview or production"
+        required: true
+        type: string
+      api_origin:
+        description: "API origin baked into the web rewrite (web only)"
+        required: false
+        type: string
+        default: ""
+      alias:
+        description: "Optional <name>.vercel.app alias to point at the deployment"
+        required: false
+        type: string
+        default: ""
+      gh_environment:
+        description: "Optional GitHub environment name to record the URL under"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      VERCEL_TOKEN:
+        required: true
+      VERCEL_ORG_ID:
+        required: true
+      VERCEL_PROJECT_ID:
+        required: true
+    outputs:
+      url:
+        description: "Deployment URL (https://...)"
+        value: ${{ jobs.deploy.outputs.url }}
+      alias_url:
+        description: "Alias URL when an alias was requested and succeeded, else the deployment URL"
+        value: ${{ jobs.deploy.outputs.alias_url }}
+
+jobs:
+  deploy:
+    name: deploy ${{ inputs.app }} (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.gh_environment != '' && inputs.gh_environment || null }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      API_ORIGIN: ${{ inputs.api_origin }}
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+      alias_url: ${{ steps.alias.outputs.alias_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build:shared
+      - name: vercel pull
+        run: npx vercel pull --yes --environment=${{ inputs.environment }} --token=${{ secrets.VERCEL_TOKEN }}
+      - name: vercel build
+        run: |
+          if [ "${{ inputs.environment }}" = "production" ]; then
+            npx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          else
+            npx vercel build --token=${{ secrets.VERCEL_TOKEN }}
+          fi
+      - name: vercel deploy
+        id: deploy
+        run: |
+          if [ "${{ inputs.environment }}" = "production" ]; then
+            url=$(npx vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          else
+            url=$(npx vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          fi
+          echo "url=$url" | tee -a "$GITHUB_OUTPUT"
+      - name: alias
+        id: alias
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          alias="${{ inputs.alias }}"
+          if [ -n "$alias" ]; then
+            if npx vercel alias set "$url" "$alias" --token=${{ secrets.VERCEL_TOKEN }}; then
+              echo "alias_url=https://$alias" | tee -a "$GITHUB_OUTPUT"
+              echo "### ${{ inputs.app }} ${{ inputs.environment }}: https://$alias (-> $url)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::warning::alias $alias refused; falling back to the deployment URL"
+          fi
+          echo "alias_url=$url" | tee -a "$GITHUB_OUTPUT"
+          echo "### ${{ inputs.app }} ${{ inputs.environment }}: $url" >> "$GITHUB_STEP_SUMMARY"

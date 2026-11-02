@@ -1,0 +1,71 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  deployments: write
+
+jobs:
+  gate:
+    name: secrets present?
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else echo "ready=false" >> "$GITHUB_OUTPUT"; echo "::error::VERCEL_TOKEN not set; cannot release"; exit 1; fi
+
+  api:
+    needs: gate
+    uses: ./.github/workflows/_vercel-deploy.yml
+    with:
+      app: api
+      environment: production
+      gh_environment: production-api
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
+
+  web:
+    needs: [gate, api]
+    uses: ./.github/workflows/_vercel-deploy.yml
+    with:
+      app: web
+      environment: production
+      # Production API_ORIGIN comes from the Vercel production env (vercel pull); this input
+      # is left empty on purpose so the project setting wins.
+      api_origin: ""
+      gh_environment: production
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+
+  smoke-and-release:
+    needs: [api, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: smoke
+        run: |
+          set -e
+          curl -fsS "${{ needs.api.outputs.url }}/api/health" | grep -q '"ok":true'
+          curl -fsS "${{ needs.web.outputs.url }}/api/health" | grep -q '"ok":true'
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          notes=$(awk -v tag="${tag#v}" '/^## /{p = index($0, tag) > 0} p' CHANGELOG.md)
+          gh release create "$tag" --title "$tag" --notes "${notes:-Release $tag}" --generate-notes || gh release view "$tag"

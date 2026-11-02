@@ -1,0 +1,71 @@
+name: staging
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  gate:
+    name: secrets present?
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else echo "ready=false" >> "$GITHUB_OUTPUT"; echo "::notice::VERCEL_TOKEN not set; staging deploy skipped"; fi
+
+  api:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    uses: ./.github/workflows/_vercel-deploy.yml
+    with:
+      app: api
+      environment: preview
+      alias: healtheat-api-staging.vercel.app
+      gh_environment: staging-api
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_API }}
+
+  web:
+    needs: [gate, api]
+    if: needs.gate.outputs.ready == 'true'
+    uses: ./.github/workflows/_vercel-deploy.yml
+    with:
+      app: web
+      environment: preview
+      # Fixed target: the staging API alias. If the alias was refused, fall back to the
+      # fresh deployment URL so staging web still works.
+      api_origin: ${{ needs.api.outputs.alias_url }}
+      alias: healtheat-staging.vercel.app
+      gh_environment: staging
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+
+  smoke:
+    needs: [gate, api, web]
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: health through api alias and web proxy
+        run: |
+          set -e
+          curl -fsS "${{ needs.api.outputs.alias_url }}/api/health" | tee /dev/stderr | grep -q '"ok":true'
+          curl -fsS "${{ needs.web.outputs.alias_url }}/api/health" | tee /dev/stderr | grep -q '"ok":true'
+          curl -fsS -o /dev/null -w "web %{http_code}\n" "${{ needs.web.outputs.alias_url }}/"
+          echo "staging web: ${{ needs.web.outputs.alias_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "staging api: ${{ needs.api.outputs.alias_url }}" >> "$GITHUB_STEP_SUMMARY"

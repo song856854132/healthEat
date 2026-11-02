@@ -1,0 +1,36 @@
+{
+  "name": "healtheat",
+  "version": "0.1.0",
+  "private": true,
+  "description": "healthEat: a weekly nutrient-and-sensitivity coach (Next.js + Express + MongoDB)",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @healtheat/shared",
+    "build": "npm run build:shared && npm run build -w @healtheat/api && npm run build -w @healtheat/web",
+    "typecheck": "npm run build:shared && npm run typecheck -ws --if-present",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "test": "npm run build:shared && vitest run",
+    "dev:api": "npm run dev -w @healtheat/api",
+    "dev:web": "npm run dev -w @healtheat/web",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^22.19.0",
+    "eslint": "^9.39.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.6.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.0"
+  }
+}
