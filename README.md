@@ -43,8 +43,9 @@ npm run e2e                     # Playwright against BASE_URL (default http://lo
 Vercel's Git integration is disabled on purpose (`vercel.json`), so GitHub Actions is the only
 deployer and a teammate needs no Vercel account. Deployment Protection is disabled on both
 Vercel projects so previews are reachable by Playwright and by the web app's `/api/*` rewrite. The shared dev VM is GCP project
-`study-488509`, instance `instance-20260914-165802` (us-central1-a), stopped nightly at 02:00
-Asia/Taipei; start it with `gcloud compute instances start instance-20260914-165802 --zone us-central1-a`.
+`study-488509`, instance `instance-20260914-165802` (us-central1-a), one Linux user per person via
+metadata SSH keys, stopped nightly at 01:00 New York time; start it with
+`gcloud compute instances start instance-20260914-165802 --zone us-central1-a`.
 
 ## Release
 

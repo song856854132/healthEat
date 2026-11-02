@@ -51,15 +51,15 @@ staging cluster with different database names.
 
 ## 2. Accounts and access (one-time, owner does this)
 
-| System                      | Owner                                                                                          | Teammate                                                                                                                                                     | Agents (CI)                                                                                                            |
-| --------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Claude Code                 | own Max login                                                                                  | own Max login                                                                                                                                                | `CLAUDE_CODE_OAUTH_TOKEN` GitHub secret from the owner's `claude setup-token` (PR review)                              |
-| Anthropic Console           | owner; workspace `healtheat-app`, one API key, USD 30/month cap                                | none                                                                                                                                                         | none (the key is a runtime secret of the API, not a CI secret)                                                         |
-| GitHub repo                 | admin                                                                                          | write (collaborator)                                                                                                                                         | `GITHUB_TOKEN` (default)                                                                                               |
-| GCP project `study-488509`  | owner                                                                                          | `roles/compute.osAdminLogin` + `roles/iam.serviceAccountUser` (SSH with sudo via OS Login), `roles/secretmanager.secretAccessor` on the four staging secrets | none (CI does not touch GCP)                                                                                           |
-| Vercel                      | account owner                                                                                  | none needed                                                                                                                                                  | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_API` as GitHub secrets                    |
-| Atlas                       | org owner                                                                                      | project member on `healtheat-staging` only (read access with `mongosh`)                                                                                      | connection strings as Vercel env vars (preview and production environments) and GitHub secrets for the preview deploys |
-| USDA key, app Anthropic key | owner registers; values in Secret Manager (`usda-api-key`, `anthropic-api-key`) and Vercel env | reads via `~/.env.staging` on the VM                                                                                                                         | Vercel env vars                                                                                                        |
+| System                      | Owner                                                                                          | Teammate                                                                                                                                                          | Agents (CI)                                                                                                            |
+| --------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Claude Code                 | own Max login                                                                                  | own Max login                                                                                                                                                     | `CLAUDE_CODE_OAUTH_TOKEN` GitHub secret from the owner's `claude setup-token` (PR review)                              |
+| Anthropic Console           | owner; workspace `healtheat-app`, one API key, USD 30/month cap                                | none                                                                                                                                                              | none (the key is a runtime secret of the API, not a CI secret)                                                         |
+| GitHub repo                 | admin                                                                                          | write (collaborator)                                                                                                                                              | `GITHUB_TOKEN` (default)                                                                                               |
+| GCP project `study-488509`  | owner                                                                                          | `roles/compute.viewer` plus their SSH public key in project metadata (own Linux user with sudo), `roles/secretmanager.secretAccessor` on the four staging secrets | none (CI does not touch GCP)                                                                                           |
+| Vercel                      | account owner                                                                                  | none needed                                                                                                                                                       | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_API` as GitHub secrets                    |
+| Atlas                       | org owner                                                                                      | project member on `healtheat-staging` only (read access with `mongosh`)                                                                                           | connection strings as Vercel env vars (preview and production environments) and GitHub secrets for the preview deploys |
+| USDA key, app Anthropic key | owner registers; values in Secret Manager (`usda-api-key`, `anthropic-api-key`) and Vercel env | reads via `~/.env.staging` on the VM                                                                                                                              | Vercel env vars                                                                                                        |
 
 Rule: **no production secret is ever on a laptop or the VM.** Production values live in
 Vercel's production environment only. Staging values live in GCP Secret Manager (read by
@@ -150,9 +150,10 @@ machine. Local remains allowed for anyone who prefers it. This is the only GCP r
   builds plus Playwright; `e2-standard-2` works if builds are patient. Attach a
   schedule that stops it nightly (`gcloud compute resource-policies create
 instance-schedule`) so an idle box costs nothing after midnight.
-- Access: enable **OS Login**; each person runs `gcloud compute ssh healtheat-dev`
-  with their own Google identity. That gives one Linux user per person, no shared SSH
-  keys, and `sudo` only for whoever has `osAdminLogin`.
+- Access: metadata SSH keys, one Linux user per person (`song856854132` for the owner; the
+  teammate's key is appended with `scripts/vm/add-ssh-user.sh <user> <key.pub>`). OS Login was
+  tried and reverted on 2026-11-02 because it creates extra generated usernames. Connect with
+  `gcloud compute ssh <user>@instance-20260914-165802 --zone us-central1-a`.
 - Per-user setup (each person, once): `gh auth login` (commits are attributed to the
   real author), `git config user.name/email`, Claude Code, `~/.claude/skills/gstack`
   via the repo's CLAUDE.md instructions.
@@ -161,7 +162,7 @@ instance-schedule`) so an idle box costs nothing after midnight.
   `MONGODB_URI`, `USDA_API_KEY`, the app's `ANTHROPIC_API_KEY`) are read with the person's
   own `gcloud auth login` identity by `scripts/vm/user-setup.sh` into `~/.env.staging`
   (mode 600, git-ignored). The VM's service account deliberately has no Secret Manager scope.
-- Known host limitation (recorded for the owner's Ubuntu box, verify on the VM): the
+- Known host limitation (recorded for the owner's Ubuntu box; fixed on the VM by bootstrap.sh): the
   gstack bundled Chromium needs unprivileged user namespaces; on a fresh Ubuntu 24.04
   VM run `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` (persist in
   `/etc/sysctl.d/`) so `/browse`, `/qa` and Playwright headless all work.
@@ -204,7 +205,7 @@ Owner, before inviting:
 
 1. Anthropic Console: workspace `healtheat-app` with a USD 30/month limit and one API key; value into Vercel env and Secret Manager `anthropic-api-key`. Run `claude setup-token` once and store the result as GitHub secret `CLAUDE_CODE_OAUTH_TOKEN`.
 2. GitHub: protect `main`; add secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_API`, `CLAUDE_CODE_OAUTH_TOKEN`); install the Claude GitHub App.
-3. GCP: project, the VM with OS Login and a stop schedule, Secret Manager secrets (per-person Anthropic keys, staging env), IAM roles from section 2.
+3. GCP: project, the VM with metadata SSH keys and a stop schedule, Secret Manager secrets (staging env, app keys), IAM roles from section 2. Done 2026-11-02.
 4. Vercel: two projects created once by hand with Git deployments disabled; preview and production env vars set; confirm `vercel alias set` works on the two staging names.
 5. Atlas: two projects, two M0 clusters, IP access list open (0.0.0.0/0 is the pragmatic choice on M0; auth is the real gate).
 6. Land T1 (proxy spike) and T2 (scaffold) yourself first so the teammate joins a repo that builds, deploys a preview, and has CI green.

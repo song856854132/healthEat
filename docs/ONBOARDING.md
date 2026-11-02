@@ -1,19 +1,22 @@
 # Onboarding (teammate, day one)
 
 You need: a GitHub account (collaborator invite accepted), a Google account the owner has
-granted on GCP project `study-488509`, and your own Claude Max subscription. You do not need
-a Vercel account, an Anthropic API key, or any production secret.
+granted viewer access on GCP project `study-488509`, an SSH key the owner has added to the VM,
+and your own Claude Max subscription. You do not need a Vercel account, an Anthropic API key,
+or any production secret.
 
 ## 1. Reach the VM
+
+Send the owner your public key (`~/.ssh/id_ed25519.pub`; create one with `ssh-keygen -t ed25519`
+if you have none) and the Linux username you want. Then:
 
 ```bash
 gcloud auth login
 gcloud config set project study-488509
-gcloud compute ssh instance-20260914-165802 --zone us-central1-a
+gcloud compute ssh <your-username>@instance-20260914-165802 --zone us-central1-a
 ```
 
-OS Login turns your Google account into a Linux user (for a Gmail account the name looks like
-`yourname_gmail_com`). If the VM is stopped (it stops nightly at 02:00 Asia/Taipei):
+You get your own Linux user with sudo. If the VM is stopped (it stops nightly at 01:00 New York time):
 
 ```bash
 gcloud compute instances start instance-20260914-165802 --zone us-central1-a
@@ -50,16 +53,19 @@ never deploy from a laptop (CI deploys), `packages/shared` changes go through la
 
 ## Owner side (for reference)
 
-Grants the owner makes for a new teammate, with their Google email `TEAMMATE`:
+Grants the owner makes for a new teammate, with their Google email `TEAMMATE`, GitHub login
+`TEAMMATE_GITHUB`, chosen Linux username `tm` and public key file `tm.pub`:
 
 ```bash
 P=study-488509
-gcloud projects add-iam-policy-binding $P --member=user:TEAMMATE --role=roles/compute.osAdminLogin
-gcloud projects add-iam-policy-binding $P --member=user:TEAMMATE --role=roles/iam.serviceAccountUser
+gcloud projects add-iam-policy-binding $P --member=user:TEAMMATE --role=roles/compute.viewer
+scripts/vm/add-ssh-user.sh tm tm.pub          # appends to project ssh-keys metadata
 for s in session-secret-staging mongodb-uri-staging usda-api-key anthropic-api-key; do
   gcloud secrets add-iam-policy-binding $s --project $P --member=user:TEAMMATE --role=roles/secretmanager.secretAccessor
 done
 gh api -X PUT repos/song856854132/healthEat/collaborators/TEAMMATE_GITHUB -f permission=push
 ```
 
-`osLogin` instead of `osAdminLogin` gives SSH without sudo.
+The VM uses metadata SSH keys, not OS Login, so the only Linux users are `song856854132`
+(owner) and one per teammate. Removing a teammate = deleting their line from the project
+`ssh-keys` metadata and their home directory.
