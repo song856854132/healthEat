@@ -13,10 +13,15 @@ if you have none) and the Linux username you want. Then:
 ```bash
 gcloud auth login
 gcloud config set project study-488509
-gcloud compute ssh <your-username>@instance-20260914-165802 --zone us-central1-a
+gcloud compute ssh <your-username>@instance-20260914-165802 --zone us-central1-a \
+  --ssh-key-file ~/.ssh/id_ed25519
 ```
 
-You get your own Linux user with sudo. If the VM is stopped (it stops nightly at 01:00 New York time):
+`--ssh-key-file` must point at the private key matching the public key you sent; without it
+gcloud generates a new key and tries to register it, which your viewer role cannot do. Plain
+OpenSSH also works (`ssh -i ~/.ssh/id_ed25519 <your-username>@<external IP>`), but the external
+IP changes whenever the VM restarts until a static address is reserved. You get your own
+Linux user with sudo. If the VM is stopped (it stops nightly at 01:00 New York time):
 
 ```bash
 gcloud compute instances start instance-20260914-165802 --zone us-central1-a
@@ -59,7 +64,7 @@ Grants the owner makes for a new teammate, with their Google email `TEAMMATE`, G
 ```bash
 P=study-488509
 gcloud projects add-iam-policy-binding $P --member=user:TEAMMATE --role=roles/compute.viewer
-scripts/vm/add-ssh-user.sh tm tm.pub          # appends to project ssh-keys metadata
+scripts/vm/add-ssh-user.sh tm tm.pub          # or: add-ssh-user.sh tm ssh-ed25519 AAAA... comment
 for s in session-secret-staging mongodb-uri-staging usda-api-key anthropic-api-key; do
   gcloud secrets add-iam-policy-binding $s --project $P --member=user:TEAMMATE --role=roles/secretmanager.secretAccessor
 done

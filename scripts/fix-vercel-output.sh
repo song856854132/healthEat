@@ -10,6 +10,9 @@
 #      and which the function cannot resolve at runtime: copy its built files into the function
 #      output as real files and drop the map entry.
 # Usage: scripts/fix-vercel-output.sh api|web
+# NOTE: step 1 leaves partial package copies in apps/<app>/node_modules. That is fine on a CI
+# runner, but on a dev machine run `npm run clean:vercel` afterwards or local builds break
+# (Turbopack resolves the partial copy of next first).
 set -euo pipefail
 app="${1:?app name (api|web)}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
