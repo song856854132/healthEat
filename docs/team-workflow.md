@@ -153,7 +153,8 @@ instance-schedule`) so an idle box costs nothing after midnight.
 - Access: metadata SSH keys, one Linux user per person (`song856854132` for the owner; the
   teammate's key is appended with `scripts/vm/add-ssh-user.sh <user> <key.pub>`). OS Login was
   tried and reverted on 2026-11-02 because it creates extra generated usernames. Connect with
-  `gcloud compute ssh <user>@instance-20260914-165802 --zone us-central1-a`.
+  `gcloud compute ssh <user>@instance-20260914-165802 --zone us-central1-a` or plain
+  `ssh <user>@34.57.33.133` (static address `healtheat-dev-ip`, reserved 2026-11-07).
 - Per-user setup (each person, once): `gh auth login` (commits are attributed to the
   real author), `git config user.name/email`, Claude Code, `~/.claude/skills/gstack`
   via the repo's CLAUDE.md instructions.

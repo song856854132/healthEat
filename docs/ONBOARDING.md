@@ -18,10 +18,24 @@ gcloud compute ssh <your-username>@instance-20260914-165802 --zone us-central1-a
 ```
 
 `--ssh-key-file` must point at the private key matching the public key you sent; without it
-gcloud generates a new key and tries to register it, which your viewer role cannot do. Plain
-OpenSSH also works (`ssh -i ~/.ssh/id_ed25519 <your-username>@<external IP>`), but the external
-IP changes whenever the VM restarts until a static address is reserved. You get your own
-Linux user with sudo. If the VM is stopped (it stops nightly at 01:00 New York time):
+gcloud generates a new key and tries to register it, which your viewer role cannot do.
+
+Plain OpenSSH works too, and the address is static (reserved 2026-11-07 as `healtheat-dev-ip`):
+
+```bash
+ssh -i ~/.ssh/id_ed25519 <your-username>@34.57.33.133
+```
+
+Add it to `~/.ssh/config` once and `ssh healtheat` from then on:
+
+```
+Host healtheat
+  HostName 34.57.33.133
+  User <your-username>
+  IdentityFile ~/.ssh/id_ed25519
+```
+
+You get your own Linux user with sudo. The VM must be running; see the start command above. If the VM is stopped (it stops nightly at 01:00 New York time):
 
 ```bash
 gcloud compute instances start instance-20260914-165802 --zone us-central1-a
