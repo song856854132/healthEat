@@ -22,3 +22,8 @@ Use /browse for all web browsing (Aside first, the bundled gstack browser as fal
 - Never commit secrets or connection strings. Staging env lives in `~/.env.staging` on the VM.
 - `packages/shared` schema shapes change only through lane A (API owner). Roles are Member,
   Curator, Admin; there is no human coach role (D18).
+- PR body = `.github/PULL_REQUEST_TEMPLATE.md` (T-number, `Closes #issue`, what, how verified).
+  Feature PRs do not bump VERSION or CHANGELOG (decline it if `/ship` offers); the owner cuts
+  releases from `main` with a `v*` tag. Never push tags from a branch.
+- `scripts/fix-vercel-output.sh` is a CI step; never run it on a dev machine (`npm run clean:vercel` if you did).
+- Task order and dependencies: design doc, "Implementation Tasks: order and dependencies".

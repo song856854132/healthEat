@@ -29,12 +29,12 @@ only ever push branches and open PRs; CI does every deploy with secrets nobody t
 
 ## 1. Environments
 
-| Tier       | Where                                                                                                                    | Trigger                                   | Data                                                                                                    | Purpose                                                                                                                          |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Dev        | Shared GCP VM (one Linux user each) or your laptop                                                                       | you                                       | `mongodb-memory-server` for tests; Atlas staging cluster, db `healtheat_dev_<username>` for manual runs | Claude Code + gstack sessions in tmux; identical toolchain for both people                                                       |
-| PR preview | Vercel preview deploys (api, then web), created by CI                                                                    | every PR push                             | Atlas **staging** cluster, db `healtheat_preview`                                                       | Review a change on the real production platform; Playwright e2e runs here                                                        |
-| Staging    | Vercel non-production deploy of `main`, aliased to `healtheat-staging.vercel.app` and `healtheat-api-staging.vercel.app` | merge to `main`                           | Atlas **staging** cluster, db `healtheat_staging`                                                       | Long-lived integration environment with seeded users for all three roles; demo rehearsal; the URL the teammate opens after merge |
-| Production | Vercel production deploy (same two projects)                                                                             | git tag `v*` pushed by `/ship` or by hand | Atlas **production** cluster                                                                            | The graded URL                                                                                                                   |
+| Tier       | Where                                                                                                                    | Trigger                                   | Data                                                                                                    | Purpose                                                                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dev        | Shared GCP VM (one Linux user each) or your laptop                                                                       | you                                       | `mongodb-memory-server` for tests; Atlas staging cluster, db `healtheat_dev_<username>` for manual runs | Claude Code + gstack sessions in tmux; identical toolchain for both people                                                                      |
+| PR preview | Vercel preview deploys (api, then web), created by CI                                                                    | every PR push                             | Atlas **staging** cluster, db `healtheat_preview`                                                       | Review a change on the real production platform; Playwright e2e runs here                                                                       |
+| Staging    | Vercel non-production deploy of `main`, aliased to `healtheat-staging.vercel.app` and `healtheat-api-staging.vercel.app` | merge to `main`                           | Atlas **staging** cluster, db `healtheat_staging` (database arrives with T9)                            | Long-lived integration environment; seeded users for the three roles arrive with T7/T11; demo rehearsal; the URL the teammate opens after merge |
+| Production | Vercel production deploy (same two projects)                                                                             | git tag `v*` pushed by `/ship` or by hand | Atlas **production** cluster                                                                            | The graded URL                                                                                                                                  |
 
 Because every tier above Dev is Vercel, the two Vercel-specific risks in the plan
 (T1 proxy spike: `Set-Cookie` through the Next.js rewrite; the 300 s `maxDuration` on the
@@ -69,14 +69,15 @@ the VM at login) and in Vercel's preview environment.
 
 - `main` is protected: PR required, CI green required, one approving review required,
   linear history, no force push. Nobody commits to `main` directly, agents included.
-- One branch per task from the plan: `t07-admin-bootstrap`, `t21-curator-admin-surfaces`.
+- One branch per task from the plan: `t07-admin-bootstrap`, `t12-privacy-banner`. Order and
+  dependencies: design doc, "Implementation Tasks: order and dependencies".
   Create the 22 tasks (T1 to T22 in the design doc) as GitHub Issues with labels
   `lane:a` (api + shared), `lane:b` (web), `lane:c` (tooling), `phase:0..3`.
   Suggested split: owner takes lane A, teammate takes lane B, lane C goes to whoever
   finishes first. The plan's rule stands: `packages/shared` schema shapes are frozen
   after T2 and change only through lane A.
 - Day-to-day with agents:
-  1. `git worktree add ../healthEat-t21 -b t21-curator-admin-surfaces` (or `/using-git-worktrees`).
+  1. `git worktree add ../healthEat-t12 -b t12-privacy-banner`, then `npm ci && npm run build:shared` in it.
   2. Claude Code in tmux on the VM; `/verify` before pushing.
   3. `/ship` opens the PR (it merges `main`, runs tests, reviews the diff, writes the PR body).
   4. CI runs section 4; the two preview URLs are posted as a PR comment.
@@ -84,19 +85,23 @@ the VM at login) and in Vercel's preview environment.
      (`anthropics/claude-code-action`) also reviews every PR automatically and answers
      `@claude` comments; its findings are advice, the human approval is the gate.
   6. Squash-merge. CI redeploys staging from `main` and re-points the aliases.
-  7. Open `healtheat-staging.vercel.app`, log in as the seeded role you touched, check the feature in context.
-- Release to production: `git tag v0.3.0 && git push --tags` (or let `/ship` bump
-  VERSION and tag). The `release` workflow deploys both projects with `--prod`.
-  Before tagging, run the staging checklist: anonymous Home, login as the three seeded
-  roles, one text log, one photo log, one dictionary edit with re-match, one admin
-  suspend. Rollback is `vercel rollback` or re-tagging the previous commit.
+  7. Open `healtheat-staging.vercel.app` and check the feature in context (seeded role accounts exist once T7/T11 land).
+- Release to production (owner): bump VERSION and CHANGELOG on `main`, then
+  `git tag vX.Y.Z && git push origin vX.Y.Z`. The `release` workflow deploys both projects with `--prod`.
+  Tags are pushed by the owner, from `main` only (`release.yml` refuses a tag whose commit is not
+  on `main`). Feature PRs never bump VERSION or CHANGELOG; the owner does that in the release
+  commit. Before tagging, run the staging checklist (grows with the phases): today, anonymous Home
+  and `/api/health` through the proxy; from phase 0 on, login as the three seeded roles, one text
+  log, one dictionary edit with re-match, one admin suspend; from phase 2, one photo log.
+  Rollback is `vercel rollback` or tagging the previous good commit again.
 
 ## 4. GitHub Actions (five workflows)
 
 ```
 .github/workflows/
   ci.yml        on: pull_request, push to main
-                jobs: typecheck+lint -> unit (vitest) -> api (supertest, mongodb-memory-server)
+                one job "typecheck, lint, unit and API tests": npm ci, build shared, typecheck, lint,
+                format check, vitest (shared + api projects; supertest, mongodb-memory-server from T9)
   preview.yml   on: pull_request
                 jobs: vercel deploy api (env MONGODB_URI=<staging>/healtheat_preview, ...)
                       -> vercel deploy web --env API_ORIGIN=<api preview url>
@@ -106,7 +111,7 @@ the VM at login) and in Vercel's preview environment.
                 jobs: vercel deploy api -> vercel alias set <url> healtheat-api-staging.vercel.app
                       -> vercel deploy web -> vercel alias set <url> healtheat-staging.vercel.app
                       -> smoke: GET /api/health and GET / return 200 on the aliases
-                      -> seed script (idempotent): three role accounts, dictionary, sample logs
+                      -> (from T7/T11) seed script (idempotent): three role accounts, dictionary, sample logs
   release.yml   on: push tags v*
                 jobs: vercel deploy --prod api -> vercel deploy --prod web
                       -> smoke on production URLs -> GitHub Release notes from CHANGELOG
@@ -149,15 +154,15 @@ machine. Local remains allowed for anyone who prefers it. This is the only GCP r
 - Machine: Compute Engine `e2-standard-4` (4 vCPU, 16 GB) is comfortable for Next.js
   builds plus Playwright; `e2-standard-2` works if builds are patient. Attach a
   schedule that stops it nightly (`gcloud compute resource-policies create
-instance-schedule`) so an idle box costs nothing after midnight.
+instance-schedule`) so an idle box costs nothing overnight (01:00 New York).
 - Access: metadata SSH keys, one Linux user per person (`song856854132` for the owner; the
   teammate's key is appended with `scripts/vm/add-ssh-user.sh <user> <key.pub>`). OS Login was
   tried and reverted on 2026-11-02 because it creates extra generated usernames. Connect with
   `gcloud compute ssh <user>@instance-20260914-165802 --zone us-central1-a` or plain
   `ssh <user>@34.57.33.133` (static address `healtheat-dev-ip`, reserved 2026-11-07).
-- Per-user setup (each person, once): `gh auth login` (commits are attributed to the
-  real author), `git config user.name/email`, Claude Code, `~/.claude/skills/gstack`
-  via the repo's CLAUDE.md instructions.
+- Per-user setup (each person, once): `bash scripts/vm/user-setup.sh` does it all (bun, Claude
+  Code, gstack, `gh auth login`, `gcloud auth login`, git identity, `npm ci`, Playwright browser,
+  `~/.env.staging`). Commits are attributed to the real author.
 - Claude Code: each person runs `claude` once and logs in with their own Max account
   (URL + paste code). No API key is involved. Staging secrets (`SESSION_SECRET`,
   `MONGODB_URI`, `USDA_API_KEY`, the app's `ANTHROPIC_API_KEY`) are read with the person's
@@ -188,12 +193,12 @@ Three mitigations, cheapest first:
 
 - The plan is the spec. `docs/designs/healtheat-nutrient-coach.md` and `TODOS.md` are
   the source of truth; a decision that changes them gets a dated note in the doc
-  (as D18 did) and a `gstack-decision-log` entry. Agents are told to read the plan
+  (as D18 did). Agents are told to read the plan
   section for the task before coding.
 - `CLAUDE.md` in the repo grows a short "how we work here" block: run `/verify` before
   push, `/ship` for PRs, never commit secrets, never deploy from a laptop, one task per
   PR, keep `packages/shared` changes in lane A.
-- Every PR body states which task (T-number) it closes and which phase gate it moves.
+- Every PR body follows `.github/PULL_REQUEST_TEMPLATE.md`: T-number, `Closes #issue`, what changed, how verified.
 - Spend: Claude Code usage is covered by each person's Max plan. The app's API key has a
   USD 30 monthly cap in the Console; if photo recognition hits it, the API returns a clear
   error and text logging keeps working. Check the Console usage page weekly.
@@ -211,14 +216,9 @@ Owner, before inviting:
 5. Atlas: two projects, two M0 clusters, IP access list open (0.0.0.0/0 is the pragmatic choice on M0; auth is the real gate).
 6. Land T1 (proxy spike) and T2 (scaffold) yourself first so the teammate joins a repo that builds, deploys a preview, and has CI green.
 
-Teammate, first day:
-
-1. On the VM, run `claude` and log in with your own Max account (URL + code flow).
-2. Accept the GitHub collaborator invite; `gh auth login` on the VM.
-3. `gcloud auth login`, `gcloud compute ssh healtheat-dev`; confirm `$ANTHROPIC_API_KEY` is set.
-4. Read the plan's Recommended Approach and Implementation Tasks, this file, and `TODOS.md`.
-5. Pick the first lane-B task (after T1 and T2 land), create the worktree, run `/verify`,
-   open a PR with `/ship`, confirm the preview URLs appear on the PR, and after merge open the staging URL.
+Teammate, first day: follow `docs/ONBOARDING.md` sections 0 to 3 (prerequisites, SSH, `user-setup.sh`,
+first task). The short version: start the VM if it is stopped, `ssh healtheat`, clone, run the
+setup script, log Claude Code in with your own account, pick the first lane-B issue.
 
 ## 9. Deferred: Cloud Run staging
 

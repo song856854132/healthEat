@@ -11,10 +11,17 @@ PROJECT="${HEALTHEAT_GCP_PROJECT:-study-488509}"
 WORK="$HOME/healthEat"
 
 mkdir -p "$HOME/.local/bin" "$HOME/.npm-global/bin"
-export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"
 export NPM_CONFIG_PREFIX="$HOME/.npm-global"
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+
+step "bun (gstack's setup needs it)"
+if ! command -v bun >/dev/null 2>&1; then
+  curl -fsSL https://bun.sh/install | bash >/dev/null
+  export PATH="$HOME/.bun/bin:$PATH"
+fi
+bun --version
 
 step "Claude Code"
 if ! command -v claude >/dev/null 2>&1; then
@@ -35,7 +42,9 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 gh auth setup-git
 if [ -z "$(git config --global user.name || true)" ]; then
-  git config --global user.name "$(gh api user -q .name 2>/dev/null || gh api user -q .login)"
+  name="$(gh api user -q .name 2>/dev/null || true)"
+  [ -n "$name" ] || name="$(gh api user -q .login 2>/dev/null || echo "$USER")"
+  git config --global user.name "$name"
 fi
 if [ -z "$(git config --global user.email || true)" ]; then
   echo "git user.email is not set. Enter the email you want on commits:"; read -r email; git config --global user.email "$email"

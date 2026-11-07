@@ -22,23 +22,25 @@ scripts/vm/       Shared GCP dev VM provisioning (bootstrap.sh) and per-user set
 
 ## Run locally
 
+In a fresh clone or a new `git worktree`, start with the first two lines; both are needed before any check.
+
 ```bash
 npm ci
 npm run build:shared
-cp .env.example apps/api/.env   # or: set -a; . ~/.env.staging; set +a   (on the VM)
+set -a; . .env.example; set +a   # or on the VM: set -a; . ~/.env.staging; set +a  (the API reads plain env vars, no dotenv)
 npm run dev:api                 # http://localhost:4000/api/health
 npm run dev:web                 # http://localhost:3000  (API_ORIGIN=http://localhost:4000)
 npm test                        # unit + API tests (vitest, supertest)
-npm run e2e                     # Playwright against BASE_URL (default http://localhost:3000)
+npm run e2e                     # Playwright against BASE_URL (default http://localhost:3000); start dev:api and dev:web first
 ```
 
 ## Environments
 
-| Tier       | URL                                                                                  | Deployed by                             |
-| ---------- | ------------------------------------------------------------------------------------ | --------------------------------------- |
-| PR preview | commented on each PR (web + api)                                                     | `preview` workflow on every PR push     |
-| Staging    | https://healtheat-staging.vercel.app (api: https://healtheat-api-staging.vercel.app) | `staging` workflow on merge to `main`   |
-| Production | set by the first `v*` tag                                                            | `release` workflow on `git push --tags` |
+| Tier       | URL                                                                                  | Deployed by                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| PR preview | commented on each PR (web + api)                                                     | `preview` workflow on every PR push                                                          |
+| Staging    | https://healtheat-staging.vercel.app (api: https://healtheat-api-staging.vercel.app) | `staging` workflow on merge to `main`                                                        |
+| Production | https://healtheat-web.vercel.app (api: https://healtheat-api.vercel.app)             | `release` workflow on a `v*` tag pushed from `main` by the owner (first: v0.1.1, 2026-11-02) |
 
 Vercel's Git integration is disabled on purpose (`vercel.json`), so GitHub Actions is the only
 deployer and a teammate needs no Vercel account. Deployment Protection is disabled on both

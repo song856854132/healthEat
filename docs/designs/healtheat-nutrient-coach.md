@@ -73,8 +73,8 @@ Wireframe of the three Home screens (Member, Curator, Admin): `docs/designs/heal
 ```
 healthEat/
   apps/
-    web/            Next.js 15 (App Router), React 19, Tailwind + shadcn/ui, Recharts
-    api/            Express 5, Mongoose 8, express-session + connect-mongo, zod
+    web/            Next.js 16 (App Router), React 19, Tailwind + shadcn/ui, Recharts
+    api/            Express 5.3, Mongoose 9, express-session + connect-mongo, zod
   packages/
     shared/         TS types, zod schemas, allergen dictionary seed JSON, DRI tables JSON
   docs/
@@ -82,7 +82,7 @@ healthEat/
   package.json      npm workspaces: ["apps/*", "packages/*"]
 ```
 
-Two Vercel projects point at the same repo with different root directories (`apps/web`, `apps/api`). `apps/web/next.config.ts` has `rewrites: [{ source: "/api/:path*", destination: process.env.API_ORIGIN + "/api/:path*" }]`.
+Two Vercel projects (`healtheat-web`, `healtheat-api`), each with root directory `.`; GitHub Actions builds each app with `vercel build --cwd apps/<app>` and uploads the prebuilt output, so Vercel's Git integration is off (`vercel.json`: `git.deploymentEnabled: false`). `apps/web/next.config.ts` has `rewrites: [{ source: "/api/:path*", destination: process.env.API_ORIGIN + "/api/:path*" }]`.
 
 ### Pages and routes (rubric mapping)
 
@@ -168,13 +168,13 @@ Every handler: zod-validated input, `asyncHandler` wrapper, central error middle
 
 **Allergen matching.** Normalise `ingredientsText` (lowercase, strip punctuation, split on commas and parentheses). For each Allergen, for each synonym, match as a whole-word or phrase. Write FoodAllergen rows. Foundation and SR Legacy foods have no ingredient text: match on the description only against a small curated list (for example "soy", "milk", "wheat").
 
-**Re-match on dictionary change.** Serverless functions freeze after the response, so there is no background pass. A dictionary write handles the re-match inside the same request: it sets `rematchCursor` to the first cached fdcId, then walks the `Food` collection in batches of 500 ordered by `fdcId`, re-running the matcher for that one Allergen and replacing its FoodAllergen rows, advancing the cursor after each batch. Matching is in-memory string work; 500 foods take well under a second. The cache is expected to hold at most a few thousand Foods in a semester (only foods users touched), so the pass completes in seconds. The whole Express API is one Vercel function with `maxDuration = 300` (the Hobby maximum; set in `apps/api/vercel.json`). As a guard the handler stops after 60 seconds, well under that limit, leaves `rematchCursor` set, and returns 202 with `{done:false, processed, remaining}`; the Admin dictionary page then shows "Re-matching… N remaining" and calls `POST /api/admin/allergens/:id/rematch` until `done:true`. Independently of the 202, the Admin dictionary page shows a "Continue re-match" action on any Allergen whose `rematchCursor` is non-null, so a request lost to a timeout or a closed tab is recoverable. The Admin sees a "Re-matched N foods" confirmation on completion.
+**Re-match on dictionary change.** Serverless functions freeze after the response, so there is no background pass. A dictionary write handles the re-match inside the same request: it sets `rematchCursor` to the first cached fdcId, then walks the `Food` collection in batches of 500 ordered by `fdcId`, re-running the matcher for that one Allergen and replacing its FoodAllergen rows, advancing the cursor after each batch. Matching is in-memory string work; 500 foods take well under a second. The cache is expected to hold at most a few thousand Foods in a semester (only foods users touched), so the pass completes in seconds. The whole Express API is one Vercel function with a 300 s window (the Hobby default and maximum; nothing to configure). As a guard the handler stops after 60 seconds, well under that limit, leaves `rematchCursor` set, and returns 202 with `{done:false, processed, remaining}`; the Curator dictionary page then shows "Re-matching… N remaining" and calls `POST /api/curate/allergens/:id/rematch` until `done:true`. Independently of the 202, the Curator dictionary page shows a "Continue re-match" action on any Allergen whose `rematchCursor` is non-null, so a request lost to a timeout or a closed tab is recoverable. The Curator sees a "Re-matched N foods" confirmation on completion.
 
 **Exposure meter.** For each tracked allergen: `hits = count of LogEntry in W whose Food has a FoodAllergen row`, weighted `sum(grams)/100` as a secondary figure. Compare `hits` against `weeklyThreshold`. Hard-alert path: any FoodAllergen row on today's log for an avoid-mode allergen.
 
 **Close the gap.** Candidate set = cached Foods plus a curated seed list of about 60 whole foods with fdcIds. Score = `amountPer100g(n) / kcalPer100g`, drop any Food with a FoodAllergen row for an avoid-mode allergen, return the top 6 with a realistic portion.
 
-**Photo pipeline.** Browser downsizes to max 1024 px JPEG (canvas), typically under 250 KB, well below Vercel's 4.5 MB cap and 10x cheaper in image tokens. `POST /api/vision/meal` sends the image to the Anthropic SDK, model `claude-opus-5-5`, with `output_config.format` set to a JSON schema `{items: [{query: string, grams: number, confidence: number}]}` and a system prompt that forbids nutrient estimates. Cost is about one cent per photo. Response items are each resolved with a USDA search; the user sees the matches and grams, edits, and confirms; only then are LogEntry rows written with `source: "photo"`. Server-side fallback to a sibling model is enabled on refusal. The vision call runs inside the single API function's 300 s `maxDuration` (see Re-match on dictionary change); the Anthropic client timeout is set to 60 s so a stuck call fails fast with a retryable error.
+**Photo pipeline.** Browser downsizes to max 1024 px JPEG (canvas), typically under 250 KB, well below Vercel's 4.5 MB cap and 10x cheaper in image tokens. `POST /api/vision/meal` sends the image to the Anthropic SDK, model `claude-opus-5-5`, with `output_config.format` set to a JSON schema `{items: [{query: string, grams: number, confidence: number}]}` and a system prompt that forbids nutrient estimates. Cost is about one cent per photo. Response items are each resolved with a USDA search; the user sees the matches and grams, edits, and confirms; only then are LogEntry rows written with `source: "photo"`. Server-side fallback to a sibling model is enabled on refusal. The vision call runs inside the single API function's 300 s window (see Re-match on dictionary change); the Anthropic client timeout is set to 60 s so a stuck call fails fast with a retryable error.
 
 ### Auth and sessions
 
@@ -182,11 +182,11 @@ Every handler: zod-validated input, `asyncHandler` wrapper, central error middle
 
 ### Deployment
 
-- Vercel project `healtheat-web` (root `apps/web`), env: `API_ORIGIN`.
-- Vercel project `healtheat-api` (root `apps/api`, Express preset), env: `MONGODB_URI`, `SESSION_SECRET`, `USDA_API_KEY`, `ANTHROPIC_API_KEY`. Keys never reach the browser.
+- Vercel project `healtheat-web` (built from `apps/web`), env: `API_ORIGIN` (preview: the staging API alias; production: `https://healtheat-api.vercel.app`).
+- Vercel project `healtheat-api` (built from `apps/api`, Express preset via `vercel.json`), env: `MONGODB_URI`, `SESSION_SECRET`, `USDA_API_KEY`, `ANTHROPIC_API_KEY`. Keys never reach the browser.
 - MongoDB Atlas M0 (512 MB). Mongoose connection cached on `globalThis` for warm invocations.
-- GitHub Actions on push: typecheck, lint, unit tests. Vercel auto-deploys `main`; preview deploys per PR still work because cookies are same-origin on every preview URL.
-- USDA key: 1000 requests per hour by default. Cache-on-read plus a 24-hour in-memory LRU for search queries keeps a grader's clicking far below that.
+- GitHub Actions is the only deployer: `ci` on every push and PR; `preview` deploys both apps per PR and runs Playwright through the proxy; `staging` deploys `main` and aliases it to `healtheat-staging.vercel.app` / `healtheat-api-staging.vercel.app`; `release` deploys production on a `v*` tag from `main`. Cookies are same-origin on every preview URL. See `docs/team-workflow.md`.
+- USDA key: 1000 requests per hour per IP by default. Cache-on-read (`Food`) plus the `SearchCache` collection (24 h TTL, D5) keeps a grader's clicking far below that; on a USDA 429 or 5xx the cached page is served with a "cached" label.
 
 ### Testing
 
@@ -212,7 +212,7 @@ Every handler: zod-validated input, `asyncHandler` wrapper, central error middle
 
 ## Distribution Plan
 
-Web service. Vercel auto-deploys `main` for both projects; preview URLs per pull request. No binaries, no store listing. GitHub Actions runs typecheck, lint, and tests before merge.
+Web service. GitHub Actions deploys both Vercel projects (previews per PR, staging from `main`, production by tag). No binaries, no store listing. GitHub Actions runs typecheck, lint, and tests before merge.
 
 ## Next Steps
 
@@ -1238,7 +1238,7 @@ History: reaffirmed by the user on 2026-10-12 after asking why Curator is not fo
 
 ## What already exists
 
-Nothing in this repository yet (one commit, CLAUDE.md only). Reuse, not rebuild: express-session + connect-mongo (sessions), zod (validation, shared via `packages/shared`), Recharts (bands), shadcn/ui, Anthropic SDK structured output (vision), USDA FoodData Central REST (nutrients), Open Food Facts allergen taxonomy (dictionary seed, license to verify), OpenNutriTracker's DRI tables (port source), mongodb-memory-server (API tests). Shared code decision: the only shared extraction is the zod schema package (two proposed callers: web forms and api routers), approved at D4; its contract tests live in `packages/shared`.
+As of 2026-11-07 the repo holds the monorepo scaffold, the verified proxy spike, the CI/CD workflows and the VM scripts (T1, T2, T20 done); no data model, auth or product routes yet. Reuse, not rebuild: express-session + connect-mongo (sessions), zod (validation, shared via `packages/shared`), Recharts (bands), shadcn/ui, Anthropic SDK structured output (vision), USDA FoodData Central REST (nutrients), Open Food Facts allergen taxonomy (dictionary seed, license to verify), OpenNutriTracker's DRI tables (port source), mongodb-memory-server (API tests). Shared code decision: the only shared extraction is the zod schema package (two proposed callers: web forms and api routers), approved at D4; its contract tests live in `packages/shared`.
 
 ## Diagrams
 
@@ -1305,7 +1305,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
 - [x] **T2 (P1, human: ~2 days / CC: ~1 hr)** — root — Monorepo scaffold with npm workspaces, three packages, Next.js 16 / Express 5.3 / Mongoose 9
   - Surfaced by: Scope Challenge — D4 structure, S1 stale versions
   - Files: package.json, apps/web/package.json, apps/api/package.json, packages/shared/package.json
-  - Verify: `npm install && npm run build -ws` succeeds
+  - Verify: `npm ci && npm run build` succeeds
 - [ ] **T3 (P1, human: ~half day / CC: ~20 min)** — apps/api — SearchCache collection with TTL and USDA 429/5xx fallback
   - Surfaced by: Scope Challenge — S2 (D5), S7
   - Files: apps/api/src/models/SearchCache.ts, apps/api/src/services/usda.ts, apps/api/src/routes/foods.ts
@@ -1352,7 +1352,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Verify: supertest with mocked timeout: visionUsage unchanged; 21st call → 429
 - [ ] **T14 (P2, human: ~2 days / CC: ~1 hr)** — root — Test stack: vitest, supertest + mongodb-memory-server, Playwright, GitHub Actions
   - Surfaced by: Test review — T1 (D13)
-  - Files: vitest.workspace.ts, apps/api/test/setup.ts, playwright.config.ts, .github/workflows/ci.yml
+  - Files: vitest.config.ts (projects), apps/api/test/setup.ts, playwright.config.ts, .github/workflows/ci.yml
   - Verify: `npm test` and `npm run e2e` pass locally; Actions green on a PR
 - [ ] **T15 (P2, human: ~2 days / CC: ~1 hr)** — apps/api + packages/shared — Unit tests: coverage7d (|L| = 7, 4, 0; boundaries; sodium CDRR), daily confidence, matcher (parens, description), exposure, gap ranking filter, zod schemas
   - Surfaced by: Test review — coverage diagram gaps (code paths)
@@ -1374,7 +1374,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Code Quality — C5 (R3-12, R3-13)
   - Files: apps/web/components/NutrientBand.tsx
   - Verify: Playwright visual check on a 4-of-7 fixture
-- [ ] **T20 (P3, human: ~1 hr / CC: ~10 min)** — docs — Fold the Working plan amendments into the plan body (versions, caches, cascade, open questions 4 and 5 closed, 430 MB reword) before sharing with the instructor
+- [x] **T20 (P3, human: ~1 hr / CC: ~10 min)** — docs — Fold the Working plan amendments into the plan body (versions, caches, cascade, open questions 4 and 5 closed, 430 MB reword) before sharing with the instructor
   - Surfaced by: Scope Challenge — S1, S8; Code Quality — C5 (R3-23)
   - Files: docs/designs/healtheat-nutrient-coach.md
   - Verify: no remaining "Next.js 15", "Mongoose 8", "in-memory LRU" or "430 MB dump does not fit" strings in the body
@@ -1389,6 +1389,34 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Verify: unit test: caching a food with "soy lecithin" (matched) and "xanthan gum" (unmatched) creates one token; mapping it appends the synonym and FoodAllergen rows appear
 
 _No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision._
+
+## Implementation Tasks: order and dependencies
+
+Added 2026-11-07 for the two-person team. T1, T2 and T20 are done. Nothing below exists yet except what the scaffold provides (Express app shell, Next.js shell, shared zod package, CI/CD).
+
+Lane A (owner: `apps/api`, `packages/shared`), in order:
+1. **T9** reliability baseline, plus the auth routes and session store the plan's phase 0 describes (register, login, logout, `GET /api/auth/me`, Mongoose models for `User` and the three profiles; needs Atlas and `MONGODB_URI`). Everything else in lane A depends on it.
+2. **T7** admin bootstrap and role grants (after T9).
+3. **T4** login throttle (after T9).
+4. **T3** USDA search and details with `SearchCache` (independent of auth; can run in parallel with T7/T4).
+5. **T11** dictionary seed and matcher (after T3's `Food` cache).
+6. **T6** log routes with ownership guards (after T9 and T11).
+7. **T5** deletion cascade and re-match batching (after T6 and T11).
+8. **T21** Curator and Admin surfaces (after T7, T9, T11; the web pages half belongs to lane B once the API half is merged).
+9. **T10** public Home feed snapshot (after T6).
+10. **T13** vision route hardening (phase 2, after T6).
+
+Lane B (teammate: `apps/web`), in order:
+1. **T12, web-only part**: privacy banner and acknowledgment cookie, `/privacy`, `/about`, footer, nav shell. No API needed. First task.
+2. Login and Register pages and the signed-in nav, against the `/api/auth/*` contract, as soon as T9 is on `main` (mock the API locally before that).
+3. Search and Results page with URL state, then Details with local data, against T3.
+4. Member Home widgets and the day log page against T6 and T10 (phase 1 bands follow with the summary service).
+5. **T19** band rendering spec and **T21**'s Curator and Admin pages once their APIs exist.
+6. **T17** Playwright flows grow alongside each page.
+
+Lane C (whoever is free): **T14** remaining pieces (mongodb-memory-server setup for API tests; the rest of the test stack is already wired), **T8** (done by the CI workflows, verify only), **T15** and **T16** tests travel with the PRs that add the code, **T18** vision eval (phase 2), **T22** unmatched-ingredient queue (phase 3).
+
+Rule: `packages/shared` schema shapes are added by lane A in the API PR that first needs them; lane B consumes them. If lane B needs a shape first, open the issue and ask; do not add it in a web PR.
 
 ## Unresolved decisions that may bite you later
 

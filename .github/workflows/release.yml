@@ -14,16 +14,23 @@ permissions:
 
 jobs:
   gate:
-    name: secrets present?
+    name: secrets present and tag on main?
     runs-on: ubuntu-latest
     outputs:
       ready: ${{ steps.check.outputs.ready }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - id: check
         env:
           TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          if [ -n "$TOKEN" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else echo "ready=false" >> "$GITHUB_OUTPUT"; echo "::error::VERCEL_TOKEN not set; cannot release"; exit 1; fi
+          if [ -z "$TOKEN" ]; then echo "::error::VERCEL_TOKEN not set; cannot release"; exit 1; fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::tag $GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main; releases are cut from main only"; exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
   api:
     needs: gate

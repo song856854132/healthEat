@@ -13,7 +13,7 @@ user="${1:?username}"; shift
 P="${HEALTHEAT_GCP_PROJECT:-study-488509}"
 # Accept either a path to a .pub file or the key pasted inline (all remaining arguments).
 if [ -f "$1" ]; then key="$(tr -d '\n' < "$1")"; else key="$*"; fi
-case "$key" in ssh-*|ecdsa-*) ;; *) echo "not an OpenSSH public key: $keyfile" >&2; exit 1;; esac
+case "$key" in ssh-*|ecdsa-*) ;; *) echo "not an OpenSSH public key: ${key:0:40}..." >&2; exit 1;; esac
 tmp="$(mktemp)"
 gcloud compute project-info describe --project "$P" --format='value(commonInstanceMetadata.items.filter(key:ssh-keys).extract(value).flatten())' > "$tmp" || true
 grep -v "^$user:" "$tmp" | grep -v '^$' > "$tmp.new" || true

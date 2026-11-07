@@ -46,7 +46,7 @@ cat > /etc/profile.d/healtheat.sh <<'PROFILE'
 # scripts/vm/user-setup.sh into ~/.env.staging.
 export HEALTHEAT_GCP_PROJECT=study-488509
 export CLOUDSDK_CORE_PROJECT=study-488509
-export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.bun/bin:$PATH"
 export NPM_CONFIG_PREFIX="$HOME/.npm-global"
 PROFILE
 
