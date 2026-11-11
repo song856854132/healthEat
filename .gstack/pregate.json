@@ -1,13 +1,43 @@
 {
   "dependencies": {
-    "apps/api/src/**": ["apps/api/test/*.test.ts"],
-    "apps/api/test/setup.ts": ["apps/api/test/*.test.ts"],
-    "apps/api/vitest.config.ts": ["apps/api/test/*.test.ts"],
-    "apps/api/package.json": ["apps/api/test/*.test.ts"],
+    "apps/api/src/**": [
+      "apps/api/test/*.test.ts",
+      "apps/api/test/app.test.ts",
+      "apps/api/test/auth.test.ts",
+      "apps/api/test/db.test.ts",
+      "apps/api/test/models.test.ts"
+    ],
+    "apps/api/test/setup.ts": [
+      "apps/api/test/*.test.ts",
+      "apps/api/test/app.test.ts",
+      "apps/api/test/auth.test.ts",
+      "apps/api/test/db.test.ts",
+      "apps/api/test/models.test.ts"
+    ],
+    "apps/api/vitest.config.ts": [
+      "apps/api/test/*.test.ts",
+      "apps/api/test/app.test.ts",
+      "apps/api/test/auth.test.ts",
+      "apps/api/test/db.test.ts",
+      "apps/api/test/models.test.ts"
+    ],
+    "apps/api/package.json": [
+      "apps/api/test/*.test.ts",
+      "apps/api/test/app.test.ts",
+      "apps/api/test/auth.test.ts",
+      "apps/api/test/db.test.ts",
+      "apps/api/test/models.test.ts"
+    ],
     "apps/api/README.md": [],
-    "packages/shared/src/**": ["packages/shared/src/*.test.ts", "apps/api/test/app.test.ts"],
-    "apps/web/**": ["e2e/*.spec.ts"],
-    "e2e/**": ["e2e/*.spec.ts"],
+    "packages/shared/src/**": [
+      "packages/shared/src/*.test.ts",
+      "packages/shared/src/index.test.ts",
+      "packages/shared/src/auth.test.ts",
+      "apps/api/test/app.test.ts",
+      "apps/api/test/auth.test.ts"
+    ],
+    "apps/web/**": ["e2e/*.spec.ts", "e2e/auth.spec.ts", "e2e/spike.spec.ts"],
+    "e2e/**": ["e2e/*.spec.ts", "e2e/auth.spec.ts", "e2e/spike.spec.ts"],
     ".github/**": [],
     "scripts/**": [],
     "docs/**": [],
@@ -22,7 +52,8 @@
     "tsconfig.base.json": [],
     "eslint.config.mjs": [],
     "vitest.config.ts": [],
-    "playwright.config.ts": ["e2e/*.spec.ts"],
-    ".gstack/pregate.json": []
+    "playwright.config.ts": ["e2e/*.spec.ts", "e2e/auth.spec.ts", "e2e/spike.spec.ts"],
+    ".gstack/pregate.json": [],
+    "scripts/e2e/**": ["e2e/auth.spec.ts", "e2e/spike.spec.ts"]
   }
 }

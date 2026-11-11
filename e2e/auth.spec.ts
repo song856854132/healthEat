@@ -14,7 +14,9 @@ const account = {
 
 test("register, me, logout and login through the proxy keep one same-origin session", async ({
   request,
+  baseURL,
 }) => {
+  expect(baseURL, "Playwright baseURL").toBeTruthy();
   const reg = await request.post("/api/auth/register", { data: account });
   expect(reg.status(), await reg.text()).toBe(201);
   const created = (await reg.json()) as {
@@ -27,8 +29,10 @@ test("register, me, logout and login through the proxy keep one same-origin sess
   const sid = setCookie.find((h) => h.value.startsWith("he_sid="));
   expect(sid, "session cookie reached the browser side of the proxy").toBeTruthy();
   expect(sid!.value).toMatch(/HttpOnly/);
-  expect(sid!.value).toMatch(/Secure/);
   expect(sid!.value).toMatch(/SameSite=Lax/);
+  // Secure on every deployment (https); the local stack is plain http and must not set it.
+  if (baseURL!.startsWith("https://")) expect(sid!.value).toMatch(/Secure/);
+  else expect(sid!.value).not.toMatch(/Secure/);
 
   const me = await request.get("/api/auth/me");
   expect(me.status(), await me.text()).toBe(200);

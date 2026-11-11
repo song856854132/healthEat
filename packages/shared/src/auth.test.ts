@@ -14,13 +14,13 @@ describe("RegisterInput", () => {
     const parsed = RegisterInput.parse({
       username: " Hung_Ju ",
       email: " Hung@Example.COM ",
-      password: "0123456789",
+      password: "correct horse battery",
       timezone: "utc",
     });
     expect(parsed).toEqual({
       username: "hung_ju",
       email: "hung@example.com",
-      password: "0123456789",
+      password: "correct horse battery",
       timezone: "UTC",
     });
   });
@@ -28,7 +28,7 @@ describe("RegisterInput", () => {
     const r = RegisterInput.safeParse({
       username: "ab",
       email: "nope",
-      password: "123456789",
+      password: "short",
       timezone: "Mars/Olympus",
     });
     expect(r.success).toBe(false);

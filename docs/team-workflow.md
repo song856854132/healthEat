@@ -147,7 +147,8 @@ Notes:
   own Git integration never deploys; CI is the only deployer. This replaces plan
   decision D8's "preview branch alias" with aliases CI controls explicitly.
 - Playwright on PRs (plan T14/T17) runs against the preview URL, not localhost, so the
-  proxy cookie path is exercised on every PR.
+  proxy cookie path is exercised on every PR. Locally (and in the gstack pregate) the same
+  specs run against `scripts/e2e/local-stack.mjs`, which Playwright starts when `BASE_URL` is unset.
 - Hobby limits worth knowing: 100 deployments per day across the account, and
   `vercel.app` aliases are free. Two deploys per PR push plus two per merge stays far
   below that for two people.
