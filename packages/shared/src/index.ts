@@ -9,7 +9,13 @@ export const ACCOUNT_STATUSES = ["active", "suspended"] as const;
 export const AccountStatus = z.enum(ACCOUNT_STATUSES);
 export type AccountStatus = z.infer<typeof AccountStatus>;
 
-export const DB_STATES = ["connected", "connecting", "disconnected", "unconfigured"] as const;
+export const DB_STATES = [
+  "connected",
+  "connecting",
+  "disconnected",
+  "unconfigured",
+  "misconfigured",
+] as const;
 export const DbState = z.enum(DB_STATES);
 export type DbState = z.infer<typeof DbState>;
 

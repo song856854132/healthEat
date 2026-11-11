@@ -3,13 +3,14 @@
 // deployable entry; src/index.ts only adds `listen` for local development.
 import express from "express";
 import cookieParser from "cookie-parser";
-import { env } from "./lib/env.js";
+import { assertProductionSecrets, env } from "./lib/env.js";
 import { installProcessHooks } from "./lib/process.js";
 import { healthRouter } from "./routes/health.js";
 import { spikeRouter } from "./routes/spike.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 
 installProcessHooks();
+assertProductionSecrets();
 
 const app = express();
 

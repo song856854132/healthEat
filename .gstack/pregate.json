@@ -7,7 +7,7 @@
     "apps/api/README.md": [],
     "packages/shared/src/**": ["packages/shared/src/*.test.ts", "apps/api/test/app.test.ts"],
     "apps/web/**": ["e2e/*.spec.ts"],
-    "e2e/**": [],
+    "e2e/**": ["e2e/*.spec.ts"],
     ".github/**": [],
     "scripts/**": [],
     "docs/**": [],
@@ -24,13 +24,5 @@
     "vitest.config.ts": [],
     "playwright.config.ts": ["e2e/*.spec.ts"],
     ".gstack/pregate.json": []
-  },
-  "allowlist": [
-    {
-      "finding": "env.kv",
-      "paths": [".github/workflows/*.yml"],
-      "pattern": "key: ",
-      "reason": "actions/cache keys are not credentials"
-    }
-  ]
+  }
 }

@@ -5,6 +5,8 @@ declare global {
 
 export function installProcessHooks(): void {
   if (globalThis.__healtheatProcessHooks) return;
+  // Test workers (vitest) own their process; an exit here would hide the real failure.
+  if (process.env.NODE_ENV === "test" || process.env.VITEST) return;
   globalThis.__healtheatProcessHooks = true;
   // A rejected promise that escaped asyncHandler: log and keep serving (the request already failed).
   process.on("unhandledRejection", (reason) => {

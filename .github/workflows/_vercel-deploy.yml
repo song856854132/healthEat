@@ -88,9 +88,13 @@ jobs:
         run: bash scripts/fix-vercel-output.sh ${{ inputs.app }}
       - name: vercel deploy
         id: deploy
+        env:
+          # Through env, never interpolated into the script: a caller-controlled value must not become shell.
+          EXTRA_ENV: ${{ inputs.extra_env }}
         run: |
           extra=()
-          for kv in ${{ inputs.extra_env }}; do extra+=(-e "$kv"); done
+          read -ra extra_kv <<< "$EXTRA_ENV"
+          for kv in "${extra_kv[@]}"; do [ -n "$kv" ] && extra+=(-e "$kv"); done
           if [ "${{ inputs.environment }}" = "production" ]; then
             out=$(npx vercel deploy --prebuilt --prod --cwd apps/${{ inputs.app }} "${extra[@]}" --token=${{ secrets.VERCEL_TOKEN }})
           else

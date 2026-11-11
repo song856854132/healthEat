@@ -21,8 +21,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       # mongodb-memory-server downloads a ~100 MB MongoDB binary on first use (~10 s on the runner).
-      # An actions/cache step would save that, but its `key:` line trips the pregate secret scan
-      # until the allowlist in .gstack/pregate.json is on main; add it back after this PR merges.
+      # An actions/cache step would save that; its `key:` value must start with a `${{ ... }}`
+      # expression so the pregate secret scan does not read it as a credential. Tracked in TODOS.md.
       - run: npm ci
       - run: npm run build:shared
       - run: npm run typecheck

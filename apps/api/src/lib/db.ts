@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import type { DbState } from "@healtheat/shared";
-import { env } from "./env.js";
+import { databaseName, env, rawPresent } from "./env.js";
 import { HttpError, asyncHandler } from "./http.js";
 
 // Plan decisions (design doc, Reliability A4/A5/P2): one Mongoose connection cached on globalThis so
@@ -23,7 +23,8 @@ type G = typeof globalThis & { __healtheatDb?: Promise<typeof mongoose> };
 const g = globalThis as G;
 
 export function dbState(): DbState {
-  if (!env().MONGODB_URI) return "unconfigured";
+  if (!env().MONGODB_URI) return rawPresent("MONGODB_URI") ? "misconfigured" : "unconfigured";
+  if (!databaseName()) return "misconfigured";
   switch (mongoose.connection.readyState) {
     case 1:
       return "connected";
@@ -36,13 +37,27 @@ export function dbState(): DbState {
 
 /** Connect (once) to the configured database. Rejects with HttpError 503 when unconfigured. */
 export function connectDb(): Promise<typeof mongoose> {
-  const { MONGODB_URI, MONGODB_DB } = env();
+  const { MONGODB_URI } = env();
   if (!MONGODB_URI) {
-    return Promise.reject(new HttpError(503, "database_unconfigured", "MONGODB_URI is not set"));
+    return rawPresent("MONGODB_URI")
+      ? Promise.reject(
+          new HttpError(
+            503,
+            "database_misconfigured",
+            "MONGODB_URI is present but not a mongodb:// or mongodb+srv:// URI",
+          ),
+        )
+      : Promise.reject(new HttpError(503, "database_unconfigured", "MONGODB_URI is not set"));
+  }
+  const dbName = databaseName();
+  if (!dbName) {
+    return Promise.reject(
+      new HttpError(503, "database_misconfigured", "MONGODB_DB must be set in production"),
+    );
   }
   if (!g.__healtheatDb) {
     g.__healtheatDb = mongoose
-      .connect(MONGODB_URI, { ...CONNECT_OPTIONS, dbName: MONGODB_DB })
+      .connect(MONGODB_URI, { ...CONNECT_OPTIONS, dbName })
       .catch((err: unknown) => {
         g.__healtheatDb = undefined; // let the next request retry instead of caching the failure
         throw err;

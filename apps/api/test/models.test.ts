@@ -42,10 +42,22 @@ describe("User model", () => {
     expect(toHttpResponse(err).status).toBe(409);
   });
 
-  it("rejects usernames outside [a-z0-9_]{3,24} and lowercases input", async () => {
-    await expect(User.create({ ...base, username: "ab" })).rejects.toMatchObject({
-      name: "ValidationError",
-    });
+  // Value: protects=a document that fails Mongoose validation reaches the client as
+  //   400 validation_error naming the field (not a 500), and valid input is normalised to lowercase;
+  //   fails_when=the username pattern or lowercase option is removed, or the error middleware stops
+  //   recognising Mongoose's ValidationError by name; why_new=the earlier assertion stopped at the
+  //   error's name and never ran it through the response mapping; seam=none; no_claim=does not
+  //   enumerate every field rule of the four models
+  it("rejects usernames outside [a-z0-9_]{3,24} as 400 validation_error and lowercases input", async () => {
+    const err: unknown = await User.create({ ...base, username: "ab" }).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ name: "ValidationError" });
+    const mapped = toHttpResponse(err);
+    expect(mapped.status).toBe(400);
+    expect(mapped.body.error).toBe("validation_error");
+    expect(String(mapped.body.details)).toMatch(/username/);
     const u = await User.create({ ...base, username: "MixedCase_1" });
     expect(u.username).toBe("mixedcase_1");
   });
@@ -85,5 +97,26 @@ describe("profiles", () => {
     expect(userIdx.find((i) => i.name === "username_1")?.unique).toBe(true);
     const memberIdx = await MemberProfile.collection.indexes();
     expect(memberIdx.find((i) => i.name === "userId_1")?.unique).toBe(true);
+  });
+});
+
+describe("User.activeRole", () => {
+  it("must be one of the held roles", async () => {
+    await expect(
+      User.create({ ...base, roles: ["member"], activeRole: "admin" }),
+    ).rejects.toMatchObject({
+      name: "ValidationError",
+    });
+    const u = await User.create({ ...base, roles: ["member", "curator"], activeRole: "curator" });
+    expect(u.activeRole).toBe("curator");
+  });
+  it("a malformed id maps to 400 invalid_id", async () => {
+    let err: unknown;
+    try {
+      await User.findById("not-an-object-id");
+    } catch (e) {
+      err = e;
+    }
+    expect(toHttpResponse(err)).toEqual({ status: 400, body: { error: "invalid_id" } });
   });
 });

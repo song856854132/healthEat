@@ -16,7 +16,7 @@ const EnvSchema = z.object({
   VERCEL_GIT_COMMIT_SHA: z.preprocess(empty, z.string().optional()),
   PORT: z.preprocess(empty, z.coerce.number().int().positive().default(4000)),
   MONGODB_URI: z.preprocess(empty, z.string().startsWith("mongodb").optional()),
-  MONGODB_DB: z.preprocess(empty, z.string().default("healtheat_dev")),
+  MONGODB_DB: z.preprocess(empty, z.string().optional()),
   SESSION_SECRET: z.preprocess(empty, z.string().default(LOCAL_DEV_PLACEHOLDER)),
 });
 export type Env = z.infer<typeof EnvSchema>;
@@ -35,6 +35,29 @@ export function env(): Env {
   const cleaned: Record<string, string | undefined> = { ...process.env };
   for (const k of bad) delete cleaned[k];
   return EnvSchema.parse(cleaned);
+}
+
+/** True when the variable is present and non-blank in the raw environment, valid or not. */
+export const rawPresent = (key: string): boolean =>
+  typeof process.env[key] === "string" && process.env[key]!.trim() !== "";
+
+/**
+ * Database name on the shared cluster. Development falls back to `healtheat_dev`; production never
+ * falls back (a production function must not silently read and write the dev database).
+ */
+export function databaseName(): string | undefined {
+  const e = env();
+  if (e.MONGODB_DB) return e.MONGODB_DB;
+  return isProduction() ? undefined : "healtheat_dev";
+}
+
+/** Startup assertion: a production deployment must carry a real SESSION_SECRET. Fail closed. */
+export function assertProductionSecrets(): void {
+  if (isProduction() && env().SESSION_SECRET === LOCAL_DEV_PLACEHOLDER) {
+    throw new Error(
+      "SESSION_SECRET is unset in production; refusing to sign cookies with the development placeholder",
+    );
+  }
 }
 
 export const isProduction = (): boolean => {

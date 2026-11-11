@@ -2,7 +2,7 @@ import type { ErrorRequestHandler, RequestHandler } from "express";
 import { ZodError } from "zod";
 import { HttpError } from "../lib/http.js";
 import { isServerSelectionError } from "../lib/db.js";
-import { env } from "../lib/env.js";
+import { env, isProduction } from "../lib/env.js";
 
 export const notFound: RequestHandler = (_req, res) => {
   res.status(404).json({ error: "not_found" });
@@ -16,7 +16,9 @@ export function toHttpResponse(err: unknown): {
   body: { error: string; details?: unknown };
 } {
   if (err instanceof HttpError) {
-    return { status: err.status, body: { error: err.code, details: err.details } };
+    // 5xx details describe our own configuration or infrastructure; never ship them to production clients.
+    const details = err.status >= 500 && isProduction() ? undefined : err.details;
+    return { status: err.status, body: { error: err.code, details } };
   }
   if (err instanceof ZodError) {
     return {
@@ -58,10 +60,12 @@ export function toHttpResponse(err: unknown): {
 }
 
 // Central error middleware: always JSON, never a stack trace to the client.
-export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
   const { status, body } = toHttpResponse(err);
   if (status >= 500)
     console.error("[api]", status, err instanceof Error ? (err.stack ?? err.message) : err);
-  if (res.headersSent) return;
+  // Headers already on the wire: only Express's default handler closes the connection, and only
+  // when delegated to; returning here would leave the client hanging until the function limit.
+  if (res.headersSent) return next(err);
   res.status(status).json(body);
 };

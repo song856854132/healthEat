@@ -35,7 +35,17 @@ const UserSchema = new Schema(
       },
     },
     status: { type: String, enum: ACCOUNT_STATUSES, default: "active" },
-    activeRole: { type: String, enum: ROLES, default: "member" },
+    activeRole: {
+      type: String,
+      enum: ROLES,
+      default: "member",
+      validate: {
+        validator(this: { roles?: string[] }, v: string) {
+          return Array.isArray(this.roles) ? this.roles.includes(v) : true;
+        },
+        message: "activeRole must be one of the account's roles",
+      },
+    },
     privacyAckAt: { type: Date },
     deletionPending: { type: Boolean, default: false },
   },
