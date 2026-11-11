@@ -53,10 +53,9 @@ export function toHttpResponse(err: unknown): {
   const client = err as ClientError;
   const clientStatus =
     client && typeof client === "object" ? (client.status ?? client.statusCode) : undefined;
-  const exposed =
-    client &&
-    typeof client === "object" &&
-    (client.expose === true || typeof client.type === "string");
+  // `expose === true` alone: http-errors and body-parser always set it on 4xx; an SDK error that happens
+  // to carry a string `type` (OpenAI-style) must not qualify.
+  const exposed = client && typeof client === "object" && client.expose === true;
   if (exposed && typeof clientStatus === "number" && clientStatus >= 400 && clientStatus < 500) {
     const code =
       (client.type && CLIENT_ERROR_CODES[client.type]) ??

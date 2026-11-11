@@ -104,7 +104,10 @@ describe("client errors keep their own status", () => {
 
 describe("upstream errors are never relayed as the client's fault", () => {
   it("a 4xx-shaped error without expose maps to 500 internal", () => {
-    const upstream = Object.assign(new Error("invalid x-api-key"), { status: 401 });
+    const upstream = Object.assign(new Error("invalid x-api-key"), {
+      status: 401,
+      type: "authentication_error",
+    });
     const r = toHttpResponse(upstream);
     expect(r.status).toBe(500);
     expect(r.body.error).toBe("internal");

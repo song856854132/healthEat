@@ -20,6 +20,10 @@ Failure modes, all JSON:
 | `503 {error: "database_unavailable"}`       | Atlas did not answer within 5 seconds (Mongoose `serverSelectionTimeoutMS`), or the connection dropped            |
 | `503 {error: "secret_unconfigured"}`        | a deployment is running with the development `SESSION_SECRET` placeholder; only `/api/health` keeps answering     |
 | `400 invalid_json`, `413 payload_too_large` | body-parser client errors keep their own status; they are never logged as server errors                           |
+| `400 {error: "validation_error", details}`  | zod or Mongoose validation failed; `details` lists the offending paths                                            |
+| `400 {error: "invalid_id"}`                 | a malformed ObjectId (Mongoose `CastError`)                                                                       |
+| `409 {error: "conflict", details.fields}`   | duplicate key (unique index), for example a taken username or email                                               |
+| `500 {error: "internal"}`                   | anything else; logged with its stack, `details` only on local runs                                                |
 
 `GET /api/health` never forces a connection and reports `db` (`connected`, `connecting`, `disconnected`,
 `unconfigured`, `misconfigured`), the non-secret `dbName`, and `secrets` (`ok` or `missing`).
@@ -44,7 +48,8 @@ src/app.ts            Express app (deployable entry); src/index.ts adds listen f
 src/lib/env.ts        the only reader of process.env (zod-validated)
 src/lib/db.ts         connectDb (cached on globalThis), dbState, requireDb
 src/lib/http.ts       HttpError, asyncHandler
-src/middleware/       error handler (always JSON, never a stack), notFound
+src/lib/process.ts    unhandledRejection (log, keep serving) and uncaughtException (log, exit) hooks
+src/middleware/       error handler (always JSON, never a stack), notFound, secretsGuard (503 secret_unconfigured)
 src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile
 src/routes/           one router per resource; routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test

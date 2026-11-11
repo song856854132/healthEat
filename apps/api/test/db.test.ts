@@ -338,8 +338,10 @@ describe("deployment rules: happy paths and the local fallback", () => {
     const guarded = express();
     guarded.use(secretsGuard(() => "missing"));
     guarded.get("/api/health", (_req, res) => res.json({ ok: true }));
+    guarded.get("/api/health/db", (_req, res) => res.json({ ok: true }));
     guarded.get("/api/other", (_req, res) => res.json({ ok: true }));
     await request(guarded).get("/api/health").expect(200);
+    await request(guarded).get("/api/health/db").expect(200);
     const res = await request(guarded).get("/api/other").expect(503);
     expect(res.body).toEqual({ error: "secret_unconfigured" });
   });
@@ -353,5 +355,19 @@ describe("Mongoose bufferCommands=false guard", () => {
     expect(isServerSelectionError(err)).toBe(true);
     expect(toHttpResponse(err).status).toBe(503);
     expect(isServerSelectionError(new mongoose.Error("some other mongoose error"))).toBe(false);
+  });
+});
+
+describe("deep health after a dropped connection", () => {
+  it("GET /api/health/db answers 503 instead of a 200 that lies", async () => {
+    const { default: app } = await import("../src/app.js");
+    await mongoose.disconnect(); // the cached connect promise still resolves; the state does not
+    try {
+      const res = await request(app).get("/api/health/db").expect(503);
+      expect(res.body.error).toBe("database_unavailable");
+    } finally {
+      await disconnectDb();
+      await connectDb();
+    }
   });
 });

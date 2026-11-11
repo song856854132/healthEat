@@ -60,7 +60,8 @@ jobs:
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # VERCEL_TOKEN is NOT job-level: npm ci runs every dependency's install scripts, and a deploy
+      # credential must not be in their environment. Each Vercel CLI step receives it alone.
       INPUT_APP: ${{ inputs.app }}
       INPUT_ENVIRONMENT: ${{ inputs.environment }}
       INPUT_API_ORIGIN: ${{ inputs.api_origin }}
@@ -92,8 +93,12 @@ jobs:
       # prebuilt output, which is why no Git integration and no Vercel root-directory
       # setting are needed.
       - name: vercel pull
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: npx vercel pull --yes --environment="$INPUT_ENVIRONMENT" --cwd "apps/$INPUT_APP" --token="$VERCEL_TOKEN"
       - name: vercel build
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           # Only override API_ORIGIN when the caller passed one; an exported empty value would
           # shadow the project env var that `vercel pull` fetched.
@@ -107,10 +112,13 @@ jobs:
         run: bash scripts/fix-vercel-output.sh "$INPUT_APP"
       - name: vercel deploy
         id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           # extra_env: whitespace- or newline-separated KEY=value pairs; anything else is a hard error
           # (a bare KEY would make `vercel deploy -e` prompt and hang the job).
           extra=()
+          set -f # no pathname expansion while word-splitting the pairs
           for kv in $INPUT_EXTRA_ENV; do
             case "$kv" in
               [A-Za-z_]*=*) extra+=(-e "$kv") ;;
@@ -129,6 +137,7 @@ jobs:
       - name: alias
         id: alias
         env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: |
           if [ -n "$INPUT_ALIAS" ]; then

@@ -29,12 +29,12 @@ only ever push branches and open PRs; CI does every deploy with secrets nobody t
 
 ## 1. Environments
 
-| Tier       | Where                                                                                                                    | Trigger                                   | Data                                                                                                    | Purpose                                                                                                                                         |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dev        | Shared GCP VM (one Linux user each) or your laptop                                                                       | you                                       | `mongodb-memory-server` for tests; Atlas staging cluster, db `healtheat_dev_<username>` for manual runs | Claude Code + gstack sessions in tmux; identical toolchain for both people                                                                      |
-| PR preview | Vercel preview deploys (api, then web), created by CI                                                                    | every PR push                             | Atlas **staging** cluster, db `healtheat_preview`                                                       | Review a change on the real production platform; Playwright e2e runs here                                                                       |
-| Staging    | Vercel non-production deploy of `main`, aliased to `healtheat-staging.vercel.app` and `healtheat-api-staging.vercel.app` | merge to `main`                           | Atlas **staging** cluster, db `healtheat_staging` (database arrives with T9)                            | Long-lived integration environment; seeded users for the three roles arrive with T7/T11; demo rehearsal; the URL the teammate opens after merge |
-| Production | Vercel production deploy (same two projects)                                                                             | git tag `v*` pushed by `/ship` or by hand | Atlas **production** cluster                                                                            | The graded URL                                                                                                                                  |
+| Tier       | Where                                                                                                                    | Trigger                                   | Data                                                                                                                                                  | Purpose                                                                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dev        | Shared GCP VM (one Linux user each) or your laptop                                                                       | you                                       | `mongodb-memory-server` for tests; the shared Atlas cluster, db `healtheat_dev_<username>` (`MONGODB_DB`, written by `user-setup.sh`) for manual runs | Claude Code + gstack sessions in tmux; identical toolchain for both people                                                                      |
+| PR preview | Vercel preview deploys (api, then web), created by CI                                                                    | every PR push                             | shared Atlas cluster, db `healtheat_preview` (API project's preview env `MONGODB_DB`)                                                                 | Review a change on the real production platform; Playwright e2e runs here                                                                       |
+| Staging    | Vercel non-production deploy of `main`, aliased to `healtheat-staging.vercel.app` and `healtheat-api-staging.vercel.app` | merge to `main`                           | shared Atlas cluster, db `healtheat_staging` (`staging.yml` passes `MONGODB_DB=healtheat_staging`; since T9a)                                         | Long-lived integration environment; seeded users for the three roles arrive with T7/T11; demo rehearsal; the URL the teammate opens after merge |
+| Production | Vercel production deploy (same two projects)                                                                             | git tag `v*` pushed by `/ship` or by hand | shared Atlas cluster, db `healtheat_prod` (production env `MONGODB_DB`)                                                                               | The graded URL                                                                                                                                  |
 
 Because every tier above Dev is Vercel, the two Vercel-specific risks in the plan
 (T1 proxy spike: `Set-Cookie` through the Next.js rewrite; the 300 s `maxDuration` on the
@@ -45,9 +45,11 @@ permanently, so staging web always talks to staging API. PR previews override it
 deploy with that PR's API preview URL (section 4). The **production** environment has
 `API_ORIGIN` set to the production API domain.
 
-Atlas: the free M0 tier allows one cluster per Atlas **project**, so make two projects
-(`healtheat-prod`, `healtheat-staging`). Preview, staging and manual dev share the
-staging cluster with different database names.
+Atlas: one M0 cluster serves every environment (design doc, Deployment; decided 2026-11-11 when the
+cluster was created). `MONGODB_URI` is the cluster URI without a database name; `MONGODB_DB` selects
+`healtheat_prod`, `healtheat_staging`, `healtheat_preview` or `healtheat_dev_<username>` and is required
+on every Vercel deployment (the API answers 503 `database_misconfigured` without it). A separate Atlas
+user for the production database is tracked in `TODOS.md`.
 
 ## 2. Accounts and access (one-time, owner does this)
 
@@ -58,12 +60,16 @@ staging cluster with different database names.
 | GitHub repo                 | admin                                                                                          | write (collaborator)                                                                                                                                              | `GITHUB_TOKEN` (default)                                                                                               |
 | GCP project `study-488509`  | owner                                                                                          | `roles/compute.viewer` plus their SSH public key in project metadata (own Linux user with sudo), `roles/secretmanager.secretAccessor` on the four staging secrets | none (CI does not touch GCP)                                                                                           |
 | Vercel                      | account owner                                                                                  | none needed                                                                                                                                                       | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_API` as GitHub secrets                    |
-| Atlas                       | org owner                                                                                      | project member on `healtheat-staging` only (read access with `mongosh`)                                                                                           | connection strings as Vercel env vars (preview and production environments) and GitHub secrets for the preview deploys |
+| Atlas                       | org owner                                                                                      | no Atlas login; reads the cluster through the URI in `~/.env.staging`, database `healtheat_dev_<user>`                                                            | connection strings as Vercel env vars (preview and production environments) and GitHub secrets for the preview deploys |
 | USDA key, app Anthropic key | owner registers; values in Secret Manager (`usda-api-key`, `anthropic-api-key`) and Vercel env | reads via `~/.env.staging` on the VM                                                                                                                              | Vercel env vars                                                                                                        |
 
-Rule: **no production secret is ever on a laptop or the VM.** Production values live in
-Vercel's production environment only. Staging values live in GCP Secret Manager (read by
-the VM at login) and in Vercel's preview environment.
+Rule: **production-only secrets live in Vercel's production environment and nowhere else**
+(the production `SESSION_SECRET`; later the production API keys). Staging values live in GCP
+Secret Manager (read by the VM at login) and in Vercel's preview environment. Known exception,
+as of 2026-11-11: there is one Atlas cluster and one database user, so the `MONGODB_URI` in
+`~/.env.staging` can also open `healtheat_prod`. Environments are separated by database name
+only until TODOS.md "Atlas: separate database user for production" lands; until then, treat
+that URI as a production secret (never paste it, never commit it).
 
 ## 3. Branch, PR and release flow
 
@@ -101,16 +107,17 @@ the VM at login) and in Vercel's preview environment.
 .github/workflows/
   ci.yml        on: pull_request, push to main
                 one job "typecheck, lint, unit and API tests": npm ci, build shared, typecheck, lint,
-                format check, vitest (shared + api projects; supertest, mongodb-memory-server from T9)
+                format check, vitest (shared + api projects; supertest, mongodb-memory-server since T9a)
   preview.yml   on: pull_request
-                jobs: vercel deploy api (env MONGODB_URI=<staging>/healtheat_preview, ...)
+                jobs: vercel deploy api (API project's preview env: MONGODB_URI, MONGODB_DB=healtheat_preview, SESSION_SECRET)
                       -> vercel deploy web --env API_ORIGIN=<api preview url>
                       -> wait for both -> playwright e2e against the web preview URL
                       -> comment both URLs on the PR
   staging.yml   on: push to main
-                jobs: vercel deploy api -> vercel alias set <url> healtheat-api-staging.vercel.app
+                jobs: vercel deploy api -e MONGODB_DB=healtheat_staging -> vercel alias set <url> healtheat-api-staging.vercel.app
                       -> vercel deploy web -> vercel alias set <url> healtheat-staging.vercel.app
-                      -> smoke: GET /api/health and GET / return 200 on the aliases
+                      -> smoke on the aliases: GET /api/health/db reports db connected and dbName healtheat_staging,
+                         GET /api/health reports secrets ok, GET /api/health through the web proxy is ok, GET / returns 200
                       -> (from T7/T11) seed script (idempotent): three role accounts, dictionary, sample logs
   release.yml   on: push tags v*
                 jobs: vercel deploy --prod api -> vercel deploy --prod web
@@ -172,9 +179,9 @@ instance-schedule`) so an idle box costs nothing overnight (01:00 New York).
   gstack bundled Chromium needs unprivileged user namespaces; on a fresh Ubuntu 24.04
   VM run `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` (persist in
   `/etc/sysctl.d/`) so `/browse`, `/qa` and Playwright headless all work.
-- Mongo for manual dev: point `MONGODB_URI` at the staging cluster, database
-  `healtheat_dev_<username>`, so two people never collide and tests still use
-  `mongodb-memory-server`.
+- Mongo for manual dev: `~/.env.staging` carries the shared cluster's `MONGODB_URI` plus
+  `MONGODB_DB=healtheat_dev_<username>` (written by `user-setup.sh`), so two people never collide and
+  tests still use `mongodb-memory-server`.
 
 ## 6. Debugging staging without Vercel access
 
@@ -213,7 +220,7 @@ Owner, before inviting:
 2. GitHub: protect `main`; add secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_WEB`, `VERCEL_PROJECT_ID_API`, `CLAUDE_CODE_OAUTH_TOKEN`); install the Claude GitHub App.
 3. GCP: project, the VM with metadata SSH keys and a stop schedule, Secret Manager secrets (staging env, app keys), IAM roles from section 2. Done 2026-11-02.
 4. Vercel: two projects created once by hand with Git deployments disabled; preview and production env vars set; confirm `vercel alias set` works on the two staging names.
-5. Atlas: two projects, two M0 clusters, IP access list open (0.0.0.0/0 is the pragmatic choice on M0; auth is the real gate).
+5. Atlas: one M0 cluster for every environment (decided 2026-11-11; databases selected by `MONGODB_DB`), IP access list open (0.0.0.0/0 is the pragmatic choice on M0; auth is the real gate). Separate production database user: `TODOS.md`.
 6. Land T1 (proxy spike) and T2 (scaffold) yourself first so the teammate joins a repo that builds, deploys a preview, and has CI green.
 
 Teammate, first day: follow `docs/ONBOARDING.md` sections 0 to 3 (prerequisites, SSH, `user-setup.sh`,

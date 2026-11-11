@@ -67,7 +67,10 @@ jobs:
       - name: smoke
         run: |
           set -e
-          curl -fsS "${{ needs.api.outputs.url }}/api/health" | grep -q '"ok":true'
+          # A misconfigured production function keeps /api/health at 200 on purpose (readable cause), so
+          # the gate must look past ok:true: a real session secret and a live connection to healtheat_prod.
+          curl -fsS "${{ needs.api.outputs.url }}/api/health" | tee /dev/stderr | grep -q '"secrets":"ok"'
+          curl -fsS "${{ needs.api.outputs.url }}/api/health/db" | tee /dev/stderr | grep -q '"db":"connected","dbName":"healtheat_prod"'
           curl -fsS "${{ needs.web.outputs.url }}/api/health" | grep -q '"ok":true'
       - name: GitHub release
         env:

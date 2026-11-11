@@ -2,6 +2,7 @@ import { Router } from "express";
 import { HealthResponse } from "@healtheat/shared";
 import pkg from "../../package.json" with { type: "json" };
 import { dbState, requireDb } from "../lib/db.js";
+import { HttpError } from "../lib/http.js";
 import { databaseName, deploymentEnv, env, secretsState } from "../lib/env.js";
 
 export const healthRouter = Router();
@@ -24,5 +25,10 @@ healthRouter.get("/health", (_req, res) => {
 // Deep health: forces a live connection (503 when the database is unconfigured, misconfigured or
 // unreachable). The staging smoke uses it to prove the function really opened its own database.
 healthRouter.get("/health/db", requireDb, (_req, res) => {
+  // requireDb reuses the cached connection promise; after a drop it still resolves, so check the
+  // live state too: anything but "connected" is a 503, never a 200 that claims health.
+  if (dbState() !== "connected") {
+    throw new HttpError(503, "database_unavailable", `connection state is ${dbState()}`);
+  }
   res.json({ ok: true, db: dbState(), dbName: databaseName() ?? null });
 });

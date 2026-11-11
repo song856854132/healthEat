@@ -54,7 +54,8 @@ The script, for your Linux user only: installs bun, Claude Code and gstack; runs
 --no-launch-browser` (same idea); sets `git user.name` / `user.email` if unset; runs `npm ci`,
 builds `packages/shared`, installs the Playwright browser; and writes `~/.env.staging` from
 Secret Manager (`SESSION_SECRET`, `MONGODB_URI`, `USDA_API_KEY`, `ANTHROPIC_API_KEY`,
-`API_ORIGIN`, `PORT`). Lines that say "no access" mean the owner has not granted that secret yet.
+`API_ORIGIN`, `PORT`) plus `MONGODB_DB=healtheat_dev_<your Linux user>`, your own database on the
+shared cluster. Lines that say "no access" mean the owner has not granted that secret yet.
 
 Then log Claude Code in with your own account (URL + paste code):
 

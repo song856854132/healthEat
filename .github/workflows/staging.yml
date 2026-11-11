@@ -68,8 +68,8 @@ jobs:
           set -e
           # Staging must have opened its own database (live connection), not the preview one the
           # project env names, and must carry a real session secret.
-          curl -fsS "${{ needs.api.outputs.alias_url }}/api/health/db" | tee /dev/stderr | grep -q '"db":"connected","dbName":"healtheat_staging"'
           curl -fsS "${{ needs.api.outputs.alias_url }}/api/health" | tee /dev/stderr | grep -q '"secrets":"ok"'
+          curl -fsS "${{ needs.api.outputs.alias_url }}/api/health/db" | tee /dev/stderr | grep -q '"db":"connected","dbName":"healtheat_staging"'
           curl -fsS "${{ needs.web.outputs.alias_url }}/api/health" | tee /dev/stderr | grep -q '"ok":true'
           curl -fsS -o /dev/null -w "web %{http_code}\n" "${{ needs.web.outputs.alias_url }}/"
           echo "staging web: ${{ needs.web.outputs.alias_url }}" >> "$GITHUB_STEP_SUMMARY"
