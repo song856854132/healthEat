@@ -65,6 +65,8 @@ describe("POST /api/auth/register", () => {
     expect(sessions[0].session.activeRole).toBe("member");
     expect(sessions[0].expires).toBeInstanceOf(Date);
     // The 14-day TTL is a documented contract (README "Auth and sessions"): pin it on the cookie and the store.
+    // gstack-timing-ok: compares expiry stamps the server just issued with now, 60 s tolerance; no sleep,
+    // no elapsed-time bound on the test itself.
     const ttlMs = SESSION_TTL_SECONDS * 1000;
     const cookieExpires = Date.parse(cookieHeader(res).match(/Expires=([^;]+)/)![1]);
     expect(cookieExpires - Date.now()).toBeGreaterThan(ttlMs - 60_000);
