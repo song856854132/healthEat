@@ -195,8 +195,9 @@ Three mitigations, cheapest first:
 1. Reproduce on the VM: run both apps locally against `healtheat_staging` (read-only
    mindset; use `healtheat_dev_<username>` for anything that writes).
 2. The API writes every caught 5xx to an `ErrorLog` collection (`{at, route, status,
-  message, requestId}`, TTL 14 days) that either person can read with `mongosh`. Add this
-   to T9 (reliability baseline) as a one-line extension of the error middleware.
+  message, requestId}`, TTL 14 days) that either person can read with `mongosh`. Not part of
+   T9 as shipped (2026-11-11); still a one-line extension of the error middleware
+   (`apps/api/src/middleware/error.ts`) when it is wanted.
 3. If that is not enough, add a free log integration (for example Axiom) from the Vercel
    integrations page; integrations are allowed on Hobby.
 

@@ -18,6 +18,7 @@ apps/api          Express 5 REST API (Vercel zero-config Express; src/app.ts exp
 packages/shared   zod schemas and TypeScript types shared by both.
 e2e/              Playwright acceptance tests, run against Vercel preview URLs in CI.
 scripts/vm/       Shared GCP dev VM provisioning (bootstrap.sh) and per-user setup (user-setup.sh).
+scripts/e2e/      local-stack.mjs: in-memory MongoDB, api on 4100, web on 3100; Playwright starts it when BASE_URL is unset.
 .github/workflows ci, preview, staging, release, claude (+ reusable _vercel-deploy).
 ```
 
