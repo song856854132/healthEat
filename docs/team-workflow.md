@@ -97,7 +97,8 @@ that URI as a production secret (never paste it, never commit it).
   Tags are pushed by the owner, from `main` only (`release.yml` refuses a tag whose commit is not
   on `main`). Feature PRs never bump VERSION or CHANGELOG; the owner does that in the release
   commit. Before tagging, run the staging checklist (grows with the phases): today, anonymous Home
-  and `/api/health` through the proxy; from phase 0 on, login as the three seeded roles, one text
+  and `/api/health` through the proxy; since T9b, register one account and log in through the proxy
+  (`POST /api/auth/register`, `GET /api/auth/me`); from phase 0 on, login as the three seeded roles, one text
   log, one dictionary edit with re-match, one admin suspend; from phase 2, one photo log.
   Rollback is `vercel rollback` or tagging the previous good commit again.
 

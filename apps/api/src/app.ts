@@ -8,6 +8,10 @@ import { secretsGuard } from "./middleware/secrets.js";
 import { installProcessHooks } from "./lib/process.js";
 import { healthRouter } from "./routes/health.js";
 import { spikeRouter } from "./routes/spike.js";
+import { authRouter } from "./routes/auth.js";
+import { usersRouter } from "./routes/users.js";
+import { requireDb } from "./lib/db.js";
+import { sessionMiddleware } from "./lib/session.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 
 installProcessHooks();
@@ -27,6 +31,12 @@ app.use(secretsGuard(secretsState));
 
 app.use("/api", healthRouter);
 app.use("/api/spike", spikeRouter);
+
+// Session-backed resources: a live database first (503 database_unavailable instead of a store
+// error), then the Mongo-backed session, then the router. Health and the spike stay database-free.
+const withSession = [requireDb, sessionMiddleware()];
+app.use("/api/auth", ...withSession, authRouter);
+app.use("/api/users", ...withSession, usersRouter);
 
 app.use(notFound);
 app.use(errorHandler);

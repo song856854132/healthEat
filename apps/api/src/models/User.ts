@@ -1,10 +1,11 @@
 import { Schema, model, type InferSchemaType, type HydratedDocument } from "mongoose";
-import { ROLES, ACCOUNT_STATUSES } from "@healtheat/shared";
+import { ROLES, ACCOUNT_STATUSES, USERNAME_PATTERN } from "@healtheat/shared";
 
 // Accounts are multi-role (design doc, Data model): one User plus one profile document per role in
 // separate collections. `roles` always contains "member"; "curator" and "admin" are granted by an
 // Admin (T7/T21). `activeRole` only selects which Home renders.
-export const USERNAME_PATTERN = /^[a-z0-9_]{3,24}$/;
+// USERNAME_PATTERN lives in @healtheat/shared so the register form and the schema agree.
+export { USERNAME_PATTERN };
 
 const UserSchema = new Schema(
   {
