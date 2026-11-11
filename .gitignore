@@ -11,4 +11,7 @@ test-results/
 !.env.example
 *.log
 .DS_Store
-.gstack/
+.gstack/*
+!.gstack/pregate.json
+next-env.d.ts
+*.tsbuildinfo

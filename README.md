@@ -8,6 +8,7 @@ exposure to the ingredients your body reacts to. Kambaz open-ended final project
 - How the team works: [`docs/team-workflow.md`](docs/team-workflow.md)
 - New teammate: [`docs/ONBOARDING.md`](docs/ONBOARDING.md)
 - Backlog beyond the plan: [`TODOS.md`](TODOS.md)
+- API environment variables, health endpoints and JSON error codes: [`apps/api/README.md`](apps/api/README.md)
 
 ## Layout
 
@@ -30,7 +31,7 @@ npm run build:shared
 set -a; . .env.example; set +a   # or on the VM: set -a; . ~/.env.staging; set +a  (the API reads plain env vars, no dotenv)
 npm run dev:api                 # http://localhost:4000/api/health
 npm run dev:web                 # http://localhost:3000  (API_ORIGIN=http://localhost:4000)
-npm test                        # unit + API tests (vitest, supertest)
+npm test                        # unit + API tests (vitest, supertest); API tests start an in-memory MongoDB (first run downloads a ~100 MB binary)
 npm run e2e                     # Playwright against BASE_URL (default http://localhost:3000); start dev:api and dev:web first
 ```
 

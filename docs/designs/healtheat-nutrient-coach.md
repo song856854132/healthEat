@@ -183,8 +183,8 @@ Every handler: zod-validated input, `asyncHandler` wrapper, central error middle
 ### Deployment
 
 - Vercel project `healtheat-web` (built from `apps/web`), env: `API_ORIGIN` (preview: the staging API alias; production: `https://healtheat-api.vercel.app`).
-- Vercel project `healtheat-api` (built from `apps/api`, Express preset via `vercel.json`), env: `MONGODB_URI`, `SESSION_SECRET`, `USDA_API_KEY`, `ANTHROPIC_API_KEY`. Keys never reach the browser.
-- MongoDB Atlas M0 (512 MB). Mongoose connection cached on `globalThis` for warm invocations.
+- Vercel project `healtheat-api` (built from `apps/api`, Express preset via `vercel.json`), env: `MONGODB_URI`, `MONGODB_DB` (required on every deployment; preview, staging and production never fall back to the dev database), `SESSION_SECRET` (a deployment still on the local placeholder answers 503 `secret_unconfigured` on every route except the `/api/health` routes, `/api/health` and `/api/health/db`), `USDA_API_KEY`, `ANTHROPIC_API_KEY`. Keys never reach the browser. `GET /api/health` reports `db`, `dbName` and `secrets` without forcing a connection; `GET /api/health/db` forces one and answers 503 unless it is connected (the staging and release smokes use it). Contract: `apps/api/README.md`.
+- MongoDB Atlas M0 (512 MB): one cluster for every environment (decided 2026-11-11 when the cluster was created); `MONGODB_URI` is the cluster URI without a database name and `MONGODB_DB` selects `healtheat_prod`, `healtheat_staging`, `healtheat_preview` or `healtheat_dev_<user>`. Mongoose connection cached on `globalThis` for warm invocations, `maxPoolSize 5`, `serverSelectionTimeoutMS 5000`.
 - GitHub Actions is the only deployer: `ci` on every push and PR; `preview` deploys both apps per PR and runs Playwright through the proxy; `staging` deploys `main` and aliases it to `healtheat-staging.vercel.app` / `healtheat-api-staging.vercel.app`; `release` deploys production on a `v*` tag from `main`. Cookies are same-origin on every preview URL. See `docs/team-workflow.md`.
 - USDA key: 1000 requests per hour per IP by default. Cache-on-read (`Food`) plus the `SearchCache` collection (24 h TTL, D5) keeps a grader's clicking far below that; on a USDA 429 or 5xx the cached page is served with a "cached" label.
 
@@ -1239,6 +1239,8 @@ History: reaffirmed by the user on 2026-10-12 after asking why Curator is not fo
 ## What already exists
 
 As of 2026-11-07 the repo holds the monorepo scaffold, the verified proxy spike, the CI/CD workflows and the VM scripts (T1, T2, T20 done); no data model, auth or product routes yet. Reuse, not rebuild: express-session + connect-mongo (sessions), zod (validation, shared via `packages/shared`), Recharts (bands), shadcn/ui, Anthropic SDK structured output (vision), USDA FoodData Central REST (nutrients), Open Food Facts allergen taxonomy (dictionary seed, license to verify), OpenNutriTracker's DRI tables (port source), mongodb-memory-server (API tests). Shared code decision: the only shared extraction is the zod schema package (two proposed callers: web forms and api routers), approved at D4; its contract tests live in `packages/shared`.
+
+T9a (2026-11-11) adds the reliability baseline (`apps/api/src/lib/env.ts`, `db.ts`, `http.ts`, the JSON error middleware, process hooks), the `User`, `MemberProfile`, `CuratorProfile` and `AdminProfile` models with `ROLES` and `ACCOUNT_STATUSES` in `packages/shared`, and the mongodb-memory-server test harness (`apps/api/test/setup.ts`). Auth routes, the session store and the P2 indexes are still open, so T9 stays unchecked.
 
 ## Diagrams
 

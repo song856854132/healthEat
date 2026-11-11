@@ -20,6 +20,9 @@ Use /browse for all web browsing (Aside first, the bundled gstack browser as fal
 - Before pushing run `/verify` (or `npm run typecheck && npm run lint && npm run format && npm test`).
   Open PRs with `/ship`. CI deploys previews, staging and production; never deploy from a laptop.
 - Never commit secrets or connection strings. Staging env lives in `~/.env.staging` on the VM.
+- API env contract: `apps/api/README.md`. `MONGODB_DB` is required on every Vercel deployment; a
+  deployment still on the local `SESSION_SECRET` placeholder answers 503 on every route except the
+  `/api/health` routes (`/api/health`, `/api/health/db`).
 - `packages/shared` schema shapes change only through lane A (API owner). Roles are Member,
   Curator, Admin; there is no human coach role (D18).
 - PR body = `.github/PULL_REQUEST_TEMPLATE.md` (T-number, `Closes #issue`, what, how verified).
@@ -27,3 +30,16 @@ Use /browse for all web browsing (Aside first, the bundled gstack browser as fal
   releases from `main` with a `v*` tag. Never push tags from a branch.
 - `scripts/fix-vercel-output.sh` is a CI step; never run it on a dev machine (`npm run clean:vercel` if you did).
 - Task order and dependencies: design doc, "Implementation Tasks: order and dependencies".
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. Route only to skills in the session's available-skills list; answer directly for quick questions or small scoped edits.
+
+Key routing rules:
+
+- Product ideas/brainstorming → invoke /office-hours
+- QA/testing site behavior → invoke /qa
+- Code review/diff check → invoke /review
+- Ship/deploy/PR → invoke /ship
+
+Do not suggest or auto-invoke other gstack skills: they run when the user types them, or when a running skill hands off to them (`gstack-config set proactive all` routes every skill).

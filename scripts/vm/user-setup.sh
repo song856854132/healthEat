@@ -78,6 +78,7 @@ tmp="$(mktemp)"
       echo "# $var: no access to secret $secret (ask the owner for roles/secretmanager.secretAccessor)"
     fi
   done
+  echo "MONGODB_DB=healtheat_dev_$(printf '%s' "$USER" | tr -c 'a-zA-Z0-9_\n' '_')"
   echo "API_ORIGIN=http://localhost:4000"
   echo "PORT=4000"
 } > "$tmp"
