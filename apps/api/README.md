@@ -4,16 +4,27 @@ Express 5 REST API, deployed as one Vercel function (zero-config Express; entry 
 
 ## Environment
 
-| Variable         | Required                                           | Where it comes from                                                                                                                                    |
-| ---------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `MONGODB_URI`    | for every database route (health works without it) | one Atlas M0 cluster for all environments; Secret Manager `mongodb-uri-staging` (dev VM via `~/.env.staging`), Vercel env (preview, production)        |
-| `MONGODB_DB`     | no (default `healtheat_dev`)                       | selects the database on that cluster: `healtheat_prod`, `healtheat_staging` (set by the staging workflow), `healtheat_preview`, `healtheat_dev_<user>` |
-| `SESSION_SECRET` | yes in production                                  | Secret Manager `session-secret-staging`, Vercel env                                                                                                    |
-| `PORT`           | no (4000)                                          | local only                                                                                                                                             |
+| Variable         | Required                                                           | Where it comes from                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MONGODB_URI`    | for every database route (health works without it)                 | one Atlas M0 cluster for all environments; Secret Manager `mongodb-uri-staging` (dev VM via `~/.env.staging`), Vercel env (preview, production)        |
+| `MONGODB_DB`     | on every Vercel deployment (local runs default to `healtheat_dev`) | selects the database on that cluster: `healtheat_prod`, `healtheat_staging` (set by the staging workflow), `healtheat_preview`, `healtheat_dev_<user>` |
+| `SESSION_SECRET` | on every Vercel deployment (preview, staging and production)       | Secret Manager `session-secret-staging`, Vercel env                                                                                                    |
+| `PORT`           | no (4000)                                                          | local only                                                                                                                                             |
 
-Routes answer `503 {error: "database_unconfigured"}` when `MONGODB_URI` is unset and
-`503 {error: "database_unavailable"}` when Atlas does not answer within 5 seconds (Mongoose
-`serverSelectionTimeoutMS`). `GET /api/health` reports `db` without forcing a connection.
+Failure modes, all JSON:
+
+| Response                                    | Meaning                                                                                                           |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `503 {error: "database_unconfigured"}`      | `MONGODB_URI` is unset                                                                                            |
+| `503 {error: "database_misconfigured"}`     | `MONGODB_URI` is present but not a `mongodb://` or `mongodb+srv://` URI, or `MONGODB_DB` is unset on a deployment |
+| `503 {error: "database_unavailable"}`       | Atlas did not answer within 5 seconds (Mongoose `serverSelectionTimeoutMS`), or the connection dropped            |
+| `503 {error: "secret_unconfigured"}`        | a deployment is running with the development `SESSION_SECRET` placeholder; only `/api/health` keeps answering     |
+| `400 invalid_json`, `413 payload_too_large` | body-parser client errors keep their own status; they are never logged as server errors                           |
+
+`GET /api/health` never forces a connection and reports `db` (`connected`, `connecting`, `disconnected`,
+`unconfigured`, `misconfigured`), the non-secret `dbName`, and `secrets` (`ok` or `missing`).
+`GET /api/health/db` forces a live connection and is what the staging smoke checks. Details on 5xx
+responses are redacted on every deployment (`isDeployed()`), shown only on local runs.
 
 ## Run and test
 

@@ -2,8 +2,9 @@ import { z } from "zod";
 
 // The only place the API reads process.env. Tolerant by design: a malformed or empty variable
 // must never take down /api/health or the error middleware, so every field has a safe fallback and
-// problems are logged once. Hard requirements (a real SESSION_SECRET in production) are asserted by
-// the code that needs them (session setup), not here.
+// problems are logged once. Deployment hard rules live below as explicit checks (secretsState,
+// databaseName) that the app consults at startup and per request; they fail closed with a readable
+// 503 rather than crashing the function, so /api/health can still say what is wrong.
 const empty = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
 
 // Local-development placeholder for the session signing value; production refuses it (session setup).
@@ -42,25 +43,27 @@ export const rawPresent = (key: string): boolean =>
   typeof process.env[key] === "string" && process.env[key]!.trim() !== "";
 
 /**
- * Database name on the shared cluster. Development falls back to `healtheat_dev`; production never
- * falls back (a production function must not silently read and write the dev database).
+ * Database name on the shared cluster. Local runs fall back to `healtheat_dev`; a deployed function
+ * (preview, staging alias or production) never falls back: all of them are internet-reachable and
+ * must not silently read and write the dev database.
  */
 export function databaseName(): string | undefined {
   const e = env();
   if (e.MONGODB_DB) return e.MONGODB_DB;
-  return isProduction() ? undefined : "healtheat_dev";
+  return isDeployed() ? undefined : "healtheat_dev";
 }
 
 /** True on any Vercel deployment (preview, staging alias or production): all are internet-reachable. */
 export const isDeployed = (): boolean => env().VERCEL === "1" || isProduction();
 
-/** Startup assertion: every deployment must carry a real SESSION_SECRET. Fail closed. */
-export function assertProductionSecrets(): void {
-  if (isDeployed() && env().SESSION_SECRET === LOCAL_DEV_PLACEHOLDER) {
-    throw new Error(
-      "SESSION_SECRET is unset on a deployed environment; refusing to sign cookies with the development placeholder",
-    );
-  }
+export type SecretsState = "ok" | "missing";
+
+/**
+ * Deployment rule: every deployed function must carry a real SESSION_SECRET. Reported, not thrown,
+ * so /api/health can name the problem; app.ts refuses every other route with 503 while "missing".
+ */
+export function secretsState(): SecretsState {
+  return isDeployed() && env().SESSION_SECRET === LOCAL_DEV_PLACEHOLDER ? "missing" : "ok";
 }
 
 export const isProduction = (): boolean => {

@@ -2,7 +2,7 @@ import type { ErrorRequestHandler, RequestHandler } from "express";
 import { ZodError } from "zod";
 import { HttpError } from "../lib/http.js";
 import { isServerSelectionError } from "../lib/db.js";
-import { env, isProduction } from "../lib/env.js";
+import { isDeployed } from "../lib/env.js";
 
 export const notFound: RequestHandler = (_req, res) => {
   res.status(404).json({ error: "not_found" });
@@ -27,8 +27,8 @@ export function toHttpResponse(err: unknown): {
   body: { error: string; details?: unknown };
 } {
   if (err instanceof HttpError) {
-    // 5xx details describe our own configuration or infrastructure; never ship them to production clients.
-    const details = err.status >= 500 && isProduction() ? undefined : err.details;
+    // 5xx details describe our own configuration or infrastructure; never ship them off this machine.
+    const details = err.status >= 500 && isDeployed() ? undefined : err.details;
     return { status: err.status, body: { error: err.code, details } };
   }
   if (err instanceof ZodError) {
@@ -46,12 +46,18 @@ export function toHttpResponse(err: unknown): {
   if (err instanceof Error && err.name === "CastError") {
     return { status: 400, body: { error: "invalid_id" } };
   }
-  // Errors raised by body-parser and other http-errors carry their own 4xx status (`expose: true`):
+  // Errors raised by body-parser and other http-errors carry their own 4xx status and `expose: true`:
   // a malformed JSON body is the client's mistake, not a server fault, and must not log as 5xx.
+  // The `expose` gate matters: an upstream SDK error (a 401 from Anthropic, a 429 from USDA) also has a
+  // 4xx `status` but is OUR failure, logged and reported as 5xx, never relayed as the client's fault.
   const client = err as ClientError;
   const clientStatus =
     client && typeof client === "object" ? (client.status ?? client.statusCode) : undefined;
-  if (typeof clientStatus === "number" && clientStatus >= 400 && clientStatus < 500) {
+  const exposed =
+    client &&
+    typeof client === "object" &&
+    (client.expose === true || typeof client.type === "string");
+  if (exposed && typeof clientStatus === "number" && clientStatus >= 400 && clientStatus < 500) {
     const code =
       (client.type && CLIENT_ERROR_CODES[client.type]) ??
       (clientStatus === 413 ? "payload_too_large" : "bad_request");
@@ -71,12 +77,7 @@ export function toHttpResponse(err: unknown): {
     status: 500,
     body: {
       error: "internal",
-      details:
-        env().NODE_ENV === "production"
-          ? undefined
-          : err instanceof Error
-            ? err.message
-            : String(err),
+      details: isDeployed() ? undefined : err instanceof Error ? err.message : String(err),
     },
   };
 }

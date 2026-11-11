@@ -176,7 +176,7 @@ describe("error mapping", () => {
 });
 
 describe("environment tolerance (health must never depend on a valid env)", () => {
-  it("treats an empty MONGODB_URI as unset and ignores an unknown NODE_ENV", async () => {
+  it("treats an empty MONGODB_URI as unset while health keeps answering", async () => {
     const saved = { uri: process.env.MONGODB_URI, node: process.env.NODE_ENV };
     process.env.MONGODB_URI = "";
     process.env.NODE_ENV = "staging";
@@ -204,13 +204,13 @@ describe("environment tolerance (health must never depend on a valid env)", () =
 });
 
 describe("production fail-closed rules", () => {
-  it("refuses to start with the development SESSION_SECRET placeholder in production", async () => {
+  it("reports the development SESSION_SECRET placeholder as missing in production", async () => {
     const saved = { v: process.env.VERCEL_ENV, s: process.env.SESSION_SECRET };
     process.env.VERCEL_ENV = "production";
     delete process.env.SESSION_SECRET;
     try {
-      const { assertProductionSecrets } = await import("../src/lib/env.js");
-      expect(() => assertProductionSecrets()).toThrow(/SESSION_SECRET/);
+      const { secretsState } = await import("../src/lib/env.js");
+      expect(secretsState()).toBe("missing");
     } finally {
       process.env.VERCEL_ENV = saved.v;
       process.env.SESSION_SECRET = saved.s;
@@ -233,7 +233,7 @@ describe("production fail-closed rules", () => {
 });
 
 describe("deployed environments refuse the placeholder secret", () => {
-  it("a Vercel preview without SESSION_SECRET fails closed too", async () => {
+  it("a Vercel preview without SESSION_SECRET reports missing too", async () => {
     const saved = {
       v: process.env.VERCEL,
       e: process.env.VERCEL_ENV,
@@ -243,12 +243,115 @@ describe("deployed environments refuse the placeholder secret", () => {
     process.env.VERCEL_ENV = "preview";
     delete process.env.SESSION_SECRET;
     try {
-      const { assertProductionSecrets } = await import("../src/lib/env.js");
-      expect(() => assertProductionSecrets()).toThrow(/SESSION_SECRET/);
+      const { secretsState } = await import("../src/lib/env.js");
+      expect(secretsState()).toBe("missing");
     } finally {
       process.env.VERCEL = saved.v;
       process.env.VERCEL_ENV = saved.e;
       process.env.SESSION_SECRET = saved.s;
     }
+  });
+});
+
+describe("deployment rules: happy paths and the local fallback", () => {
+  it("a deployment with a real SESSION_SECRET is ok and the guard lets requests through", async () => {
+    const saved = {
+      v: process.env.VERCEL,
+      e: process.env.VERCEL_ENV,
+      s: process.env.SESSION_SECRET,
+    };
+    process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "preview";
+    process.env.SESSION_SECRET = "a-real-secret-value";
+    try {
+      const { secretsState } = await import("../src/lib/env.js");
+      expect(secretsState()).toBe("ok");
+    } finally {
+      process.env.VERCEL = saved.v;
+      process.env.VERCEL_ENV = saved.e;
+      process.env.SESSION_SECRET = saved.s;
+    }
+  });
+  it("local runs may use the placeholder, and fall back to healtheat_dev", async () => {
+    const saved = {
+      v: process.env.VERCEL,
+      e: process.env.VERCEL_ENV,
+      s: process.env.SESSION_SECRET,
+      d: process.env.MONGODB_DB,
+      n: process.env.NODE_ENV,
+    };
+    delete process.env.VERCEL;
+    delete process.env.VERCEL_ENV;
+    delete process.env.SESSION_SECRET;
+    delete process.env.MONGODB_DB;
+    process.env.NODE_ENV = "development";
+    try {
+      const { databaseName, secretsState } = await import("../src/lib/env.js");
+      expect(secretsState()).toBe("ok");
+      expect(databaseName()).toBe("healtheat_dev");
+    } finally {
+      process.env.VERCEL = saved.v;
+      process.env.VERCEL_ENV = saved.e;
+      process.env.SESSION_SECRET = saved.s;
+      process.env.MONGODB_DB = saved.d;
+      process.env.NODE_ENV = saved.n;
+    }
+  });
+  it("production uses MONGODB_DB when set, and a preview without it is misconfigured", async () => {
+    const saved = { v: process.env.VERCEL, e: process.env.VERCEL_ENV, d: process.env.MONGODB_DB };
+    const { databaseName, isProduction } = await import("../src/lib/env.js");
+    process.env.VERCEL_ENV = "production";
+    process.env.MONGODB_DB = "healtheat_prod";
+    try {
+      expect(databaseName()).toBe("healtheat_prod");
+      expect(dbState()).not.toBe("misconfigured");
+      process.env.VERCEL = "1";
+      process.env.VERCEL_ENV = "preview";
+      delete process.env.MONGODB_DB;
+      expect(databaseName()).toBeUndefined();
+      expect(dbState()).toBe("misconfigured");
+      // VERCEL_ENV decides production, not NODE_ENV: a preview build runs with NODE_ENV=production.
+      process.env.NODE_ENV = "production";
+      expect(isProduction()).toBe(false);
+    } finally {
+      process.env.VERCEL = saved.v;
+      process.env.VERCEL_ENV = saved.e;
+      process.env.MONGODB_DB = saved.d;
+      process.env.NODE_ENV = "test";
+    }
+  });
+  it("PORT falls back to 4000 when unset or not a number", async () => {
+    const saved = process.env.PORT;
+    const { env } = await import("../src/lib/env.js");
+    delete process.env.PORT;
+    expect(env().PORT).toBe(4000);
+    process.env.PORT = "not-a-port";
+    try {
+      expect(env().PORT).toBe(4000);
+    } finally {
+      if (saved === undefined) delete process.env.PORT;
+      else process.env.PORT = saved;
+    }
+  });
+  it("the secrets guard answers 503 everywhere except health while the secret is missing", async () => {
+    const { secretsGuard } = await import("../src/middleware/secrets.js");
+    const guarded = express();
+    guarded.use(secretsGuard(() => "missing"));
+    guarded.get("/api/health", (_req, res) => res.json({ ok: true }));
+    guarded.get("/api/other", (_req, res) => res.json({ ok: true }));
+    await request(guarded).get("/api/health").expect(200);
+    const res = await request(guarded).get("/api/other").expect(503);
+    expect(res.body).toEqual({ error: "secret_unconfigured" });
+  });
+});
+
+describe("Mongoose bufferCommands=false guard", () => {
+  it("the real 'before initial connection is complete' error maps to 503", () => {
+    const err = new mongoose.Error(
+      "Cannot call `users.findOne()` before initial connection is complete if `bufferCommands = false`. Make sure you `await mongoose.connect()` if you have `bufferCommands = false`.",
+    );
+    expect(isServerSelectionError(err)).toBe(true);
+    expect(toHttpResponse(err).status).toBe(503);
+    expect(isServerSelectionError(new mongoose.Error("some other mongoose error"))).toBe(false);
   });
 });

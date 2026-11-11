@@ -1,5 +1,8 @@
 # Reusable: pull, build and deploy one Vercel project (api or web) from this monorepo.
 # Outputs the deployment URL. Secrets are passed in by the caller.
+#
+# Every caller input reaches the shell through `env:` variables, never by `${{ }}` interpolation
+# inside `run:` scripts, so a caller-controlled value can never become shell syntax.
 name: _vercel-deploy
 
 on:
@@ -29,7 +32,7 @@ on:
         type: string
         default: ""
       extra_env:
-        description: "Optional runtime env overrides for this deployment, space-separated KEY=value pairs (passed as -e)"
+        description: "Optional runtime env overrides for this deployment, whitespace-separated KEY=value pairs (passed as -e)"
         required: false
         type: string
         default: ""
@@ -57,6 +60,12 @@ jobs:
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      INPUT_APP: ${{ inputs.app }}
+      INPUT_ENVIRONMENT: ${{ inputs.environment }}
+      INPUT_API_ORIGIN: ${{ inputs.api_origin }}
+      INPUT_ALIAS: ${{ inputs.alias }}
+      INPUT_EXTRA_ENV: ${{ inputs.extra_env }}
     outputs:
       url: ${{ steps.deploy.outputs.url }}
       alias_url: ${{ steps.alias.outputs.alias_url }}
@@ -66,6 +75,16 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: validate inputs
+        run: |
+          case "$INPUT_APP" in api|web) ;; *) echo "::error::app must be api or web, got '$INPUT_APP'"; exit 1;; esac
+          case "$INPUT_ENVIRONMENT" in preview|production) ;; *) echo "::error::environment must be preview or production, got '$INPUT_ENVIRONMENT'"; exit 1;; esac
+          if [ -n "$INPUT_ALIAS" ] && ! printf '%s' "$INPUT_ALIAS" | grep -Eq '^[a-z0-9-]+\.vercel\.app$'; then
+            echo "::error::alias must be <name>.vercel.app, got '$INPUT_ALIAS'"; exit 1
+          fi
+          if [ -n "$INPUT_API_ORIGIN" ] && ! printf '%s' "$INPUT_API_ORIGIN" | grep -Eq '^https://[A-Za-z0-9.-]+$'; then
+            echo "::error::api_origin must be an https origin with no path, got '$INPUT_API_ORIGIN'"; exit 1
+          fi
       - run: npm ci
       - run: npm run build:shared
       # Each app is its own Vercel project (root directory "."), so every CLI call runs with
@@ -73,32 +92,35 @@ jobs:
       # prebuilt output, which is why no Git integration and no Vercel root-directory
       # setting are needed.
       - name: vercel pull
-        run: npx vercel pull --yes --environment=${{ inputs.environment }} --cwd apps/${{ inputs.app }} --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel pull --yes --environment="$INPUT_ENVIRONMENT" --cwd "apps/$INPUT_APP" --token="$VERCEL_TOKEN"
       - name: vercel build
         run: |
           # Only override API_ORIGIN when the caller passed one; an exported empty value would
           # shadow the project env var that `vercel pull` fetched.
-          if [ -n "${{ inputs.api_origin }}" ]; then export API_ORIGIN="${{ inputs.api_origin }}"; fi
-          if [ "${{ inputs.environment }}" = "production" ]; then
-            npx vercel build --prod --cwd apps/${{ inputs.app }} --token=${{ secrets.VERCEL_TOKEN }}
+          if [ -n "$INPUT_API_ORIGIN" ]; then export API_ORIGIN="$INPUT_API_ORIGIN"; fi
+          if [ "$INPUT_ENVIRONMENT" = "production" ]; then
+            npx vercel build --prod --cwd "apps/$INPUT_APP" --token="$VERCEL_TOKEN"
           else
-            npx vercel build --cwd apps/${{ inputs.app }} --token=${{ secrets.VERCEL_TOKEN }}
+            npx vercel build --cwd "apps/$INPUT_APP" --token="$VERCEL_TOKEN"
           fi
       - name: fix workspace package in the build output
-        run: bash scripts/fix-vercel-output.sh ${{ inputs.app }}
+        run: bash scripts/fix-vercel-output.sh "$INPUT_APP"
       - name: vercel deploy
         id: deploy
-        env:
-          # Through env, never interpolated into the script: a caller-controlled value must not become shell.
-          EXTRA_ENV: ${{ inputs.extra_env }}
         run: |
+          # extra_env: whitespace- or newline-separated KEY=value pairs; anything else is a hard error
+          # (a bare KEY would make `vercel deploy -e` prompt and hang the job).
           extra=()
-          read -ra extra_kv <<< "$EXTRA_ENV"
-          for kv in "${extra_kv[@]}"; do [ -n "$kv" ] && extra+=(-e "$kv"); done
-          if [ "${{ inputs.environment }}" = "production" ]; then
-            out=$(npx vercel deploy --prebuilt --prod --cwd apps/${{ inputs.app }} "${extra[@]}" --token=${{ secrets.VERCEL_TOKEN }})
+          for kv in $INPUT_EXTRA_ENV; do
+            case "$kv" in
+              [A-Za-z_]*=*) extra+=(-e "$kv") ;;
+              *) echo "::error::extra_env entry must be KEY=value, got '$kv'"; exit 1 ;;
+            esac
+          done
+          if [ "$INPUT_ENVIRONMENT" = "production" ]; then
+            out=$(npx vercel deploy --prebuilt --prod --cwd "apps/$INPUT_APP" "${extra[@]}" --token="$VERCEL_TOKEN")
           else
-            out=$(npx vercel deploy --prebuilt --cwd apps/${{ inputs.app }} "${extra[@]}" --token=${{ secrets.VERCEL_TOKEN }})
+            out=$(npx vercel deploy --prebuilt --cwd "apps/$INPUT_APP" "${extra[@]}" --token="$VERCEL_TOKEN")
           fi
           # Newer CLIs print a JSON report instead of the bare URL; accept either.
           url=$(printf '%s' "$out" | grep -oE 'https://[A-Za-z0-9.-]+\.vercel\.app' | head -1)
@@ -106,16 +128,16 @@ jobs:
           echo "url=$url" | tee -a "$GITHUB_OUTPUT"
       - name: alias
         id: alias
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: |
-          url="${{ steps.deploy.outputs.url }}"
-          alias="${{ inputs.alias }}"
-          if [ -n "$alias" ]; then
-            if npx vercel alias set "$url" "$alias" --cwd apps/${{ inputs.app }} --token=${{ secrets.VERCEL_TOKEN }}; then
-              echo "alias_url=https://$alias" | tee -a "$GITHUB_OUTPUT"
-              echo "### ${{ inputs.app }} ${{ inputs.environment }}: https://$alias (-> $url)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$INPUT_ALIAS" ]; then
+            if npx vercel alias set "$DEPLOY_URL" "$INPUT_ALIAS" --cwd "apps/$INPUT_APP" --token="$VERCEL_TOKEN"; then
+              echo "alias_url=https://$INPUT_ALIAS" | tee -a "$GITHUB_OUTPUT"
+              echo "### $INPUT_APP $INPUT_ENVIRONMENT: https://$INPUT_ALIAS (-> $DEPLOY_URL)" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
-            echo "::warning::alias $alias refused; falling back to the deployment URL"
+            echo "::warning::alias $INPUT_ALIAS refused; falling back to the deployment URL"
           fi
-          echo "alias_url=$url" | tee -a "$GITHUB_OUTPUT"
-          echo "### ${{ inputs.app }} ${{ inputs.environment }}: $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "alias_url=$DEPLOY_URL" | tee -a "$GITHUB_OUTPUT"
+          echo "### $INPUT_APP $INPUT_ENVIRONMENT: $DEPLOY_URL" >> "$GITHUB_STEP_SUMMARY"

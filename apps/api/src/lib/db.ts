@@ -52,7 +52,11 @@ export function connectDb(): Promise<typeof mongoose> {
   const dbName = databaseName();
   if (!dbName) {
     return Promise.reject(
-      new HttpError(503, "database_misconfigured", "MONGODB_DB must be set in production"),
+      new HttpError(
+        503,
+        "database_misconfigured",
+        "MONGODB_DB must be set on deployed environments",
+      ),
     );
   }
   if (!g.__healtheatDb) {
@@ -85,10 +89,11 @@ export function isServerSelectionError(err: unknown): boolean {
   ) {
     return true;
   }
-  // Mongoose's own "not connected" family (bufferCommands off, or a buffering timeout).
+  // Mongoose's own guard when bufferCommands is off and a model is used before/after a connection:
+  // "Cannot call `users.findOne()` before initial connection is complete if `bufferCommands = false`".
   return (
-    err.name === "MongooseError" &&
-    /buffering timed out|not connected|was disconnected/i.test(err.message)
+    err instanceof mongoose.Error &&
+    /before initial connection is complete|bufferCommands = false/.test(err.message)
   );
 }
 

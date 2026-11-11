@@ -14,4 +14,28 @@
 **Priority:** P4
 **Depends on:** Phases 1 and 2 shipped
 
+### CI: cache the mongodb-memory-server binary
+
+**What:** Add an `actions/cache@v4` step in `ci.yml` for `~/.cache/mongodb-binaries` so API tests stop downloading ~100 MB per run.
+
+**Why:** Deferred from plan: `~/.claude/plans/resume-the-unfinished-implementation-federated-otter.md` (T9a). The step's `key:` line tripped the pregate secret scan; the key value must start with a `${{ ... }}` expression (env.kv exempts expression-leading values).
+
+**Context:** `.github/workflows/ci.yml` comment names this item. Verify with `gstack-pregate` on the branch before relying on it.
+
+**Effort:** S
+**Priority:** P1
+**Depends on:** nothing
+
+### Atlas: separate database user for production
+
+**What:** Create a second Atlas database user scoped `readWrite@healtheat_prod` and set the production `MONGODB_URI` in Vercel to it; keep the current user for preview, staging and dev databases.
+
+**Why:** Review finding (T9a adversarial): one cluster and one user across preview, staging and production means a preview deployment of an unreviewed branch can read and write `healtheat_prod`.
+
+**Context:** Atlas console (Database Access), then `vercel env add MONGODB_URI production --cwd apps/api` with the new URI. No code change.
+
+**Effort:** S
+**Priority:** P1
+**Depends on:** nothing
+
 ## Completed

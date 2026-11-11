@@ -28,6 +28,7 @@ export const HealthResponse = z.object({
   env: z.enum(["local", "development", "preview", "production"]),
   db: DbState,
   dbName: z.string().nullable(),
+  secrets: z.enum(["ok", "missing"]),
   now: z.string().datetime(),
 });
 export type HealthResponse = z.infer<typeof HealthResponse>;

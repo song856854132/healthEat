@@ -120,3 +120,24 @@ describe("User.activeRole", () => {
     expect(toHttpResponse(err)).toEqual({ status: 400, body: { error: "invalid_id" } });
   });
 });
+
+describe("enum and bounds validation", () => {
+  it("rejects a role outside member|curator|admin (the coach role was removed at D18)", async () => {
+    await expect(
+      User.create({ ...base, roles: ["member", "coach"] as never }),
+    ).rejects.toMatchObject({
+      name: "ValidationError",
+    });
+  });
+  it("rejects out-of-range body metrics on MemberProfile", async () => {
+    const u = await User.create(base);
+    await expect(MemberProfile.create({ userId: u._id, heightCm: 500 })).rejects.toMatchObject({
+      name: "ValidationError",
+    });
+    await expect(
+      MemberProfile.create({ userId: u._id, activityLevel: "couch" as never }),
+    ).rejects.toMatchObject({
+      name: "ValidationError",
+    });
+  });
+});
