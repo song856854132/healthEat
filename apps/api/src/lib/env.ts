@@ -51,11 +51,14 @@ export function databaseName(): string | undefined {
   return isProduction() ? undefined : "healtheat_dev";
 }
 
-/** Startup assertion: a production deployment must carry a real SESSION_SECRET. Fail closed. */
+/** True on any Vercel deployment (preview, staging alias or production): all are internet-reachable. */
+export const isDeployed = (): boolean => env().VERCEL === "1" || isProduction();
+
+/** Startup assertion: every deployment must carry a real SESSION_SECRET. Fail closed. */
 export function assertProductionSecrets(): void {
-  if (isProduction() && env().SESSION_SECRET === LOCAL_DEV_PLACEHOLDER) {
+  if (isDeployed() && env().SESSION_SECRET === LOCAL_DEV_PLACEHOLDER) {
     throw new Error(
-      "SESSION_SECRET is unset in production; refusing to sign cookies with the development placeholder",
+      "SESSION_SECRET is unset on a deployed environment; refusing to sign cookies with the development placeholder",
     );
   }
 }

@@ -103,6 +103,13 @@ describe("database connection (T9 reliability baseline)", () => {
 });
 
 describe("error mapping", () => {
+  it("driver network and topology errors map to 503 regardless of subclass name", () => {
+    const { MongoNetworkTimeoutError, MongoTopologyClosedError } = mongoose.mongo;
+    expect(isServerSelectionError(new MongoNetworkTimeoutError("socket timed out"))).toBe(true);
+    expect(isServerSelectionError(new MongoTopologyClosedError())).toBe(true);
+    expect(isServerSelectionError(new Error("MongoNetworkTimeoutError"))).toBe(false);
+    expect(toHttpResponse(new MongoNetworkTimeoutError("x")).status).toBe(503);
+  });
   it("HttpError keeps its status and code", () => {
     expect(toHttpResponse(new HttpError(418, "teapot", "short and stout"))).toEqual({
       status: 418,
@@ -221,6 +228,27 @@ describe("production fail-closed rules", () => {
     } finally {
       process.env.VERCEL_ENV = saved.v;
       process.env.MONGODB_DB = saved.d;
+    }
+  });
+});
+
+describe("deployed environments refuse the placeholder secret", () => {
+  it("a Vercel preview without SESSION_SECRET fails closed too", async () => {
+    const saved = {
+      v: process.env.VERCEL,
+      e: process.env.VERCEL_ENV,
+      s: process.env.SESSION_SECRET,
+    };
+    process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "preview";
+    delete process.env.SESSION_SECRET;
+    try {
+      const { assertProductionSecrets } = await import("../src/lib/env.js");
+      expect(() => assertProductionSecrets()).toThrow(/SESSION_SECRET/);
+    } finally {
+      process.env.VERCEL = saved.v;
+      process.env.VERCEL_ENV = saved.e;
+      process.env.SESSION_SECRET = saved.s;
     }
   });
 });

@@ -9,6 +9,17 @@ export const notFound: RequestHandler = (_req, res) => {
 };
 
 type MongoDuplicate = { code?: number; keyValue?: Record<string, unknown> };
+type ClientError = { status?: number; statusCode?: number; expose?: boolean; type?: string };
+
+const CLIENT_ERROR_CODES: Record<string, string> = {
+  "entity.parse.failed": "invalid_json",
+  "entity.too.large": "payload_too_large",
+  "encoding.unsupported": "unsupported_encoding",
+  "charset.unsupported": "unsupported_charset",
+  "entity.verify.failed": "invalid_body",
+  "request.aborted": "request_aborted",
+  "stream.encoding.set": "invalid_body",
+};
 
 /** Map any thrown value to {status, body}. Exported so tests and services can reuse the mapping. */
 export function toHttpResponse(err: unknown): {
@@ -34,6 +45,17 @@ export function toHttpResponse(err: unknown): {
   }
   if (err instanceof Error && err.name === "CastError") {
     return { status: 400, body: { error: "invalid_id" } };
+  }
+  // Errors raised by body-parser and other http-errors carry their own 4xx status (`expose: true`):
+  // a malformed JSON body is the client's mistake, not a server fault, and must not log as 5xx.
+  const client = err as ClientError;
+  const clientStatus =
+    client && typeof client === "object" ? (client.status ?? client.statusCode) : undefined;
+  if (typeof clientStatus === "number" && clientStatus >= 400 && clientStatus < 500) {
+    const code =
+      (client.type && CLIENT_ERROR_CODES[client.type]) ??
+      (clientStatus === 413 ? "payload_too_large" : "bad_request");
+    return { status: clientStatus, body: { error: code } };
   }
   const dup = err as MongoDuplicate;
   if (dup && typeof dup === "object" && dup.code === 11000) {

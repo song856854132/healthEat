@@ -2,7 +2,7 @@ import { Router } from "express";
 import { HealthResponse } from "@healtheat/shared";
 import pkg from "../../package.json" with { type: "json" };
 import { dbState } from "../lib/db.js";
-import { deploymentEnv, env } from "../lib/env.js";
+import { databaseName, deploymentEnv, env } from "../lib/env.js";
 
 export const healthRouter = Router();
 
@@ -14,6 +14,7 @@ healthRouter.get("/health", (_req, res) => {
     commit: (env().VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 12),
     env: deploymentEnv(),
     db: dbState(), // reports without forcing a connection
+    dbName: databaseName() ?? null, // non-secret; lets staging prove it opened healtheat_staging
     now: new Date().toISOString(),
   };
   res.json(HealthResponse.parse(body));

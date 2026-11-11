@@ -74,3 +74,22 @@ describe("error middleware", () => {
     ).toBeUndefined();
   });
 });
+
+describe("client errors keep their own status", () => {
+  it("malformed JSON is 400 invalid_json, not a server error", async () => {
+    const res = await request(app)
+      .post("/api/spike/login")
+      .set("content-type", "application/json")
+      .send("{not json")
+      .expect(400);
+    expect(res.body).toEqual({ error: "invalid_json" });
+  });
+  it("an oversized body is 413 payload_too_large", async () => {
+    const res = await request(app)
+      .post("/api/spike/login")
+      .set("content-type", "application/json")
+      .send(JSON.stringify({ name: "x".repeat(1_100_000) }))
+      .expect(413);
+    expect(res.body).toEqual({ error: "payload_too_large" });
+  });
+});

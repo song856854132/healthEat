@@ -66,7 +66,8 @@ jobs:
       - name: health through api alias and web proxy
         run: |
           set -e
-          curl -fsS "${{ needs.api.outputs.alias_url }}/api/health" | tee /dev/stderr | grep -q '"ok":true'
+          # Staging must have opened its own database, not the preview one the project env names.
+          curl -fsS "${{ needs.api.outputs.alias_url }}/api/health" | tee /dev/stderr | grep -q '"dbName":"healtheat_staging"'
           curl -fsS "${{ needs.web.outputs.alias_url }}/api/health" | tee /dev/stderr | grep -q '"ok":true'
           curl -fsS -o /dev/null -w "web %{http_code}\n" "${{ needs.web.outputs.alias_url }}/"
           echo "staging web: ${{ needs.web.outputs.alias_url }}" >> "$GITHUB_STEP_SUMMARY"

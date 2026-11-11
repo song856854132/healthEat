@@ -27,6 +27,7 @@ export const HealthResponse = z.object({
   commit: z.string(),
   env: z.enum(["local", "development", "preview", "production"]),
   db: DbState,
+  dbName: z.string().nullable(),
   now: z.string().datetime(),
 });
 export type HealthResponse = z.infer<typeof HealthResponse>;

@@ -39,6 +39,8 @@ const UserSchema = new Schema(
       type: String,
       enum: ROLES,
       default: "member",
+      // Enforced on document save() only: Mongoose cannot see sibling fields in update queries. Routes
+      // that change roles or activeRole (T7, T21) must load the document and save(), never updateOne.
       validate: {
         validator(this: { roles?: string[] }, v: string) {
           return Array.isArray(this.roles) ? this.roles.includes(v) : true;

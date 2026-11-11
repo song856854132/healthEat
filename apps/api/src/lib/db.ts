@@ -73,11 +73,22 @@ export async function disconnectDb(): Promise<void> {
 
 /** True for the driver's "could not reach a server" family of errors. */
 export function isServerSelectionError(err: unknown): boolean {
-  const name = err instanceof Error ? err.name : "";
+  if (!(err instanceof Error)) return false;
+  // instanceof, not name strings: the driver overrides `name` per subclass (MongoNetworkTimeoutError,
+  // MongoTopologyClosedError...), and all of them mean "the database did not answer".
+  const { MongoNetworkError, MongoServerSelectionError, MongoTopologyClosedError } = mongoose.mongo;
+  if (
+    err instanceof MongoNetworkError ||
+    err instanceof MongoServerSelectionError ||
+    err instanceof MongoTopologyClosedError ||
+    err instanceof mongoose.Error.MongooseServerSelectionError
+  ) {
+    return true;
+  }
+  // Mongoose's own "not connected" family (bufferCommands off, or a buffering timeout).
   return (
-    name === "MongooseServerSelectionError" ||
-    name === "MongoServerSelectionError" ||
-    name === "MongoNetworkError"
+    err.name === "MongooseError" &&
+    /buffering timed out|not connected|was disconnected/i.test(err.message)
   );
 }
 
