@@ -33,6 +33,8 @@ jobs:
       app: api
       environment: preview
       alias: healtheat-api-staging.vercel.app
+      # staging shares the preview Vercel env; only the database name differs
+      extra_env: MONGODB_DB=healtheat_staging
       gh_environment: staging-api
     secrets:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

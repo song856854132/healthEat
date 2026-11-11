@@ -28,6 +28,11 @@ on:
         required: false
         type: string
         default: ""
+      extra_env:
+        description: "Optional runtime env overrides for this deployment, space-separated KEY=value pairs (passed as -e)"
+        required: false
+        type: string
+        default: ""
     secrets:
       VERCEL_TOKEN:
         required: true
@@ -84,10 +89,12 @@ jobs:
       - name: vercel deploy
         id: deploy
         run: |
+          extra=()
+          for kv in ${{ inputs.extra_env }}; do extra+=(-e "$kv"); done
           if [ "${{ inputs.environment }}" = "production" ]; then
-            out=$(npx vercel deploy --prebuilt --prod --cwd apps/${{ inputs.app }} --token=${{ secrets.VERCEL_TOKEN }})
+            out=$(npx vercel deploy --prebuilt --prod --cwd apps/${{ inputs.app }} "${extra[@]}" --token=${{ secrets.VERCEL_TOKEN }})
           else
-            out=$(npx vercel deploy --prebuilt --cwd apps/${{ inputs.app }} --token=${{ secrets.VERCEL_TOKEN }})
+            out=$(npx vercel deploy --prebuilt --cwd apps/${{ inputs.app }} "${extra[@]}" --token=${{ secrets.VERCEL_TOKEN }})
           fi
           # Newer CLIs print a JSON report instead of the bare URL; accept either.
           url=$(printf '%s' "$out" | grep -oE 'https://[A-Za-z0-9.-]+\.vercel\.app' | head -1)

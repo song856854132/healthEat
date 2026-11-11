@@ -184,7 +184,7 @@ Every handler: zod-validated input, `asyncHandler` wrapper, central error middle
 
 - Vercel project `healtheat-web` (built from `apps/web`), env: `API_ORIGIN` (preview: the staging API alias; production: `https://healtheat-api.vercel.app`).
 - Vercel project `healtheat-api` (built from `apps/api`, Express preset via `vercel.json`), env: `MONGODB_URI`, `SESSION_SECRET`, `USDA_API_KEY`, `ANTHROPIC_API_KEY`. Keys never reach the browser.
-- MongoDB Atlas M0 (512 MB). Mongoose connection cached on `globalThis` for warm invocations.
+- MongoDB Atlas M0 (512 MB): one cluster for every environment (decided 2026-11-11 when the cluster was created); `MONGODB_URI` is the cluster URI without a database name and `MONGODB_DB` selects `healtheat_prod`, `healtheat_staging`, `healtheat_preview` or `healtheat_dev_<user>`. Mongoose connection cached on `globalThis` for warm invocations, `maxPoolSize 5`, `serverSelectionTimeoutMS 5000`.
 - GitHub Actions is the only deployer: `ci` on every push and PR; `preview` deploys both apps per PR and runs Playwright through the proxy; `staging` deploys `main` and aliases it to `healtheat-staging.vercel.app` / `healtheat-api-staging.vercel.app`; `release` deploys production on a `v*` tag from `main`. Cookies are same-origin on every preview URL. See `docs/team-workflow.md`.
 - USDA key: 1000 requests per hour per IP by default. Cache-on-read (`Food`) plus the `SearchCache` collection (24 h TTL, D5) keeps a grader's clicking far below that; on a USDA 429 or 5xx the cached page is served with a "cached" label.
 

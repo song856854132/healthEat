@@ -3,8 +3,13 @@
 // deployable entry; src/index.ts only adds `listen` for local development.
 import express from "express";
 import cookieParser from "cookie-parser";
+import { env } from "./lib/env.js";
+import { installProcessHooks } from "./lib/process.js";
 import { healthRouter } from "./routes/health.js";
 import { spikeRouter } from "./routes/spike.js";
+import { errorHandler, notFound } from "./middleware/error.js";
+
+installProcessHooks();
 
 const app = express();
 
@@ -12,25 +17,12 @@ const app = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
-app.use(cookieParser(process.env.SESSION_SECRET ?? "dev-only-change-me"));
+app.use(cookieParser(env().SESSION_SECRET));
 
 app.use("/api", healthRouter);
 app.use("/api/spike", spikeRouter);
 
-app.use((_req, res) => {
-  res.status(404).json({ error: "not_found" });
-});
-
-// Central error handler: never leak stack traces, always JSON.
-app.use(
-  (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    const message = err instanceof Error ? err.message : "unknown error";
-    console.error("[api] unhandled", message);
-    res.status(500).json({
-      error: "internal",
-      details: process.env.NODE_ENV === "production" ? undefined : message,
-    });
-  },
-);
+app.use(notFound);
+app.use(errorHandler);
 
 export default app;

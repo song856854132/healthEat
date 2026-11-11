@@ -9,6 +9,7 @@ describe("HealthResponse", () => {
       version: "0.1.0",
       commit: "abc123",
       env: "local",
+      db: "connected",
       now: new Date().toISOString(),
     });
     expect(parsed.ok).toBe(true);

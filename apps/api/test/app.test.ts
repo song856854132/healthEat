@@ -9,6 +9,7 @@ describe("GET /api/health", () => {
     const parsed = HealthResponse.parse(res.body);
     expect(parsed.service).toBe("healtheat-api");
     expect(parsed.env).toBe("local");
+    expect(parsed.db).toBe("connected");
   });
 });
 
