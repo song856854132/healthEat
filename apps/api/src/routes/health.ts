@@ -2,22 +2,17 @@ import { Router } from "express";
 import { HealthResponse } from "@healtheat/shared";
 import pkg from "../../package.json" with { type: "json" };
 import { dbState } from "../lib/db.js";
+import { deploymentEnv, env } from "../lib/env.js";
 
 export const healthRouter = Router();
-
-function envName(): HealthResponse["env"] {
-  const v = process.env.VERCEL_ENV;
-  if (v === "production" || v === "preview" || v === "development") return v;
-  return "local";
-}
 
 healthRouter.get("/health", (_req, res) => {
   const body: HealthResponse = {
     ok: true,
     service: "healtheat-api",
     version: pkg.version,
-    commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 12),
-    env: envName(),
+    commit: (env().VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 12),
+    env: deploymentEnv(),
     db: dbState(), // reports without forcing a connection
     now: new Date().toISOString(),
   };

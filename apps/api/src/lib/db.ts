@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import type { DbState } from "@healtheat/shared";
 import { env } from "./env.js";
 import { HttpError, asyncHandler } from "./http.js";
 
@@ -6,16 +7,20 @@ import { HttpError, asyncHandler } from "./http.js";
 // warm Vercel invocations reuse it; maxPoolSize 5 (Atlas M0 allows 500 connections, many functions
 // may be warm); serverSelectionTimeoutMS 5000 so an unreachable or throttled Atlas returns 503 in
 // five seconds instead of hanging until the function limit.
+//
+// bufferCommands: false so a model call on a dropped connection fails fast (and maps to 503) instead
+// of buffering for 10 s and surfacing as a 500. autoIndex stays on: createIndex is idempotent and the
+// four phase-0 collections cost four no-op round-trips per cold start; revisit when T3/T6 add
+// collections (then: autoIndex off in production, syncIndexes in a deploy step).
 export const CONNECT_OPTIONS = {
   maxPoolSize: 5,
   serverSelectionTimeoutMS: 5000,
+  bufferCommands: false,
   autoIndex: true,
 } as const;
 
 type G = typeof globalThis & { __healtheatDb?: Promise<typeof mongoose> };
 const g = globalThis as G;
-
-export type DbState = "connected" | "connecting" | "disconnected" | "unconfigured";
 
 export function dbState(): DbState {
   if (!env().MONGODB_URI) return "unconfigured";

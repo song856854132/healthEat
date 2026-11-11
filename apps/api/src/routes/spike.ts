@@ -3,11 +3,12 @@
 // back on the next request, and (3) a long request survives the proxy.
 import { Router } from "express";
 import type { WhoAmI } from "@healtheat/shared";
+import { env, isProduction } from "../lib/env.js";
 
 export const spikeRouter = Router();
 export const SPIKE_COOKIE = "he_spike";
 
-const secureCookies = process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+const secureCookies = isProduction() || env().VERCEL === "1";
 
 spikeRouter.post("/login", (req, res) => {
   const name =

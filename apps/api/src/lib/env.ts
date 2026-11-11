@@ -1,32 +1,48 @@
 import { z } from "zod";
 
-// The only place the API reads process.env. Parsed on every call so tests can change values;
-// the cost is negligible and it keeps routers free of environment access.
+// The only place the API reads process.env. Tolerant by design: a malformed or empty variable
+// must never take down /api/health or the error middleware, so every field has a safe fallback and
+// problems are logged once. Hard requirements (a real SESSION_SECRET in production) are asserted by
+// the code that needs them (session setup), not here.
+const empty = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
+
 const EnvSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  VERCEL: z.string().optional(),
-  VERCEL_ENV: z.enum(["development", "preview", "production"]).optional(),
-  VERCEL_GIT_COMMIT_SHA: z.string().optional(),
-  PORT: z.coerce.number().int().positive().default(4000),
-  MONGODB_URI: z.string().url().or(z.string().startsWith("mongodb")).optional(),
-  MONGODB_DB: z.string().min(1).default("healtheat_dev"),
-  SESSION_SECRET: z.string().min(1).default("dev-only-change-me"),
+  NODE_ENV: z.preprocess(empty, z.string().default("development")),
+  VERCEL: z.preprocess(empty, z.string().optional()),
+  VERCEL_ENV: z.preprocess(empty, z.enum(["development", "preview", "production"]).optional()),
+  VERCEL_GIT_COMMIT_SHA: z.preprocess(empty, z.string().optional()),
+  PORT: z.preprocess(empty, z.coerce.number().int().positive().default(4000)),
+  MONGODB_URI: z.preprocess(empty, z.string().startsWith("mongodb").optional()),
+  MONGODB_DB: z.preprocess(empty, z.string().default("healtheat_dev")),
+  SESSION_SECRET: z.preprocess(empty, z.string().default("dev-only-change-me")),
 });
 export type Env = z.infer<typeof EnvSchema>;
+export const DEV_SESSION_SECRET = "dev-only-change-me";
+
+let warned = false;
 
 export function env(): Env {
   const parsed = EnvSchema.safeParse(process.env);
-  if (!parsed.success) {
-    throw new Error(
-      `invalid environment: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
-    );
+  if (parsed.success) return parsed.data;
+  // Drop the offending keys and parse again with defaults; warn once so the misconfiguration is visible.
+  const bad = new Set(parsed.error.issues.map((i) => String(i.path[0])));
+  if (!warned) {
+    warned = true;
+    console.error(`[api] ignoring invalid environment variable(s): ${[...bad].join(", ")}`);
   }
-  const e = parsed.data;
-  if (e.NODE_ENV === "production" && e.SESSION_SECRET === "dev-only-change-me") {
-    throw new Error("SESSION_SECRET must be set in production");
-  }
-  return e;
+  const cleaned: Record<string, string | undefined> = { ...process.env };
+  for (const k of bad) delete cleaned[k];
+  return EnvSchema.parse(cleaned);
 }
 
-export const isProduction = (): boolean =>
-  env().NODE_ENV === "production" || env().VERCEL_ENV === "production";
+export const isProduction = (): boolean => {
+  const e = env();
+  return (
+    e.VERCEL_ENV === "production" || (e.VERCEL_ENV === undefined && e.NODE_ENV === "production")
+  );
+};
+
+/** Deployment environment label used by health and the web. */
+export function deploymentEnv(): "local" | "development" | "preview" | "production" {
+  return env().VERCEL_ENV ?? "local";
+}

@@ -32,11 +32,13 @@ describe("User model", () => {
       err = e;
     }
     expect(toHttpResponse(err).status).toBe(409);
+    err = undefined;
     try {
       await User.create({ ...base, username: "another" });
     } catch (e) {
       err = e;
     }
+    expect(err, "duplicate email must be rejected").toBeTruthy();
     expect(toHttpResponse(err).status).toBe(409);
   });
 

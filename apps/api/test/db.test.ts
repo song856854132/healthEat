@@ -77,3 +77,29 @@ describe("error mapping", () => {
     expect(JSON.stringify(r.body)).not.toMatch(/at .*\.ts/);
   });
 });
+
+describe("environment tolerance (health must never depend on a valid env)", () => {
+  it("treats an empty MONGODB_URI as unset and ignores an unknown NODE_ENV", async () => {
+    const saved = { uri: process.env.MONGODB_URI, node: process.env.NODE_ENV };
+    process.env.MONGODB_URI = "";
+    process.env.NODE_ENV = "staging";
+    try {
+      expect(dbState()).toBe("unconfigured");
+      const { default: app } = await import("../src/app.js");
+      const res = await request(app).get("/api/health").expect(200);
+      expect(res.body.db).toBe("unconfigured");
+    } finally {
+      process.env.MONGODB_URI = saved.uri;
+      process.env.NODE_ENV = saved.node;
+    }
+  });
+  it("a malformed MONGODB_URI is ignored with a warning instead of crashing", async () => {
+    const saved = process.env.MONGODB_URI;
+    process.env.MONGODB_URI = "postgres://nope";
+    try {
+      expect(dbState()).toBe("unconfigured");
+    } finally {
+      process.env.MONGODB_URI = saved;
+    }
+  });
+});

@@ -1,5 +1,4 @@
-// Installed once per process (local server and the Vercel function alike). A rejected promise that
-// escapes asyncHandler must not kill the process silently or crash it without a log line.
+// Installed once per process (local server and the Vercel function alike).
 declare global {
   var __healtheatProcessHooks: boolean | undefined;
 }
@@ -7,13 +6,17 @@ declare global {
 export function installProcessHooks(): void {
   if (globalThis.__healtheatProcessHooks) return;
   globalThis.__healtheatProcessHooks = true;
+  // A rejected promise that escaped asyncHandler: log and keep serving (the request already failed).
   process.on("unhandledRejection", (reason) => {
     console.error(
       "[api] unhandledRejection",
       reason instanceof Error ? (reason.stack ?? reason.message) : reason,
     );
   });
+  // A synchronous throw outside Express leaves the process in an undefined state (Node docs): log and
+  // exit so the platform restarts a clean process instead of serving half-broken requests.
   process.on("uncaughtException", (err) => {
-    console.error("[api] uncaughtException", err.stack ?? err.message);
+    console.error("[api] uncaughtException, exiting", err.stack ?? err.message);
+    process.exit(1);
   });
 }
