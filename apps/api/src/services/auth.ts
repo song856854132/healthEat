@@ -8,8 +8,16 @@ import { accountBlocked } from "../middleware/auth.js";
 // Indexes are built by Mongoose when the connection opens, but `bufferCommands: false` lets a create()
 // race the build; waiting on init() once makes a duplicate username a deterministic 409, never a
 // second document.
+// A rejected promise is forgotten so the next request retries (mirrors db.ts); a cached rejection would
+// turn one transient index failure into a 5xx on every later register() of this warm instance.
 let indexesReady: Promise<unknown> | undefined;
-const ensureIndexes = () => (indexesReady ??= Promise.all([User.init(), MemberProfile.init()]));
+const ensureIndexes = () =>
+  (indexesReady ??= Promise.all([User.createIndexes(), MemberProfile.createIndexes()]).catch(
+    (err: unknown) => {
+      indexesReady = undefined;
+      throw err;
+    },
+  ));
 
 /**
  * Create the account and its member profile. The two writes are not atomic (no transactions on M0):

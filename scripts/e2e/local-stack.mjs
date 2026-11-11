@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Local stand-in for a Vercel preview, started by Playwright (playwright.config.ts `webServer`) when
-// BASE_URL is unset: an in-memory MongoDB, the Express API on API_PORT and the Next.js dev server on
-// WEB_PORT with its /api/* rewrite pointing at that API. Same shape as production (browser -> web
+// BASE_URL is unset: an in-memory MongoDB, the Express API on API_PORT (4100) and the Next.js dev server
+// on WEB_PORT (3100) with its /api/* rewrite pointing at that API. Same shape as production (browser -> web
 // origin -> proxy -> API), minus https, so the e2e specs run on a laptop and in the pregate without a
 // deployment. In CI, BASE_URL names the preview and this script is not used.
 //
@@ -11,8 +11,10 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { MongoMemoryServer } from "mongodb-memory-server";
 
-const WEB_PORT = process.env.WEB_PORT ?? "3000";
-const API_PORT = process.env.API_PORT ?? "4000";
+// Not 3000/4000: a developer's own `dev:web`/`dev:api` (possibly pointed at Atlas) must never be
+// mistaken for this throwaway stack; playwright.config.ts derives its baseURL from WEB_PORT.
+const WEB_PORT = process.env.WEB_PORT ?? "3100";
+const API_PORT = process.env.API_PORT ?? "4100";
 const log = (m) => process.stdout.write(`[e2e-stack] ${m}\n`);
 
 const mongod = await MongoMemoryServer.create();

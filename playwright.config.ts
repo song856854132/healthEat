@@ -1,16 +1,19 @@
 import { defineConfig } from "@playwright/test";
 
 // CI sets BASE_URL to the Vercel preview. Without it (a laptop, the pregate) Playwright starts the
-// local stack in scripts/e2e/local-stack.mjs: in-memory MongoDB, API on 4000, web on 3000 with the
-// rewrite pointing at that API. Set BASE_URL yourself to test an already-running stack or a deployment.
-const baseURL = process.env.BASE_URL ?? "http://localhost:3000";
+// local stack in scripts/e2e/local-stack.mjs: in-memory MongoDB, API on 4100, web on 3100 with the
+// rewrite pointing at that API. Its own ports and no server reuse: a developer's dev:web/dev:api on
+// 3000/4000 (possibly pointed at Atlas) must never receive the throwaway e2e accounts. Set BASE_URL
+// yourself to test an already-running stack or a deployment.
+const webPort = process.env.WEB_PORT ?? "3100";
+const baseURL = process.env.BASE_URL ?? `http://localhost:${webPort}`;
 const localStack = process.env.BASE_URL
   ? undefined
   : {
       command: "node scripts/e2e/local-stack.mjs",
       url: `${baseURL}/api/health`, // through the rewrite: both servers are up when this answers
       timeout: 180_000,
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       stdout: "pipe" as const,
       stderr: "pipe" as const,
     };

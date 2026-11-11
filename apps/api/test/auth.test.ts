@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import mongoose from "mongoose";
@@ -7,7 +7,7 @@ import app from "../src/app.js";
 import { User } from "../src/models/index.js";
 import { requireAuth, requireRole } from "../src/middleware/auth.js";
 import { requireDb } from "../src/lib/db.js";
-import { sessionMiddleware } from "../src/lib/session.js";
+import { SESSION_TTL_SECONDS, sessionMiddleware } from "../src/lib/session.js";
 import { errorHandler } from "../src/middleware/error.js";
 import { authRouter } from "../src/routes/auth.js";
 import { MemberProfile } from "../src/models/index.js";
@@ -64,6 +64,14 @@ describe("POST /api/auth/register", () => {
     expect(sessions[0].session.userId).toBe(user!.id);
     expect(sessions[0].session.activeRole).toBe("member");
     expect(sessions[0].expires).toBeInstanceOf(Date);
+    // The 14-day TTL is a documented contract (README "Auth and sessions"): pin it on the cookie and the store.
+    const ttlMs = SESSION_TTL_SECONDS * 1000;
+    const cookieExpires = Date.parse(cookieHeader(res).match(/Expires=([^;]+)/)![1]);
+    expect(cookieExpires - Date.now()).toBeGreaterThan(ttlMs - 60_000);
+    expect(cookieExpires - Date.now()).toBeLessThanOrEqual(ttlMs);
+    const storeDelta = (sessions[0].expires as Date).getTime() - Date.now();
+    expect(storeDelta).toBeGreaterThan(ttlMs - 60_000);
+    expect(storeDelta).toBeLessThanOrEqual(ttlMs);
     expect(cookieHeader(res)).toContain(encodeURIComponent(String(sessions[0]._id)).slice(0, 8));
   });
 
@@ -108,6 +116,31 @@ describe("POST /api/auth/register", () => {
     const profile = await MemberProfile.findOne({ userId: user!._id });
     expect(profile?.timezone).toBe("UTC");
   });
+
+  // Value: protects=when the member-profile insert fails after the User insert, the account is removed
+  //   again (no session, no 201) so the same username registers cleanly on retry: the username is not
+  //   burned; fails_when=the compensating User.deleteOne is dropped or the profile error is swallowed
+  //   into a 201 without a profile; why_new=existing register tests only cover both writes succeeding;
+  //   seam=none; no_claim=vi.spyOn on MemberProfile.create stands in for the write failure, so a crash
+  //   between the two writes (process killed) is not covered
+  it("removes the account again when the member-profile write fails, so the username is not burned", async () => {
+    const spy = vi
+      .spyOn(MemberProfile, "create")
+      .mockRejectedValueOnce(new Error("profile write failed"));
+    let res: request.Response;
+    try {
+      res = await request(app).post("/api/auth/register").send(valid).expect(500);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(res.body.error).toBe("internal");
+    expect(cookieHeader(res), "no session for a half-created account").toBe("");
+    expect(await User.countDocuments()).toBe(0);
+    expect(await MemberProfile.countDocuments()).toBe(0);
+    const { res: retry } = await registered();
+    expect(retry.body.user.username).toBe(valid.username);
+    expect(retry.body.profiles.member).toBe(true);
+  });
 });
 
 describe("POST /api/auth/login", () => {
@@ -122,6 +155,27 @@ describe("POST /api/auth/login", () => {
     expect(MeResponse.parse(res.body).user.username).toBe("hungju");
     const second = cookieHeader(res).match(/he_sid=([^;]+)/)![1];
     expect(second).not.toBe(first);
+    await agent.get("/api/auth/me").expect(200);
+  });
+
+  // Value: protects=logging in on a device that already holds a session replaces it (one session
+  //   document, the old id is dead) instead of stacking a second live session, and the login payload
+  //   carries no hash although the login query selects +passwordHash; fails_when=startSession stops
+  //   regenerating or regenerate leaves the old document valid, or /me is built from the raw document;
+  //   why_new=the login test above uses a fresh agent, so two documents are expected there; seam=none;
+  //   no_claim=two devices logged in at once both stay valid by design and are not covered
+  it("re-login on the same device replaces the session document and never returns the hash", async () => {
+    const { agent, res: reg } = await registered();
+    const first = cookieHeader(reg).match(/he_sid=([^;]+)/)![1];
+    const res = await agent
+      .post("/api/auth/login")
+      .send({ username: valid.username, password: valid.password })
+      .expect(200);
+    expect(JSON.stringify(res.body)).not.toMatch(/passwordHash|\$2[aby]\$/);
+    const second = cookieHeader(res).match(/he_sid=([^;]+)/)![1];
+    expect(second).not.toBe(first);
+    expect(await mongoose.connection.db!.collection("sessions").countDocuments()).toBe(1);
+    await request(app).get("/api/auth/me").set("Cookie", `${SESSION_COOKIE}=${first}`).expect(401);
     await agent.get("/api/auth/me").expect(200);
   });
 
@@ -195,6 +249,39 @@ describe("GET /api/auth/me and POST /api/auth/logout", () => {
     expect(await mongoose.connection.db!.collection("sessions").countDocuments()).toBe(0);
     await User.updateOne({ username: valid.username }, { status: "active" });
     await agent.get("/api/auth/me").expect(401);
+  });
+
+  // Value: protects=a session whose account no longer exists answers 401 unauthenticated on every
+  //   guarded route and its session document is destroyed, so a deleted user cannot keep acting (T5
+  //   relies on this); fails_when=loadUser stops checking for a missing user (currentUser throws ->
+  //   500) or leaves the orphan session in the store; why_new=the forged-cookie case never reaches
+  //   loadUser (bad signature) and the suspension case covers status only; seam=none; no_claim=the T5
+  //   bulk cascade over the sessions collection is not covered
+  it("ends a session whose account was deleted: 401 and the session document is gone", async () => {
+    const { agent } = await registered();
+    await User.deleteOne({ username: valid.username });
+    const res = await agent.get("/api/auth/me").expect(401);
+    expect(res.body).toEqual({ error: "unauthenticated" });
+    expect(await mongoose.connection.db!.collection("sessions").countDocuments()).toBe(0);
+    await agent.put("/api/users/me/active-role").send({ role: "member" }).expect(401);
+  });
+
+  // Value: protects=the User document is the source of truth for activeRole: a change made outside this
+  //   session (admin grant, another device) is mirrored into the session on the next authenticated
+  //   request; fails_when=loadUser drops the re-sync so the stored session keeps a stale role;
+  //   why_new=the active-role switch test sets the session in the same request that changed the
+  //   document; seam=none; no_claim=what the web does with the mirrored field (T10) is not covered
+  it("re-syncs a stale session activeRole from the account on the next request", async () => {
+    const { agent } = await registered();
+    await User.updateOne(
+      { username: valid.username },
+      { roles: ["member", "curator"], activeRole: "curator" },
+    );
+    const me = await agent.get("/api/auth/me").expect(200);
+    expect(me.body.user.activeRole).toBe("curator");
+    const sessions = await mongoose.connection.db!.collection("sessions").find({}).toArray();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].session.activeRole).toBe("curator");
   });
 });
 

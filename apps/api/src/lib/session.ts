@@ -33,11 +33,6 @@ export function sessionMiddleware(): RequestHandler {
   };
 }
 
-/** Test hook: forget the built middleware so the next request rebuilds it against a new connection. */
-export function resetSessionMiddleware(): void {
-  middleware = undefined;
-}
-
 function buildSession(): RequestHandler {
   const store = MongoStore.create({
     clientPromise: connectDb().then((m) => m.connection.getClient()),
@@ -50,6 +45,12 @@ function buildSession(): RequestHandler {
     // Native documents, not JSON strings: the T5 deletion cascade removes a user's sessions with
     // `sessions.deleteMany({ "session.userId": id })`, which needs a queryable field.
     stringify: false,
+  });
+  // connect-mongo caches its collection promise (TTL-index creation included); a rejection there would
+  // make every later request on this warm instance a 500. Forget the middleware instead, so the next
+  // request rebuilds the store; the Mongoose connection itself is owned by db.ts and survives.
+  void store.collectionP.catch(() => {
+    middleware = undefined;
   });
   return session({
     name: SESSION_COOKIE,

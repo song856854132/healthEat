@@ -1,14 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 // Acceptance of plan task T9b through the Vercel preview: register and log in via the web origin's
 // /api/* rewrite, so the session cookie set by Express is stored for the web origin and comes back
 // on the next request. The `request` fixture keeps cookies like a browser tab would. Each run
-// registers a fresh throwaway account (there is no delete route before T5).
+// registers a fresh throwaway account with a random password (there is no delete route before T5, so
+// the accounts stay in the preview database; nothing in the repo can log in to them).
 const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const account = {
   username: `e2e_${suffix}`.slice(0, 24),
   email: `e2e_${suffix}@example.com`,
-  password: "e2e correct horse battery",
+  password: randomUUID(),
   timezone: "UTC",
 };
 
