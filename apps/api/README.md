@@ -13,21 +13,23 @@ Express 5 REST API, deployed as one Vercel function (zero-config Express; entry 
 
 Failure modes, all JSON:
 
-| Response                                    | Meaning                                                                                                           |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `503 {error: "database_unconfigured"}`      | `MONGODB_URI` is unset                                                                                            |
-| `503 {error: "database_misconfigured"}`     | `MONGODB_URI` is present but not a `mongodb://` or `mongodb+srv://` URI, or `MONGODB_DB` is unset on a deployment |
-| `503 {error: "database_unavailable"}`       | Atlas did not answer within 5 seconds (Mongoose `serverSelectionTimeoutMS`), or the connection dropped            |
-| `503 {error: "secret_unconfigured"}`        | a deployment is running with the development `SESSION_SECRET` placeholder; only `/api/health` keeps answering     |
-| `400 invalid_json`, `413 payload_too_large` | body-parser client errors keep their own status; they are never logged as server errors                           |
-| `400 {error: "validation_error", details}`  | zod or Mongoose validation failed; `details` lists the offending paths                                            |
-| `400 {error: "invalid_id"}`                 | a malformed ObjectId (Mongoose `CastError`)                                                                       |
-| `409 {error: "conflict", details.fields}`   | duplicate key (unique index), for example a taken username or email                                               |
-| `500 {error: "internal"}`                   | anything else; logged with its stack, `details` only on local runs                                                |
+| Response                                    | Meaning                                                                                                                                                   |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `503 {error: "database_unconfigured"}`      | `MONGODB_URI` is unset                                                                                                                                    |
+| `503 {error: "database_misconfigured"}`     | `MONGODB_URI` is present but not a `mongodb://` or `mongodb+srv://` URI, or `MONGODB_DB` is unset on a deployment                                         |
+| `503 {error: "database_unavailable"}`       | Atlas did not answer within 5 seconds (Mongoose `serverSelectionTimeoutMS`), or the connection dropped                                                    |
+| `503 {error: "secret_unconfigured"}`        | a deployment is running with the development `SESSION_SECRET` placeholder; only the `/api/health` routes (`/api/health`, `/api/health/db`) keep answering |
+| `400 invalid_json`, `413 payload_too_large` | body-parser client errors keep their own status; they are never logged as server errors                                                                   |
+| `400 {error: "validation_error", details}`  | zod or Mongoose validation failed; `details` lists the offending paths                                                                                    |
+| `400 {error: "invalid_id"}`                 | a malformed ObjectId (Mongoose `CastError`)                                                                                                               |
+| `409 {error: "conflict", details.fields}`   | duplicate key (unique index), for example a taken username or email                                                                                       |
+| `500 {error: "internal"}`                   | anything else; logged with its stack, `details` only on local runs                                                                                        |
 
 `GET /api/health` never forces a connection and reports `db` (`connected`, `connecting`, `disconnected`,
 `unconfigured`, `misconfigured`), the non-secret `dbName`, and `secrets` (`ok` or `missing`).
-`GET /api/health/db` forces a live connection and is what the staging smoke checks. Details on 5xx
+`GET /api/health/db` forces a live connection and answers `503 database_unavailable` unless the
+connection state is `connected` (a cached promise that survived a drop never yields a 200); the staging
+and release smokes check it together with `secrets: "ok"` on `/api/health`. Details on 5xx
 responses are redacted on every deployment (`isDeployed()`), shown only on local runs.
 
 ## Run and test

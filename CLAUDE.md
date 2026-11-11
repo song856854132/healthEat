@@ -21,7 +21,8 @@ Use /browse for all web browsing (Aside first, the bundled gstack browser as fal
   Open PRs with `/ship`. CI deploys previews, staging and production; never deploy from a laptop.
 - Never commit secrets or connection strings. Staging env lives in `~/.env.staging` on the VM.
 - API env contract: `apps/api/README.md`. `MONGODB_DB` is required on every Vercel deployment; a
-  deployment still on the local `SESSION_SECRET` placeholder answers 503 on every route but `/api/health`.
+  deployment still on the local `SESSION_SECRET` placeholder answers 503 on every route except the
+  `/api/health` routes (`/api/health`, `/api/health/db`).
 - `packages/shared` schema shapes change only through lane A (API owner). Roles are Member,
   Curator, Admin; there is no human coach role (D18).
 - PR body = `.github/PULL_REQUEST_TEMPLATE.md` (T-number, `Closes #issue`, what, how verified).
