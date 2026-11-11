@@ -24,5 +24,13 @@
     "vitest.config.ts": [],
     "playwright.config.ts": ["e2e/*.spec.ts"],
     ".gstack/pregate.json": []
-  }
+  },
+  "allowlist": [
+    {
+      "finding": "env.kv",
+      "paths": [".github/workflows/*.yml"],
+      "pattern": "key: ",
+      "reason": "actions/cache keys are not credentials"
+    }
+  ]
 }

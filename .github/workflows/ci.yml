@@ -20,11 +20,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - name: cache MongoDB binary for mongodb-memory-server
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/mongodb-binaries
-          key: mongodb-binaries-${{ runner.os }}-mms11
+      # mongodb-memory-server downloads a ~100 MB MongoDB binary on first use (~10 s on the runner).
+      # An actions/cache step would save that, but its `key:` line trips the pregate secret scan
+      # until the allowlist in .gstack/pregate.json is on main; add it back after this PR merges.
       - run: npm ci
       - run: npm run build:shared
       - run: npm run typecheck

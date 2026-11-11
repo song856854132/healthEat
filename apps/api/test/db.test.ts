@@ -48,6 +48,7 @@ describe("database connection (T9 reliability baseline)", () => {
     }
     expect(caught, "connection must fail").toBeTruthy();
     expect(isServerSelectionError(caught)).toBe(true);
+    // gstack-timing-ok: the 5 s selection timeout is the contract under test (design doc, Reliability A4)
     expect(Date.now() - started).toBeLessThan(5000);
     expect(toHttpResponse(caught)).toEqual({
       status: 503,

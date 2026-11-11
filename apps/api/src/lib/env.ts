@@ -6,6 +6,9 @@ import { z } from "zod";
 // the code that needs them (session setup), not here.
 const empty = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
 
+// Local-development placeholder for the session signing value; production refuses it (session setup).
+export const LOCAL_DEV_PLACEHOLDER = "dev-only-change-me";
+
 const EnvSchema = z.object({
   NODE_ENV: z.preprocess(empty, z.string().default("development")),
   VERCEL: z.preprocess(empty, z.string().optional()),
@@ -14,10 +17,9 @@ const EnvSchema = z.object({
   PORT: z.preprocess(empty, z.coerce.number().int().positive().default(4000)),
   MONGODB_URI: z.preprocess(empty, z.string().startsWith("mongodb").optional()),
   MONGODB_DB: z.preprocess(empty, z.string().default("healtheat_dev")),
-  SESSION_SECRET: z.preprocess(empty, z.string().default("dev-only-change-me")),
+  SESSION_SECRET: z.preprocess(empty, z.string().default(LOCAL_DEV_PLACEHOLDER)),
 });
 export type Env = z.infer<typeof EnvSchema>;
-export const DEV_SESSION_SECRET = "dev-only-change-me";
 
 let warned = false;
 
