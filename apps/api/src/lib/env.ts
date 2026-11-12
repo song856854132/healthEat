@@ -19,6 +19,8 @@ const EnvSchema = z.object({
   MONGODB_URI: z.preprocess(empty, z.string().startsWith("mongodb").optional()),
   MONGODB_DB: z.preprocess(empty, z.string().optional()),
   SESSION_SECRET: z.preprocess(empty, z.string().default(LOCAL_DEV_PLACEHOLDER)),
+  // Comma-separated usernames that hold `admin` (design doc D10): the bootstrap for the first Admin.
+  ADMIN_USERNAMES: z.preprocess(empty, z.string().optional()),
 });
 export type Env = z.infer<typeof EnvSchema>;
 
@@ -76,4 +78,18 @@ export const isProduction = (): boolean => {
 /** Deployment environment label used by health and the web. */
 export function deploymentEnv(): "local" | "development" | "preview" | "production" {
   return env().VERCEL_ENV ?? "local";
+}
+
+/**
+ * Usernames that get the admin role at login (D10); registering one is refused (409 username_reserved). Set per Vercel environment; the list
+ * is authoritative, so revoking `admin` from a listed username is undone at its next login.
+ */
+export function adminUsernames(): Set<string> {
+  const raw = env().ADMIN_USERNAMES ?? "";
+  return new Set(
+    raw
+      .split(",")
+      .map((u) => u.trim().toLowerCase())
+      .filter(Boolean),
+  );
 }

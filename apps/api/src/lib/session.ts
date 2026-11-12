@@ -1,6 +1,8 @@
 import type { RequestHandler } from "express";
 import session from "express-session";
-import MongoStore from "connect-mongo";
+// Named import: Vercel's Express builder resolves connect-mongo's default export through the CJS typings
+// (dist/index.d.cts) and rejects `MongoStore.create`; `MongoStore` is a named export in both builds.
+import { MongoStore } from "connect-mongo";
 import type { Role } from "@healtheat/shared";
 import { SESSION_COOKIE } from "@healtheat/shared";
 import { connectDb } from "./db.js";

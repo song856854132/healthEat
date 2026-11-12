@@ -63,6 +63,19 @@ export type LoginInput = z.infer<typeof LoginInput>;
 export const ActiveRoleInput = z.object({ role: Role });
 export type ActiveRoleInput = z.infer<typeof ActiveRoleInput>;
 
+/**
+ * Body of PUT /api/admin/users/:username/roles: the complete role set the account should hold. Every
+ * account keeps `member`; the route diffs this set against the current one to grant and revoke.
+ */
+export const RoleUpdateInput = z.object({
+  roles: z
+    .array(Role)
+    .min(1)
+    .refine((r) => r.includes("member"), "every account holds the member role")
+    .refine((r) => new Set(r).size === r.length, "roles must not repeat"),
+});
+export type RoleUpdateInput = z.infer<typeof RoleUpdateInput>;
+
 /** Response of GET /api/auth/me, POST /api/auth/register and POST /api/auth/login. */
 export const MeResponse = z.object({
   user: z.object({
