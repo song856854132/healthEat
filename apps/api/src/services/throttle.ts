@@ -6,7 +6,7 @@ export const MAX_LOGIN_FAILURES = 10;
 const WINDOW_MS = LOGIN_WINDOW_SECONDS * 1000;
 
 // Same pattern as services/auth.ts: build the unique + TTL indexes once per warm instance, forget a
-// rejection so the next request retries. The unique `key` index is what makes recordFailure's upsert
+// rejection so the next request retries. The unique `key` index is what makes reserveAttempt's upsert
 // race-safe.
 let indexesReady: Promise<unknown> | undefined;
 const ensureIndexes = () =>
@@ -24,34 +24,15 @@ export const throttleKey = (username: string, ip: string | undefined): string =>
   `${username.trim().toLowerCase()}|${ip ?? "unknown"}`;
 
 /**
- * Refuse the attempt while the key has MAX_LOGIN_FAILURES failures in a live window. Runs before the
- * bcrypt compare, so a locked key costs one indexed read and the right password does not unlock it.
+ * Reserve one login attempt for `key` before the password check, in a single atomic update: inside a
+ * live window `count + 1`, otherwise (expired or no document) a new window starting now with count 1.
+ * Attempts 1 to MAX_LOGIN_FAILURES go on to the bcrypt compare; any later one in the same window answers
+ * 429, even with the right password. Reserving before the compare (not counting after it) is what keeps a
+ * burst of concurrent requests to MAX_LOGIN_FAILURES password checks. A success deletes the counter, so
+ * only failures accumulate. Two first attempts racing on a new key collide on the unique index; the loser
+ * retries once and then lands in the winner's window.
  */
-export async function assertNotLocked(key: string, now = new Date()): Promise<void> {
-  const cutoff = new Date(now.getTime() - WINDOW_MS);
-  const attempt = await LoginAttempt.findOne({
-    key,
-    windowStart: { $gt: cutoff },
-    count: { $gte: MAX_LOGIN_FAILURES },
-  }).lean();
-  if (!attempt) return;
-  // The query matched a live window, so at least 1 ms remains and this is at least 1 second.
-  const retryAfter = Math.ceil((attempt.windowStart.getTime() + WINDOW_MS - now.getTime()) / 1000);
-  const minutes = Math.ceil(retryAfter / 60);
-  throw new HttpError(
-    429,
-    "too_many_attempts",
-    `too many attempts, try again in ${minutes} minute${minutes === 1 ? "" : "s"}`,
-    { "Retry-After": String(retryAfter) },
-  );
-}
-
-/**
- * Count one failure in a single atomic update: inside a live window `count + 1`, otherwise (expired or
- * no document) a new window starting now with count 1. Two first failures racing on a new key collide
- * on the unique index; the loser retries once and then lands in the winner's window.
- */
-export async function recordFailure(key: string, now = new Date()): Promise<void> {
+export async function reserveAttempt(key: string, now = new Date()): Promise<void> {
   await ensureIndexes();
   const cutoff = new Date(now.getTime() - WINDOW_MS);
   const live = { $gt: ["$windowStart", cutoff] };
@@ -63,15 +44,29 @@ export async function recordFailure(key: string, now = new Date()): Promise<void
       },
     },
   ];
-  for (let attempt = 0; ; attempt++) {
+  let attempt: { count: number; windowStart: Date } | null = null;
+  for (let tries = 0; ; tries++) {
     try {
       // Native driver: an update pipeline with `$cond` is not something Mongoose casting should touch.
-      await LoginAttempt.collection.updateOne({ key }, update, { upsert: true });
-      return;
+      attempt = await LoginAttempt.collection.findOneAndUpdate({ key }, update, {
+        upsert: true,
+        returnDocument: "after",
+      });
+      break;
     } catch (err) {
-      if ((err as { code?: number }).code !== 11000 || attempt > 0) throw err;
+      if ((err as { code?: number }).code !== 11000 || tries > 0) throw err;
     }
   }
+  if (!attempt || attempt.count <= MAX_LOGIN_FAILURES) return;
+  // The window is live (it was just counted in), so at least 1 ms remains: this is at least 1 second.
+  const retryAfter = Math.ceil((attempt.windowStart.getTime() + WINDOW_MS - now.getTime()) / 1000);
+  const minutes = Math.ceil(retryAfter / 60);
+  throw new HttpError(
+    429,
+    "too_many_attempts",
+    `too many attempts, try again in ${minutes} minute${minutes === 1 ? "" : "s"}`,
+    { "Retry-After": String(retryAfter) },
+  );
 }
 
 /** A successful login resets the key (design doc D7). */

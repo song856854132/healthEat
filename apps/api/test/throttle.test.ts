@@ -2,12 +2,7 @@ import { describe, expect, it } from "vitest";
 import request from "supertest";
 import app from "../src/app.js";
 import { LoginAttempt } from "../src/models/index.js";
-import {
-  MAX_LOGIN_FAILURES,
-  assertNotLocked,
-  recordFailure,
-  throttleKey,
-} from "../src/services/throttle.js";
+import { MAX_LOGIN_FAILURES, reserveAttempt, throttleKey } from "../src/services/throttle.js";
 
 const account = {
   username: "throttled",
@@ -88,21 +83,35 @@ describe("login throttle (T4, design doc D7)", () => {
   });
 
   it("stores the window with a 15-minute TTL index and a unique key", async () => {
-    await recordFailure(throttleKey("indexcheck", "127.0.0.1"));
+    await reserveAttempt(throttleKey("indexcheck", "127.0.0.1"));
     const indexes = await LoginAttempt.collection.indexes();
     expect(indexes.find((i) => i.key.windowStart === 1)?.expireAfterSeconds).toBe(900);
     expect(indexes.find((i) => i.key.key === 1)?.unique).toBe(true);
   });
 
-  it("counts concurrent failures atomically, including the first one on a new key", async () => {
+  it("counts concurrent attempts atomically, including the first one on a new key", async () => {
     const key = throttleKey("racer", "10.0.0.7");
-    await Promise.all(Array.from({ length: 12 }, () => recordFailure(key)));
+    const results = await Promise.allSettled(Array.from({ length: 12 }, () => reserveAttempt(key)));
     const doc = await LoginAttempt.findOne({ key }).lean();
     expect(doc?.count).toBe(12);
-    await expect(assertNotLocked(key)).rejects.toMatchObject({
-      status: 429,
-      code: "too_many_attempts",
-    });
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(MAX_LOGIN_FAILURES);
+    const refused = results.filter((r) => r.status === "rejected");
+    expect(refused).toHaveLength(2);
+    for (const r of refused)
+      expect(r.reason).toMatchObject({ status: 429, code: "too_many_attempts" });
+  });
+
+  // Value: protects=a concurrent burst gets at most 10 password checks per key (design doc D7);
+  // fails_when=the lock is checked before the compare but counted only after it (QA captures saw 14);
+  // why_new=the other HTTP tests send attempts one at a time; seam=none; no_claim=multi-instance load
+  it("gives a concurrent burst of wrong passwords at most 10 password checks", async () => {
+    await register();
+    const results = await Promise.all(
+      Array.from({ length: 30 }, () => login(account.username, wrong)),
+    );
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((s) => s === 401)).toHaveLength(MAX_LOGIN_FAILURES);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(30 - MAX_LOGIN_FAILURES);
   });
 
   it("keys on username and client IP", () => {
@@ -128,16 +137,17 @@ describe("login throttle (T4, design doc D7)", () => {
   // only sees a fresh window (15 minutes); seam=none; no_claim=none beyond protects
   it("answers Retry-After 1 and says 1 minute at the end of the window", async () => {
     const key = throttleKey("almostdone", "10.0.0.9");
-    const start = new Date("2026-01-01T00:00:00Z");
-    for (let i = 0; i < MAX_LOGIN_FAILURES; i++) await recordFailure(key, start);
+    // A real-clock window start keeps the document out of the TTL monitor's reach while this runs.
+    const start = new Date();
+    for (let i = 0; i < MAX_LOGIN_FAILURES; i++) await reserveAttempt(key, start);
     const now = new Date(start.getTime() + 15 * 60_000 - 200);
-    await expect(assertNotLocked(key, now)).rejects.toMatchObject({
+    await expect(reserveAttempt(key, now)).rejects.toMatchObject({
       status: 429,
       details: "too many attempts, try again in 1 minute",
       headers: { "Retry-After": "1" },
     });
     await expect(
-      assertNotLocked(key, new Date(start.getTime() + 15 * 60_000)),
+      reserveAttempt(key, new Date(start.getTime() + 15 * 60_000)),
     ).resolves.toBeUndefined();
   });
 });

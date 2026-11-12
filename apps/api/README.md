@@ -62,14 +62,16 @@ rolling, written at most once a day per session (`touchAfter`). Cookie `he_sid`:
 `session.userId`. Passwords: `bcryptjs` cost 12 (pure JavaScript: no native module to build for the
 function's architecture); never returned (`passwordHash` has `select: false`).
 
-Login throttle (design doc D7): `LoginAttempt {key, count, windowStart}` counts failed logins per
-lowercased username plus `req.ip`. Unknown usernames and wrong passwords both count. After 10 failures
-inside a 15-minute window that starts at the first failure, login answers `429 too_many_attempts` with
-`Retry-After` before any bcrypt compare. A successful login deletes the counter, and a TTL index on
-`windowStart` removes stale windows. Behind the Next.js rewrite on Vercel, `req.ip` (`trust proxy` 1) may
-be a shared Vercel hop rather than the visitor, so the key is effectively per username there: it still
-stops password guessing against one account, but anyone can lock that account's logins for up to 15
-minutes.
+Login throttle (design doc D7): `LoginAttempt {key, count, windowStart}` counts login attempts per
+lowercased username plus `req.ip`. Each attempt is counted atomically before the bcrypt compare, so
+unknown usernames and wrong passwords both count and a burst of parallel requests gets at most 10
+compares. After 10 failures inside a 15-minute window that starts at the first one, login answers
+`429 too_many_attempts` with `Retry-After` and no compare, even for the right password. A successful login
+deletes the counter, and a TTL index on `windowStart` removes stale windows. The limit is per username
+and client IP, with no ceiling per account. Through the Next.js rewrite, `req.ip` (`trust proxy` 1) may be
+one shared Vercel hop, which makes the key effectively per username: anyone can then lock an account's
+logins for up to 15 minutes. A client that calls the public API origin directly is keyed by its own IP,
+so an attacker who rotates IPs gets 10 guesses per address.
 
 Privacy acknowledgment: the banner sets the readable cookie `he_privacy_ack` (1 year, `SameSite=Lax`).
 Register and login copy it to `User.privacyAckAt` when present, and set it when the account already has
@@ -104,7 +106,7 @@ src/middleware/       error handler (always JSON, never a stack), notFound, secr
                       requireAuth (401/403, loads the account), requireRole(role) (403 forbidden)
 src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile, LoginAttempt
 src/services/auth.ts  register (user + member profile, rerunnable), login (constant-cost), me, setActiveRole
-src/services/throttle.ts  login throttle: assertNotLocked, recordFailure (one atomic upsert), clearFailures
+src/services/throttle.ts  login throttle: reserveAttempt (one atomic upsert before the compare), clearFailures
 src/services/roles.ts setRoles (admin route: atomic conditional role write, lockout guards), applyAdminBootstrap (ADMIN_USERNAMES)
 src/routes/           one router per resource (health, spike, auth, users, admin); routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test
