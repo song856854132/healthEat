@@ -95,7 +95,7 @@ describe("login throttle (T4, design doc D7)", () => {
   });
 
   it("counts concurrent failures atomically, including the first one on a new key", async () => {
-    const key = throttleKey("racer", "203.0.113.7");
+    const key = throttleKey("racer", "10.0.0.7");
     await Promise.all(Array.from({ length: 12 }, () => recordFailure(key)));
     const doc = await LoginAttempt.findOne({ key }).lean();
     expect(doc?.count).toBe(12);
@@ -106,7 +106,7 @@ describe("login throttle (T4, design doc D7)", () => {
   });
 
   it("keys on username and client IP", () => {
-    expect(throttleKey(" Hung_Ju ", "203.0.113.7")).toBe("hung_ju|203.0.113.7");
+    expect(throttleKey(" Hung_Ju ", "10.0.0.7")).toBe("hung_ju|10.0.0.7");
     expect(throttleKey("hung_ju", undefined)).toBe("hung_ju|unknown");
   });
 });
