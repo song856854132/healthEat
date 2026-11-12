@@ -35,10 +35,8 @@ export async function assertNotLocked(key: string, now = new Date()): Promise<vo
     count: { $gte: MAX_LOGIN_FAILURES },
   }).lean();
   if (!attempt) return;
-  const retryAfter = Math.max(
-    1,
-    Math.ceil((attempt.windowStart.getTime() + WINDOW_MS - now.getTime()) / 1000),
-  );
+  // The query matched a live window, so at least 1 ms remains and this is at least 1 second.
+  const retryAfter = Math.ceil((attempt.windowStart.getTime() + WINDOW_MS - now.getTime()) / 1000);
   const minutes = Math.ceil(retryAfter / 60);
   throw new HttpError(
     429,
