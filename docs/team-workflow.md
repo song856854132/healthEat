@@ -99,7 +99,8 @@ that URI as a production secret (never paste it, never commit it).
   commit. Before tagging, run the staging checklist (grows with the phases): today, anonymous Home
   and `/api/health` through the proxy; since T9b, register one account and log in through the proxy
   (`POST /api/auth/register`, `GET /api/auth/me`); since T7, log in as `demo_admin` and see `admin` in
-  `GET /api/auth/me` `roles`; from phase 0 on, login as the three seeded roles, one text
+  `GET /api/auth/me` `roles` (a listed name cannot register: create the account before listing it,
+  README, Demo accounts); from phase 0 on, login as the three seeded roles, one text
   log, one dictionary edit with re-match, one admin suspend; from phase 2, one photo log.
   Rollback is `vercel rollback` or tagging the previous good commit again.
 
