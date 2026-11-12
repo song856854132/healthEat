@@ -1242,6 +1242,8 @@ As of 2026-11-07 the repo holds the monorepo scaffold, the verified proxy spike,
 
 T9a (2026-11-11) adds the reliability baseline (`apps/api/src/lib/env.ts`, `db.ts`, `http.ts`, the JSON error middleware, process hooks), the `User`, `MemberProfile`, `CuratorProfile` and `AdminProfile` models with `ROLES` and `ACCOUNT_STATUSES` in `packages/shared`, and the mongodb-memory-server test harness (`apps/api/test/setup.ts`). T9b (2026-11-11) adds the session store (`apps/api/src/lib/session.ts`), `bcryptjs` hashing, `requireAuth` and `requireRole`, the `/api/auth/*` routes, `PUT /api/users/me/active-role`, the shared auth schemas (`packages/shared/src/auth.ts`) and `e2e/auth.spec.ts`; T9 is complete. The P2 indexes for collections that do not exist yet land with those collections (T3, T6).
 
+T7 (2026-11-12) adds the `ADMIN_USERNAMES` bootstrap (`apps/api/src/lib/env.ts` `adminUsernames()`, applied at register and login), `PUT /api/admin/users/:username/roles` (`apps/api/src/routes/admin.ts`, `apps/api/src/services/roles.ts`, `RoleUpdateInput` in `packages/shared`): a grant upserts the role's profile, a revoke keeps it and resets `activeRole` to member, each change counts in the acting admin's `AdminProfile.grantsCount`, and an admin cannot remove their own `admin`. The deployed admin is the demo account `demo_admin`.
+
 ## Diagrams
 
 See Section 1 above for the request path and the log-and-alert flow. Role model:
@@ -1324,7 +1326,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Architecture — A2; Code Quality — C5 (R3-21, R3-25, R3-26, R3-27)
   - Files: apps/api/src/middleware/requireOwner.ts, apps/api/src/routes/logs.ts
   - Verify: supertest: other member's entry → 403; backfilled soy entry returns alerts[]; date after today → 400
-- [ ] **T7 (P1, human: ~1 hr / CC: ~10 min)** — apps/api — ADMIN_USERNAMES bootstrap; role grant upserts profile; revoke resets activeRole; /auth/me fields; privacy cookie mirror
+- [x] **T7 (P1, human: ~1 hr / CC: ~10 min)** — apps/api — ADMIN_USERNAMES bootstrap; role grant upserts profile; revoke resets activeRole; /auth/me fields; privacy cookie mirror
   - Surfaced by: Code Quality — C2 (D10), C5 (R3-5, R3-8, R3-9)
   - Files: apps/api/src/routes/auth.ts, apps/api/src/routes/admin.ts, apps/api/src/services/roles.ts
   - Verify: supertest: env-listed username logs in as admin; revoke → activeRole member; /auth/me includes privacyAckAt

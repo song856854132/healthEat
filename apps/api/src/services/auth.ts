@@ -4,6 +4,7 @@ import { DUMMY_HASH, hashPassword, verifyPassword } from "../lib/password.js";
 import { AdminProfile, CuratorProfile, MemberProfile, User } from "../models/index.js";
 import type { UserDoc } from "../models/User.js";
 import { accountBlocked } from "../middleware/auth.js";
+import { applyAdminBootstrap } from "./roles.js";
 
 // Indexes are built by Mongoose when the connection opens, but `bufferCommands: false` lets a create()
 // race the build; waiting on init() once makes a duplicate username a deterministic 409, never a
@@ -42,6 +43,7 @@ export async function register(
     await User.deleteOne({ _id: user._id }).catch(() => undefined);
     throw err;
   }
+  await applyAdminBootstrap(user);
   return user;
 }
 
@@ -55,6 +57,7 @@ export async function login(input: LoginInput): Promise<UserDoc> {
   if (!user || !ok) throw new HttpError(401, "invalid_credentials");
   const blocked = accountBlocked(user);
   if (blocked) throw blocked;
+  await applyAdminBootstrap(user);
   return user;
 }
 

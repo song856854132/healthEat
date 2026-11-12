@@ -4,12 +4,13 @@ Express 5 REST API, deployed as one Vercel function (zero-config Express; entry 
 
 ## Environment
 
-| Variable         | Required                                                           | Where it comes from                                                                                                                                    |
-| ---------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `MONGODB_URI`    | for every database route (health works without it)                 | one Atlas M0 cluster for all environments; Secret Manager `mongodb-uri-staging` (dev VM via `~/.env.staging`), Vercel env (preview, production)        |
-| `MONGODB_DB`     | on every Vercel deployment (local runs default to `healtheat_dev`) | selects the database on that cluster: `healtheat_prod`, `healtheat_staging` (set by the staging workflow), `healtheat_preview`, `healtheat_dev_<user>` |
-| `SESSION_SECRET` | on every Vercel deployment (preview, staging and production)       | signs the `he_sid` session cookie (express-session); Secret Manager `session-secret-staging`, Vercel env                                               |
-| `PORT`           | no (4000)                                                          | local only                                                                                                                                             |
+| Variable          | Required                                                           | Where it comes from                                                                                                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MONGODB_URI`     | for every database route (health works without it)                 | one Atlas M0 cluster for all environments; Secret Manager `mongodb-uri-staging` (dev VM via `~/.env.staging`), Vercel env (preview, production)                                                                                |
+| `MONGODB_DB`      | on every Vercel deployment (local runs default to `healtheat_dev`) | selects the database on that cluster: `healtheat_prod`, `healtheat_staging` (set by the staging workflow), `healtheat_preview`, `healtheat_dev_<user>`                                                                         |
+| `SESSION_SECRET`  | on every Vercel deployment (preview, staging and production)       | signs the `he_sid` session cookie (express-session); Secret Manager `session-secret-staging`, Vercel env                                                                                                                       |
+| `ADMIN_USERNAMES` | no                                                                 | comma-separated usernames that hold `admin` (design doc D10): granted at register and login, authoritative (a revoked listed admin regains it at the next login). Vercel env: `demo_admin` on preview (staging) and production |
+| `PORT`            | no (4000)                                                          | local only                                                                                                                                                                                                                     |
 
 Failure modes, all JSON:
 
@@ -27,6 +28,8 @@ Failure modes, all JSON:
 | `401 {error: "invalid_credentials"}`        | login with an unknown username or a wrong password; both cost one bcrypt compare and return this same body                                                |
 | `403 {error: "account_suspended"}`          | `status` is not `active`: login refused, and an existing session is destroyed on its next request                                                         |
 | `403 {error: "account_deletion_pending"}`   | `deletionPending` is set (T5 cascade in progress); same handling as suspended                                                                             |
+| `409 {error: "cannot_revoke_own_admin"}`    | an admin tried to remove `admin` from their own account (prevents locking every admin out)                                                                |
+| `404 {error: "not_found"}` (admin routes)   | `PUT /api/admin/users/:username/roles` named an unknown username                                                                                          |
 | `403 {error: "forbidden"}`                  | the account does not hold the role a route needs (`requireRole` checks `roles`, never `activeRole`), or asks for an active role it does not hold          |
 | `500 {error: "internal"}`                   | anything else; logged with its stack, `details` only on local runs                                                                                        |
 
@@ -39,13 +42,14 @@ responses are redacted on every deployment (`isDeployed()`), shown only on local
 
 ## Auth and sessions
 
-| Route                           | Body (zod schema in `@healtheat/shared`) | Answer                                                                                          |
-| ------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `POST /api/auth/register`       | `RegisterInput`                          | `201 MeResponse`; creates `User` + `MemberProfile` (timezone canonicalised), starts a session   |
-| `POST /api/auth/login`          | `LoginInput`                             | `200 MeResponse`; fresh session id on every login                                               |
-| `POST /api/auth/logout`         | none                                     | `200 {ok: true}`; destroys the session and clears `he_sid` (idempotent)                         |
-| `GET /api/auth/me`              | none                                     | `200 MeResponse` (`user` fields plus which role profiles exist)                                 |
-| `PUT /api/users/me/active-role` | `ActiveRoleInput`                        | `200 MeResponse`; the role must be in `roles` (else `403 forbidden`); mirrored into the session |
+| Route                                  | Body (zod schema in `@healtheat/shared`) | Answer                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/auth/register`              | `RegisterInput`                          | `201 MeResponse`; creates `User` + `MemberProfile` (timezone canonicalised), starts a session                                                                                                                                                                                                                                    |
+| `POST /api/auth/login`                 | `LoginInput`                             | `200 MeResponse`; fresh session id on every login                                                                                                                                                                                                                                                                                |
+| `POST /api/auth/logout`                | none                                     | `200 {ok: true}`; destroys the session and clears `he_sid` (idempotent)                                                                                                                                                                                                                                                          |
+| `GET /api/auth/me`                     | none                                     | `200 MeResponse` (`user` fields plus which role profiles exist)                                                                                                                                                                                                                                                                  |
+| `PUT /api/users/me/active-role`        | `ActiveRoleInput`                        | `200 MeResponse`; the role must be in `roles` (else `403 forbidden`); mirrored into the session                                                                                                                                                                                                                                  |
+| `PUT /api/admin/users/:username/roles` | `RoleUpdateInput` (admin only)           | `200 MeResponse` of the target; the complete role set (must include `member`). A grant upserts the role's empty profile; a revoke keeps the profile and resets `activeRole` to `member` if it was active (the target's session follows on its next request). Each change counts in the acting admin's `AdminProfile.grantsCount` |
 
 Sessions: `express-session` + `connect-mongo`, collection `sessions` in the same database, 14-day TTL,
 rolling, written at most once a day per session (`touchAfter`). Cookie `he_sid`: `HttpOnly`, `SameSite=Lax`,
@@ -87,6 +91,7 @@ src/middleware/       error handler (always JSON, never a stack), notFound, secr
                       requireAuth (401/403, loads the account), requireRole(role) (403 forbidden)
 src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile
 src/services/auth.ts  register (user + member profile, rerunnable), login (constant-cost), me, setActiveRole
-src/routes/           one router per resource (health, spike, auth, users); routers never touch fetch or process.env
+src/services/roles.ts grantRole / revokeRole / setRoles (admin route), applyAdminBootstrap (ADMIN_USERNAMES)
+src/routes/           one router per resource (health, spike, auth, users, admin); routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test
 ```

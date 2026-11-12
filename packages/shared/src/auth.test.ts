@@ -3,6 +3,7 @@ import {
   ActiveRoleInput,
   LoginInput,
   MeResponse,
+  RoleUpdateInput,
   RegisterInput,
   USERNAME_PATTERN,
   canonicalTimeZone,
@@ -80,5 +81,17 @@ describe("LoginInput, ActiveRoleInput, MeResponse", () => {
     expect(
       MeResponse.safeParse({ user: { username: "x" }, profiles: { member: true } }).success,
     ).toBe(false);
+  });
+});
+
+describe("RoleUpdateInput", () => {
+  it("requires member, rejects repeats and unknown roles", () => {
+    expect(RoleUpdateInput.parse({ roles: ["member", "admin"] })).toEqual({
+      roles: ["member", "admin"],
+    });
+    expect(RoleUpdateInput.safeParse({ roles: ["admin"] }).success).toBe(false);
+    expect(RoleUpdateInput.safeParse({ roles: ["member", "member"] }).success).toBe(false);
+    expect(RoleUpdateInput.safeParse({ roles: ["member", "coach"] }).success).toBe(false);
+    expect(RoleUpdateInput.safeParse({ roles: [] }).success).toBe(false);
   });
 });

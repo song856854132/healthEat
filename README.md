@@ -51,6 +51,12 @@ Vercel projects so previews are reachable by Playwright and by the web app's `/a
 metadata SSH keys, stopped nightly at 01:00 New York time; start it with
 `gcloud compute instances start instance-20260914-165802 --zone us-central1-a`.
 
+Demo accounts: the admin is `demo_admin`, listed in the API project's `ADMIN_USERNAMES` on preview
+(which staging uses) and production. Whoever registers that username first on an environment becomes
+admin, so the owner registers it right after the value is set there (staging after a merge, production
+after a release tag). Other roles are granted from that account through
+`PUT /api/admin/users/:username/roles` (`apps/api/README.md`).
+
 ## Pipeline status
 
 The first pull request on this repo exercised `ci`, `preview` (Vercel previews + Playwright through the
