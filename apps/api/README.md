@@ -29,6 +29,8 @@ Failure modes, all JSON:
 | `403 {error: "account_suspended"}`          | `status` is not `active`: login refused, and an existing session is destroyed on its next request                                                         |
 | `403 {error: "account_deletion_pending"}`   | `deletionPending` is set (T5 cascade in progress); same handling as suspended                                                                             |
 | `409 {error: "cannot_revoke_own_admin"}`    | an admin tried to remove `admin` from their own account (prevents locking every admin out)                                                                |
+| `409 {error: "last_admin"}`                 | the change would leave no admin at all (checked before and after the write, so two admins demoting each other cannot both win)                            |
+| `409 {error: "roles_changed"}`              | another admin changed the same account's roles between this request's read and write; reload and retry                                                    |
 | `404 {error: "not_found"}` (admin routes)   | `PUT /api/admin/users/:username/roles` named an unknown username                                                                                          |
 | `403 {error: "forbidden"}`                  | the account does not hold the role a route needs (`requireRole` checks `roles`, never `activeRole`), or asks for an active role it does not hold          |
 | `500 {error: "internal"}`                   | anything else; logged with its stack, `details` only on local runs                                                                                        |

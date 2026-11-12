@@ -52,9 +52,11 @@ metadata SSH keys, stopped nightly at 01:00 New York time; start it with
 `gcloud compute instances start instance-20260914-165802 --zone us-central1-a`.
 
 Demo accounts: the admin is `demo_admin`, listed in the API project's `ADMIN_USERNAMES` on preview
-(which staging uses) and production. Whoever registers that username first on an environment becomes
-admin, so the owner registers it right after the value is set there (staging after a merge, production
-after a release tag). Other roles are granted from that account through
+(which staging uses) and production. Registration is open and the bootstrap grants `admin` to a listed
+username, so a listed name must never be free: on each database (`healtheat_preview`,
+`healtheat_staging`, `healtheat_prod`) the owner first registers `demo_admin` as an ordinary member,
+then adds the value to that environment; the account becomes admin at its next login. After a database
+reset, register it again before anyone else can. Other roles are granted from that account through
 `PUT /api/admin/users/:username/roles` (`apps/api/README.md`).
 
 ## Pipeline status

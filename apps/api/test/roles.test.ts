@@ -3,6 +3,7 @@ import request from "supertest";
 import mongoose from "mongoose";
 import app from "../src/app.js";
 import { AdminProfile, CuratorProfile, User } from "../src/models/index.js";
+import { setRoles } from "../src/services/roles.js";
 
 const password = "correct horse battery";
 const account = (username: string) => ({
@@ -203,5 +204,50 @@ describe("PUT /api/admin/users/:username/roles: admin revocation and lookup", ()
       .send({ roles: ["member", "curator"] })
       .expect(200);
     expect(res.body.user).toMatchObject({ username: "cara", roles: ["member", "curator"] });
+  });
+});
+
+describe("role writes under concurrency (setRoles)", () => {
+  // Value: protects=a role write based on a stale read is refused (409 roles_changed) instead of
+  //   duplicating a role or overwriting another admin's change; fails_when=setRoles goes back to
+  //   load-mutate-save or drops the roles filter from its conditional update; why_new=the route tests
+  //   only ever act on fresh documents; seam=none; no_claim=true parallel requests (two stale loads are
+  //   the deterministic stand-in for the race)
+  it("a write from a stale read answers 409 roles_changed and leaves one copy of each role", async () => {
+    await registerAgent("demo_admin");
+    await registerAgent("cara");
+    const actor = (await User.findOne({ username: "demo_admin" }))!;
+    const staleA = (await User.findOne({ username: "cara" }))!;
+    const staleB = (await User.findOne({ username: "cara" }))!;
+    await setRoles(actor, staleA, ["member", "curator"]);
+    await expect(setRoles(actor, staleB, ["member", "curator"])).rejects.toMatchObject({
+      status: 409,
+      code: "roles_changed",
+    });
+    expect((await User.findOne({ username: "cara" }))!.roles).toEqual(["member", "curator"]);
+  });
+
+  // Value: protects=no change may leave the deployment without an admin, even when the acting admin was
+  //   demoted after loading; fails_when=the last_admin count is removed or ignores the target;
+  //   why_new=self-revoke is the only lockout the route tests reach; seam=none; no_claim=the post-write
+  //   compensation for two truly simultaneous demotions (needs interleaving the test cannot force)
+  it("refuses to remove the last admin (409 last_admin)", async () => {
+    await registerAgent("demo_admin");
+    const { agent: dana } = await registerAgent("dana");
+    const admin = (await User.findOne({ username: "demo_admin" }))!;
+    const danaDoc = (await User.findOne({ username: "dana" }))!;
+    await setRoles(admin, danaDoc, ["member", "admin"]);
+    const staleDana = (await User.findOne({ username: "dana" }))!;
+    // demo_admin is demoted elsewhere (e.g. removed from the list and revoked) before dana acts.
+    await User.updateOne({ username: "demo_admin" }, { roles: ["member"], activeRole: "member" });
+    const target = (await User.findOne({ username: "demo_admin" }))!;
+    // dana is now the only admin; a request revoking dana's own admin is refused by the self rule,
+    // and one demoting dana from a stale admin actor must be refused by the last-admin rule.
+    await expect(setRoles(target, staleDana, ["member"])).rejects.toMatchObject({
+      status: 409,
+      code: "last_admin",
+    });
+    expect((await User.findOne({ username: "dana" }))!.roles).toContain("admin");
+    await dana.get("/api/auth/me").expect(200);
   });
 });
