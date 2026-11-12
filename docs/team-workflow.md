@@ -29,12 +29,12 @@ only ever push branches and open PRs; CI does every deploy with secrets nobody t
 
 ## 1. Environments
 
-| Tier       | Where                                                                                                                    | Trigger                                   | Data                                                                                                                                                  | Purpose                                                                                                                                         |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dev        | Shared GCP VM (one Linux user each) or your laptop                                                                       | you                                       | `mongodb-memory-server` for tests; the shared Atlas cluster, db `healtheat_dev_<username>` (`MONGODB_DB`, written by `user-setup.sh`) for manual runs | Claude Code + gstack sessions in tmux; identical toolchain for both people                                                                      |
-| PR preview | Vercel preview deploys (api, then web), created by CI                                                                    | every PR push                             | shared Atlas cluster, db `healtheat_preview` (API project's preview env `MONGODB_DB`)                                                                 | Review a change on the real production platform; Playwright e2e runs here                                                                       |
-| Staging    | Vercel non-production deploy of `main`, aliased to `healtheat-staging.vercel.app` and `healtheat-api-staging.vercel.app` | merge to `main`                           | shared Atlas cluster, db `healtheat_staging` (`staging.yml` passes `MONGODB_DB=healtheat_staging`; since T9a)                                         | Long-lived integration environment; seeded users for the three roles arrive with T7/T11; demo rehearsal; the URL the teammate opens after merge |
-| Production | Vercel production deploy (same two projects)                                                                             | git tag `v*` pushed by `/ship` or by hand | shared Atlas cluster, db `healtheat_prod` (production env `MONGODB_DB`)                                                                               | The graded URL                                                                                                                                  |
+| Tier       | Where                                                                                                                    | Trigger                                   | Data                                                                                                                                                  | Purpose                                                                                                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Dev        | Shared GCP VM (one Linux user each) or your laptop                                                                       | you                                       | `mongodb-memory-server` for tests; the shared Atlas cluster, db `healtheat_dev_<username>` (`MONGODB_DB`, written by `user-setup.sh`) for manual runs | Claude Code + gstack sessions in tmux; identical toolchain for both people                                                                                                                                                     |
+| PR preview | Vercel preview deploys (api, then web), created by CI                                                                    | every PR push                             | shared Atlas cluster, db `healtheat_preview` (API project's preview env `MONGODB_DB`)                                                                 | Review a change on the real production platform; Playwright e2e runs here                                                                                                                                                      |
+| Staging    | Vercel non-production deploy of `main`, aliased to `healtheat-staging.vercel.app` and `healtheat-api-staging.vercel.app` | merge to `main`                           | shared Atlas cluster, db `healtheat_staging` (`staging.yml` passes `MONGODB_DB=healtheat_staging`; since T9a)                                         | Long-lived integration environment; demo admin `demo_admin` since T7 (README, Demo accounts), member and curator demo accounts by hand until a role-account seed lands; demo rehearsal; the URL the teammate opens after merge |
+| Production | Vercel production deploy (same two projects)                                                                             | git tag `v*` pushed by `/ship` or by hand | shared Atlas cluster, db `healtheat_prod` (production env `MONGODB_DB`)                                                                               | The graded URL                                                                                                                                                                                                                 |
 
 Because every tier above Dev is Vercel, the two Vercel-specific risks in the plan
 (T1 proxy spike: `Set-Cookie` through the Next.js rewrite; the 300 s `maxDuration` on the
@@ -91,14 +91,15 @@ that URI as a production secret (never paste it, never commit it).
      (`anthropics/claude-code-action`) also reviews every PR automatically and answers
      `@claude` comments; its findings are advice, the human approval is the gate.
   6. Squash-merge. CI redeploys staging from `main` and re-points the aliases.
-  7. Open `healtheat-staging.vercel.app` and check the feature in context (seeded role accounts exist once T7/T11 land).
+  7. Open `healtheat-staging.vercel.app` and check the feature in context (the demo admin `demo_admin` exists since T7; README, Demo accounts).
 - Release to production (owner): bump VERSION and CHANGELOG on `main`, then
   `git tag vX.Y.Z && git push origin vX.Y.Z`. The `release` workflow deploys both projects with `--prod`.
   Tags are pushed by the owner, from `main` only (`release.yml` refuses a tag whose commit is not
   on `main`). Feature PRs never bump VERSION or CHANGELOG; the owner does that in the release
   commit. Before tagging, run the staging checklist (grows with the phases): today, anonymous Home
   and `/api/health` through the proxy; since T9b, register one account and log in through the proxy
-  (`POST /api/auth/register`, `GET /api/auth/me`); from phase 0 on, login as the three seeded roles, one text
+  (`POST /api/auth/register`, `GET /api/auth/me`); since T7, log in as `demo_admin` and see `admin` in
+  `GET /api/auth/me` `roles`; from phase 0 on, login as the three seeded roles, one text
   log, one dictionary edit with re-match, one admin suspend; from phase 2, one photo log.
   Rollback is `vercel rollback` or tagging the previous good commit again.
 
@@ -119,7 +120,8 @@ that URI as a production secret (never paste it, never commit it).
                       -> vercel deploy web -> vercel alias set <url> healtheat-staging.vercel.app
                       -> smoke on the aliases: GET /api/health/db reports db connected and dbName healtheat_staging,
                          GET /api/health reports secrets ok, GET /api/health through the web proxy is ok, GET / returns 200
-                      -> (from T7/T11) seed script (idempotent): three role accounts, dictionary, sample logs
+                      -> (planned; no plan task owns it yet: T7 shipped the admin bootstrap without a seed, T11 seeds only
+                         the allergen dictionary data) seed script (idempotent): three role accounts, dictionary, sample logs
   release.yml   on: push tags v*
                 jobs: vercel deploy --prod api -> vercel deploy --prod web
                       -> smoke on production URLs: GET /api/health reports secrets ok, GET /api/health/db reports

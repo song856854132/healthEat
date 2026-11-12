@@ -93,7 +93,7 @@ src/middleware/       error handler (always JSON, never a stack), notFound, secr
                       requireAuth (401/403, loads the account), requireRole(role) (403 forbidden)
 src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile
 src/services/auth.ts  register (user + member profile, rerunnable), login (constant-cost), me, setActiveRole
-src/services/roles.ts grantRole / revokeRole / setRoles (admin route), applyAdminBootstrap (ADMIN_USERNAMES)
+src/services/roles.ts setRoles (admin route: atomic conditional role write, lockout guards), applyAdminBootstrap (ADMIN_USERNAMES)
 src/routes/           one router per resource (health, spike, auth, users, admin); routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test
 ```
