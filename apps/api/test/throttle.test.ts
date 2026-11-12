@@ -1,0 +1,112 @@
+import { describe, expect, it } from "vitest";
+import request from "supertest";
+import app from "../src/app.js";
+import { LoginAttempt } from "../src/models/index.js";
+import {
+  MAX_LOGIN_FAILURES,
+  assertNotLocked,
+  recordFailure,
+  throttleKey,
+} from "../src/services/throttle.js";
+
+const account = {
+  username: "throttled",
+  email: "throttled@example.com",
+  password: "correct horse battery",
+  timezone: "Asia/Taipei",
+};
+const wrong = "wrong horse battery";
+
+const register = () => request(app).post("/api/auth/register").send(account).expect(201);
+const login = (username: string, password: string) =>
+  request(app).post("/api/auth/login").send({ username, password });
+
+async function fail(times: number, username = account.username) {
+  for (let i = 0; i < times; i++) await login(username, wrong).expect(401);
+}
+
+describe("login throttle (T4, design doc D7)", () => {
+  it("answers 429 with Retry-After on the attempt after 10 failures, even with the right password", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES);
+    const locked = await login(account.username, account.password).expect(429);
+    expect(locked.body.error).toBe("too_many_attempts");
+    expect(locked.body.details).toBe("too many attempts, try again in 15 minutes");
+    const retryAfter = Number(locked.headers["retry-after"]);
+    expect(retryAfter).toBeGreaterThan(14 * 60);
+    expect(retryAfter).toBeLessThanOrEqual(15 * 60);
+    expect(locked.headers["set-cookie"]).toBeUndefined();
+    await login(account.username, wrong).expect(429);
+  });
+
+  it("lets the 10th failure through as the generic 401", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES - 1);
+    const tenth = await login(account.username, wrong).expect(401);
+    expect(tenth.body.error).toBe("invalid_credentials");
+  });
+
+  it("resets the count after a successful login", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES - 1);
+    await login(account.username, account.password).expect(200);
+    expect(await LoginAttempt.countDocuments()).toBe(0);
+    await fail(MAX_LOGIN_FAILURES - 1);
+    await login(account.username, account.password).expect(200);
+  });
+
+  it("matches the username case-insensitively, like login itself", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES, "THROTTLED");
+    await login(" throttled ", account.password).expect(429);
+  });
+
+  it("throttles unknown usernames the same way, so a 429 says nothing about which accounts exist", async () => {
+    await fail(MAX_LOGIN_FAILURES, "nobody_here");
+    const locked = await login("nobody_here", wrong).expect(429);
+    expect(locked.body.error).toBe("too_many_attempts");
+  });
+
+  it("keeps other usernames unaffected", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES, "someone_else");
+    await login(account.username, account.password).expect(200);
+  });
+
+  it("starts a new window once 15 minutes have passed since the first failure", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES);
+    // The TTL monitor may not have run yet; the service must ignore the stale window on its own.
+    await LoginAttempt.updateMany(
+      {},
+      { $set: { windowStart: new Date(Date.now() - 16 * 60_000) } },
+    );
+    await login(account.username, wrong).expect(401);
+    const doc = await LoginAttempt.findOne().lean();
+    expect(doc?.count).toBe(1);
+    await login(account.username, account.password).expect(200);
+  });
+
+  it("stores the window with a 15-minute TTL index and a unique key", async () => {
+    await recordFailure(throttleKey("indexcheck", "127.0.0.1"));
+    const indexes = await LoginAttempt.collection.indexes();
+    expect(indexes.find((i) => i.key.windowStart === 1)?.expireAfterSeconds).toBe(900);
+    expect(indexes.find((i) => i.key.key === 1)?.unique).toBe(true);
+  });
+
+  it("counts concurrent failures atomically, including the first one on a new key", async () => {
+    const key = throttleKey("racer", "203.0.113.7");
+    await Promise.all(Array.from({ length: 12 }, () => recordFailure(key)));
+    const doc = await LoginAttempt.findOne({ key }).lean();
+    expect(doc?.count).toBe(12);
+    await expect(assertNotLocked(key)).rejects.toMatchObject({
+      status: 429,
+      code: "too_many_attempts",
+    });
+  });
+
+  it("keys on username and client IP", () => {
+    expect(throttleKey(" Hung_Ju ", "203.0.113.7")).toBe("hung_ju|203.0.113.7");
+    expect(throttleKey("hung_ju", undefined)).toBe("hung_ju|unknown");
+  });
+});
