@@ -8,7 +8,7 @@ Express 5 REST API, deployed as one Vercel function (zero-config Express; entry 
 | ---------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `MONGODB_URI`    | for every database route (health works without it)                 | one Atlas M0 cluster for all environments; Secret Manager `mongodb-uri-staging` (dev VM via `~/.env.staging`), Vercel env (preview, production)        |
 | `MONGODB_DB`     | on every Vercel deployment (local runs default to `healtheat_dev`) | selects the database on that cluster: `healtheat_prod`, `healtheat_staging` (set by the staging workflow), `healtheat_preview`, `healtheat_dev_<user>` |
-| `SESSION_SECRET` | on every Vercel deployment (preview, staging and production)       | Secret Manager `session-secret-staging`, Vercel env                                                                                                    |
+| `SESSION_SECRET` | on every Vercel deployment (preview, staging and production)       | signs the `he_sid` session cookie (express-session); Secret Manager `session-secret-staging`, Vercel env                                               |
 | `PORT`           | no (4000)                                                          | local only                                                                                                                                             |
 
 Failure modes, all JSON:
@@ -23,6 +23,11 @@ Failure modes, all JSON:
 | `400 {error: "validation_error", details}`  | zod or Mongoose validation failed; `details` lists the offending paths                                                                                    |
 | `400 {error: "invalid_id"}`                 | a malformed ObjectId (Mongoose `CastError`)                                                                                                               |
 | `409 {error: "conflict", details.fields}`   | duplicate key (unique index), for example a taken username or email                                                                                       |
+| `401 {error: "unauthenticated"}`            | no session cookie, or a session whose account no longer exists (the session is destroyed)                                                                 |
+| `401 {error: "invalid_credentials"}`        | login with an unknown username or a wrong password; both cost one bcrypt compare and return this same body                                                |
+| `403 {error: "account_suspended"}`          | `status` is not `active`: login refused, and an existing session is destroyed on its next request                                                         |
+| `403 {error: "account_deletion_pending"}`   | `deletionPending` is set (T5 cascade in progress); same handling as suspended                                                                             |
+| `403 {error: "forbidden"}`                  | the account does not hold the role a route needs (`requireRole` checks `roles`, never `activeRole`), or asks for an active role it does not hold          |
 | `500 {error: "internal"}`                   | anything else; logged with its stack, `details` only on local runs                                                                                        |
 
 `GET /api/health` never forces a connection and reports `db` (`connected`, `connecting`, `disconnected`,
@@ -31,6 +36,31 @@ Failure modes, all JSON:
 connection state is `connected` (a cached promise that survived a drop never yields a 200); the staging
 and release smokes check it together with `secrets: "ok"` on `/api/health`. Details on 5xx
 responses are redacted on every deployment (`isDeployed()`), shown only on local runs.
+
+## Auth and sessions
+
+| Route                           | Body (zod schema in `@healtheat/shared`) | Answer                                                                                          |
+| ------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `POST /api/auth/register`       | `RegisterInput`                          | `201 MeResponse`; creates `User` + `MemberProfile` (timezone canonicalised), starts a session   |
+| `POST /api/auth/login`          | `LoginInput`                             | `200 MeResponse`; fresh session id on every login                                               |
+| `POST /api/auth/logout`         | none                                     | `200 {ok: true}`; destroys the session and clears `he_sid` (idempotent)                         |
+| `GET /api/auth/me`              | none                                     | `200 MeResponse` (`user` fields plus which role profiles exist)                                 |
+| `PUT /api/users/me/active-role` | `ActiveRoleInput`                        | `200 MeResponse`; the role must be in `roles` (else `403 forbidden`); mirrored into the session |
+
+Sessions: `express-session` + `connect-mongo`, collection `sessions` in the same database, 14-day TTL,
+rolling, written at most once a day per session (`touchAfter`). Cookie `he_sid`: `HttpOnly`, `SameSite=Lax`,
+`Secure` on every deployment, no domain (same origin through the Next.js rewrite). Session data is
+`{userId, activeRole}`, stored as a document (not a JSON string) so T5 can delete a user's sessions by
+`session.userId`. Passwords: `bcryptjs` cost 12 (pure JavaScript: no native module to build for the
+function's architecture); never returned (`passwordHash` has `select: false`).
+
+Privacy acknowledgment: the banner sets the readable cookie `he_privacy_ack` (1 year, `SameSite=Lax`).
+Register and login copy it to `User.privacyAckAt` when present, and set it when the account already has
+`privacyAckAt` (new device). `MeResponse.user.privacyAckAt` tells the web whether to show the banner.
+
+Session-backed routers are mounted as `requireDb, sessionMiddleware(), router`: a database that does not
+answer gives `503 database_unavailable` before the session store is touched. `/api/health` and the spike
+routes never open a session.
 
 ## Run and test
 
@@ -50,9 +80,13 @@ src/app.ts            Express app (deployable entry); src/index.ts adds listen f
 src/lib/env.ts        the only reader of process.env (zod-validated)
 src/lib/db.ts         connectDb (cached on globalThis), dbState, requireDb
 src/lib/http.ts       HttpError, asyncHandler
+src/lib/session.ts    express-session + connect-mongo (cookie he_sid, collection sessions), built behind requireDb
+src/lib/password.ts   bcryptjs cost 12: hashPassword, verifyPassword, DUMMY_HASH for unknown usernames
 src/lib/process.ts    unhandledRejection (log, keep serving) and uncaughtException (log, exit) hooks
-src/middleware/       error handler (always JSON, never a stack), notFound, secretsGuard (503 secret_unconfigured)
+src/middleware/       error handler (always JSON, never a stack), notFound, secretsGuard (503 secret_unconfigured),
+                      requireAuth (401/403, loads the account), requireRole(role) (403 forbidden)
 src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile
-src/routes/           one router per resource; routers never touch fetch or process.env
+src/services/auth.ts  register (user + member profile, rerunnable), login (constant-cost), me, setActiveRole
+src/routes/           one router per resource (health, spike, auth, users); routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test
 ```

@@ -15,3 +15,6 @@ test-results/
 !.gstack/pregate.json
 next-env.d.ts
 *.tsbuildinfo
+
+# Next.js 16 writes this agent-guidance file on every `next dev`; generated, not ours
+apps/web/AGENTS.md

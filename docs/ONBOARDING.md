@@ -96,7 +96,8 @@ Inside Claude Code:
 1. Read the task's entry in the design doc (Implementation Tasks) and the matching GitHub issue.
 2. Build. Run `/verify` before pushing (same as `npm run typecheck && npm run lint && npm run format && npm test`).
    For a manual check run `npm run dev:api` and `npm run dev:web` in two tmux panes, then open
-   http://localhost:3000. `npm run e2e` expects those two servers to be running.
+   http://localhost:3000. `npm run e2e` needs neither: without `BASE_URL` it starts its own stack
+   (in-memory MongoDB, api on 4100, web on 3100 so a running dev stack is never reused; `scripts/e2e/local-stack.mjs`) and stops it afterwards.
 3. `/ship` opens the PR. If `/ship` proposes a VERSION or CHANGELOG bump, decline it: feature
    PRs do not bump versions; the owner cuts releases.
 4. The PR body follows `.github/PULL_REQUEST_TEMPLATE.md`: the T-number, `Closes #<issue>`,

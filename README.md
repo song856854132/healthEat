@@ -18,6 +18,7 @@ apps/api          Express 5 REST API (Vercel zero-config Express; src/app.ts exp
 packages/shared   zod schemas and TypeScript types shared by both.
 e2e/              Playwright acceptance tests, run against Vercel preview URLs in CI.
 scripts/vm/       Shared GCP dev VM provisioning (bootstrap.sh) and per-user setup (user-setup.sh).
+scripts/e2e/      local-stack.mjs: in-memory MongoDB, api on 4100, web on 3100; Playwright starts it when BASE_URL is unset.
 .github/workflows ci, preview, staging, release, claude (+ reusable _vercel-deploy).
 ```
 
@@ -32,7 +33,7 @@ set -a; . .env.example; set +a   # or on the VM: set -a; . ~/.env.staging; set +
 npm run dev:api                 # http://localhost:4000/api/health
 npm run dev:web                 # http://localhost:3000  (API_ORIGIN=http://localhost:4000)
 npm test                        # unit + API tests (vitest, supertest); API tests start an in-memory MongoDB (first run downloads a ~100 MB binary)
-npm run e2e                     # Playwright against BASE_URL (default http://localhost:3000); start dev:api and dev:web first
+npm run e2e                     # Playwright; without BASE_URL it starts a local stack (in-memory MongoDB, api, web) itself
 ```
 
 ## Environments

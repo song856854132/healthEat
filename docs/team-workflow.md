@@ -97,7 +97,8 @@ that URI as a production secret (never paste it, never commit it).
   Tags are pushed by the owner, from `main` only (`release.yml` refuses a tag whose commit is not
   on `main`). Feature PRs never bump VERSION or CHANGELOG; the owner does that in the release
   commit. Before tagging, run the staging checklist (grows with the phases): today, anonymous Home
-  and `/api/health` through the proxy; from phase 0 on, login as the three seeded roles, one text
+  and `/api/health` through the proxy; since T9b, register one account and log in through the proxy
+  (`POST /api/auth/register`, `GET /api/auth/me`); from phase 0 on, login as the three seeded roles, one text
   log, one dictionary edit with re-match, one admin suspend; from phase 2, one photo log.
   Rollback is `vercel rollback` or tagging the previous good commit again.
 
@@ -146,7 +147,8 @@ Notes:
   own Git integration never deploys; CI is the only deployer. This replaces plan
   decision D8's "preview branch alias" with aliases CI controls explicitly.
 - Playwright on PRs (plan T14/T17) runs against the preview URL, not localhost, so the
-  proxy cookie path is exercised on every PR.
+  proxy cookie path is exercised on every PR. Locally (and in the gstack pregate) the same
+  specs run against `scripts/e2e/local-stack.mjs`, which Playwright starts when `BASE_URL` is unset.
 - Hobby limits worth knowing: 100 deployments per day across the account, and
   `vercel.app` aliases are free. Two deploys per PR push plus two per merge stays far
   below that for two people.
@@ -193,8 +195,9 @@ Three mitigations, cheapest first:
 1. Reproduce on the VM: run both apps locally against `healtheat_staging` (read-only
    mindset; use `healtheat_dev_<username>` for anything that writes).
 2. The API writes every caught 5xx to an `ErrorLog` collection (`{at, route, status,
-  message, requestId}`, TTL 14 days) that either person can read with `mongosh`. Add this
-   to T9 (reliability baseline) as a one-line extension of the error middleware.
+  message, requestId}`, TTL 14 days) that either person can read with `mongosh`. Not part of
+   T9 as shipped (2026-11-11); still a one-line extension of the error middleware
+   (`apps/api/src/middleware/error.ts`) when it is wanted.
 3. If that is not enough, add a free log integration (for example Axiom) from the Vercel
    integrations page; integrations are allowed on Hobby.
 
