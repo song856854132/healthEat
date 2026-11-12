@@ -80,7 +80,11 @@ export async function setRoles(actor: UserDoc, target: UserDoc, roles: Role[]): 
   return changes;
 }
 
-/** D10 bootstrap: a username listed in ADMIN_USERNAMES holds `admin`, granted at register and login. */
+/**
+ * D10 bootstrap: a username listed in ADMIN_USERNAMES holds `admin`, granted at login. Registration of a
+ * listed username is refused (services/auth.ts register), so only an account that existed before it was
+ * listed can ever receive admin this way.
+ */
 export async function applyAdminBootstrap(user: UserDoc): Promise<void> {
   if (!adminUsernames().has(user.username)) return;
   // Atomic: a concurrent bootstrap or grant cannot add `admin` twice.

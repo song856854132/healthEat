@@ -5,6 +5,7 @@ import { AdminProfile, CuratorProfile, MemberProfile, User } from "../models/ind
 import type { UserDoc } from "../models/User.js";
 import { accountBlocked } from "../middleware/auth.js";
 import { applyAdminBootstrap } from "./roles.js";
+import { adminUsernames } from "../lib/env.js";
 
 // Indexes are built by Mongoose when the connection opens, but `bufferCommands: false` lets a create()
 // race the build; waiting on init() once makes a duplicate username a deterministic 409, never a
@@ -29,6 +30,9 @@ export async function register(
   input: RegisterInput,
   privacyAcknowledged: boolean,
 ): Promise<UserDoc> {
+  // A username listed in ADMIN_USERNAMES can never be claimed through open registration (it would
+  // become admin at its first login). The owner creates the account before listing it (README).
+  if (adminUsernames().has(input.username)) throw new HttpError(409, "username_reserved");
   await ensureIndexes();
   const passwordHash = await hashPassword(input.password);
   const user = await User.create({
@@ -43,7 +47,6 @@ export async function register(
     await User.deleteOne({ _id: user._id }).catch(() => undefined);
     throw err;
   }
-  await applyAdminBootstrap(user);
   return user;
 }
 

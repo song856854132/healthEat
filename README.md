@@ -51,12 +51,11 @@ Vercel projects so previews are reachable by Playwright and by the web app's `/a
 metadata SSH keys, stopped nightly at 01:00 New York time; start it with
 `gcloud compute instances start instance-20260914-165802 --zone us-central1-a`.
 
-Demo accounts: the admin is `demo_admin`, listed in the API project's `ADMIN_USERNAMES` on preview
-(which staging uses) and production. Registration is open and the bootstrap grants `admin` to a listed
-username, so a listed name must never be free: on each database (`healtheat_preview`,
-`healtheat_staging`, `healtheat_prod`) the owner first registers `demo_admin` as an ordinary member,
-then adds the value to that environment; the account becomes admin at its next login. After a database
-reset, register it again before anyone else can. Other roles are granted from that account through
+Demo accounts: the admin account is listed in the API project's `ADMIN_USERNAMES` on preview (which
+staging uses) and production. A listed username cannot be registered (`409 username_reserved`), so on
+each database the owner first registers the account as an ordinary member, then adds it to the list;
+it becomes admin at its next login. After a database reset: remove it from the list, register it,
+list it again. Other roles are granted from that account through
 `PUT /api/admin/users/:username/roles` (`apps/api/README.md`).
 
 ## Pipeline status

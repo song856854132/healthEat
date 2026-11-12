@@ -15,7 +15,19 @@ const account = (username: string) => ({
 
 async function registerAgent(username: string) {
   const agent = request.agent(app);
-  const res = await agent.post("/api/auth/register").send(account(username)).expect(201);
+  // A listed username cannot register (409 username_reserved): create it unlisted, then list it and log
+  // in, which is the owner's documented procedure.
+  const listed = process.env.ADMIN_USERNAMES;
+  const isListed = (listed ?? "")
+    .split(",")
+    .map((u) => u.trim().toLowerCase())
+    .includes(username);
+  if (isListed) delete process.env.ADMIN_USERNAMES;
+  let res = await agent.post("/api/auth/register").send(account(username)).expect(201);
+  if (isListed) {
+    process.env.ADMIN_USERNAMES = listed;
+    res = await agent.post("/api/auth/login").send({ username, password }).expect(200);
+  }
   return { agent, res };
 }
 
@@ -27,7 +39,21 @@ afterEach(() => {
 });
 
 describe("ADMIN_USERNAMES bootstrap (D10)", () => {
-  it("a listed username registers as admin with an AdminProfile; others stay member", async () => {
+  // Value: protects=a listed ADMIN_USERNAMES name can never be claimed through open registration (the
+  //   squatting path to admin); fails_when=register() stops checking the list or grants admin itself;
+  //   why_new=the earlier bootstrap test registered the listed name directly; seam=none;
+  //   no_claim=accounts created by other means (none exist before T7's seed)
+  it("a listed username cannot register (409 username_reserved) and nothing is created", async () => {
+    const res = await request(app)
+      .post("/api/auth/register")
+      .send(account("demo_admin"))
+      .expect(409);
+    expect(res.body).toEqual({ error: "username_reserved" });
+    expect(await User.countDocuments({ username: "demo_admin" })).toBe(0);
+    expect(await AdminProfile.countDocuments()).toBe(0);
+  });
+
+  it("an existing account becomes admin with an AdminProfile at its next login once listed; others stay member", async () => {
     const { res } = await registerAgent("demo_admin");
     expect(res.body.user.roles).toEqual(["member", "admin"]);
     expect(res.body.profiles).toEqual({ member: true, curator: false, admin: true });

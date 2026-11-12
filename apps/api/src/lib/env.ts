@@ -81,7 +81,7 @@ export function deploymentEnv(): "local" | "development" | "preview" | "producti
 }
 
 /**
- * Usernames that get the admin role at register and login (D10). Set per Vercel environment; the list
+ * Usernames that get the admin role at login (D10); registering one is refused (409 username_reserved). Set per Vercel environment; the list
  * is authoritative, so revoking `admin` from a listed username is undone at its next login.
  */
 export function adminUsernames(): Set<string> {
