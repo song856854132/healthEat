@@ -161,3 +161,47 @@ describe("PUT /api/admin/users/:username/roles", () => {
     expect((await AdminProfile.findOne({ userId: adminUser!._id }))?.grantsCount).toBe(1);
   });
 });
+
+describe("PUT /api/admin/users/:username/roles: admin revocation and lookup", () => {
+  // Value: protects=revoking admin from another admin cuts that account's admin-route access on its very
+  // next request and resets an active admin view to member; fails_when=revokeRole special-cases admin
+  // like member, or admin access is read from a cached session copy instead of the User document;
+  // why_new=existing revoke coverage only revokes curator and checks the active-role switch, never the
+  // requireRole("admin") gate after a revoke; seam=none; no_claim=a listed ADMIN_USERNAMES account,
+  // which regains admin at its next login by design.
+  it("revoking admin from another admin denies its next admin request and resets its active role", async () => {
+    const { agent: admin } = await registerAgent("demo_admin");
+    const { agent: second } = await registerAgent("dana");
+    await admin
+      .put("/api/admin/users/dana/roles")
+      .send({ roles: ["member", "admin"] })
+      .expect(200);
+    await second.put("/api/users/me/active-role").send({ role: "admin" }).expect(200);
+    const res = await admin
+      .put("/api/admin/users/dana/roles")
+      .send({ roles: ["member"] })
+      .expect(200);
+    expect(res.body.user).toMatchObject({ roles: ["member"], activeRole: "member" });
+    const denied = await second
+      .put("/api/admin/users/demo_admin/roles")
+      .send({ roles: ["member", "admin"] })
+      .expect(403);
+    expect(denied.body).toEqual({ error: "forbidden" });
+    const me = await second.get("/api/auth/me").expect(200);
+    expect(me.body.user.activeRole).toBe("member");
+  });
+
+  // Value: protects=the target username in the path is matched case-insensitively, like login;
+  // fails_when=the route stops lowercasing req.params.username and a mixed-case name answers 404;
+  // why_new=every existing route call uses an all-lowercase path; seam=none; no_claim=usernames with
+  // characters outside USERNAME_PATTERN.
+  it("matches the target username case-insensitively", async () => {
+    const { agent: admin } = await registerAgent("demo_admin");
+    await registerAgent("cara");
+    const res = await admin
+      .put("/api/admin/users/CaRa/roles")
+      .send({ roles: ["member", "curator"] })
+      .expect(200);
+    expect(res.body.user).toMatchObject({ username: "cara", roles: ["member", "curator"] });
+  });
+});
