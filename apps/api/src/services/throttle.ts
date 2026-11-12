@@ -48,10 +48,11 @@ export async function reserveAttempt(key: string, now = new Date()): Promise<voi
   for (let tries = 0; ; tries++) {
     try {
       // Native driver: an update pipeline with `$cond` is not something Mongoose casting should touch.
-      attempt = await LoginAttempt.collection.findOneAndUpdate({ key }, update, {
+      const doc = await LoginAttempt.collection.findOneAndUpdate({ key }, update, {
         upsert: true,
         returnDocument: "after",
       });
+      attempt = doc && { count: doc.count as number, windowStart: doc.windowStart as Date };
       break;
     } catch (err) {
       if ((err as { code?: number }).code !== 11000 || tries > 0) throw err;
