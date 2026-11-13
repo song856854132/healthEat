@@ -33,3 +33,4 @@ export type WhoAmI = z.infer<typeof WhoAmI>;
 export const APP_NAME = "healthEat";
 
 export * from "./auth.js";
+export * from "./foods.js";

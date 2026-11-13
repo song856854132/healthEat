@@ -1,0 +1,312 @@
+{
+  "totalHits": 60863,
+  "currentPage": 1,
+  "totalPages": 20288,
+  "foods": [
+    {
+      "fdcId": 2095236,
+      "description": "CHEDDAR CHEESE",
+      "dataType": "Branded",
+      "brandOwner": "MDS Foods Inc.",
+      "brandName": "AMISH CLASSICS",
+      "ingredients": "MILK, CHEESE CULTURES, SALT, ENZYMES AND ANNATTO COLOR IF NECESSARY.",
+      "servingSize": 28.0,
+      "servingSizeUnit": "g",
+      "householdServingFullText": "1 ONZ",
+      "foodNutrients": [
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 25.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 35.7
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 432
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 686
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 107
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 21.4
+        }
+      ]
+    },
+    {
+      "fdcId": 2057648,
+      "description": "CHEDDAR CHEESE",
+      "dataType": "Branded",
+      "brandOwner": "Grafton Village Cheese Co, LLC",
+      "brandName": "GRAFTON VILLAGE",
+      "ingredients": "UNPASTEURIZED MILK, SALT, TRUFFLES (TRUFFLE, WATER, SALT, AROMAS), TRUFFLE OIL (OLIVE OIL, TRUFFLE FLAVOR), CULTURES, ENZYMES.",
+      "servingSize": 28.0,
+      "servingSizeUnit": "g",
+      "householdServingFullText": "1 ONZ",
+      "foodNutrients": [
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 21.4
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 28.6
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 3.57
+        },
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 393
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1087,
+          "nutrientName": "Calcium, Ca",
+          "nutrientNumber": "301",
+          "unitName": "MG",
+          "value": 714
+        },
+        {
+          "nutrientId": 1089,
+          "nutrientName": "Iron, Fe",
+          "nutrientNumber": "303",
+          "unitName": "MG",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 679
+        },
+        {
+          "nutrientId": 1104,
+          "nutrientName": "Vitamin A, IU",
+          "nutrientNumber": "318",
+          "unitName": "IU",
+          "value": 1430.0
+        },
+        {
+          "nutrientId": 1162,
+          "nutrientName": "Vitamin C, total ascorbic acid",
+          "nutrientNumber": "401",
+          "unitName": "MG",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 89.0
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 21.4
+        }
+      ]
+    },
+    {
+      "fdcId": 2021597,
+      "description": "CHEDDAR CHEESE",
+      "dataType": "Branded",
+      "brandOwner": "Weis Markets, Inc.",
+      "brandName": "WEIS",
+      "ingredients": "PASTEURIZED MILK, CHEESE CULTURE, SALT, ENZYMES.",
+      "servingSize": 28.0,
+      "servingSizeUnit": "g",
+      "householdServingFullText": "1 ONZ",
+      "foodNutrients": [
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 25.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 32.1
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 393
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1087,
+          "nutrientName": "Calcium, Ca",
+          "nutrientNumber": "301",
+          "unitName": "MG",
+          "value": 714
+        },
+        {
+          "nutrientId": 1089,
+          "nutrientName": "Iron, Fe",
+          "nutrientNumber": "303",
+          "unitName": "MG",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 643
+        },
+        {
+          "nutrientId": 1104,
+          "nutrientName": "Vitamin A, IU",
+          "nutrientNumber": "318",
+          "unitName": "IU",
+          "value": 1070.0
+        },
+        {
+          "nutrientId": 1162,
+          "nutrientName": "Vitamin C, total ascorbic acid",
+          "nutrientNumber": "401",
+          "unitName": "MG",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 107
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 21.4
+        }
+      ]
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import { spikeRouter } from "./routes/spike.js";
 import { authRouter } from "./routes/auth.js";
 import { usersRouter } from "./routes/users.js";
 import { adminRouter } from "./routes/admin.js";
+import { foodsRouter } from "./routes/foods.js";
 import { requireDb } from "./lib/db.js";
 import { sessionMiddleware } from "./lib/session.js";
 import { errorHandler, notFound } from "./middleware/error.js";
@@ -39,6 +40,8 @@ const withSession = [requireDb, sessionMiddleware()];
 app.use("/api/auth", ...withSession, authRouter);
 app.use("/api/users", ...withSession, usersRouter);
 app.use("/api/admin", ...withSession, adminRouter);
+// Public, session-free: the USDA proxy only needs the database for its caches.
+app.use("/api/foods", requireDb, foodsRouter);
 
 app.use(notFound);
 app.use(errorHandler);
