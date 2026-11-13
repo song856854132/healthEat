@@ -53,7 +53,7 @@ authRouter.post(
 authRouter.post(
   "/login",
   asyncHandler(async (req, res) => {
-    const user = await auth.login(LoginInput.parse(req.body));
+    const user = await auth.login(LoginInput.parse(req.body), req.ip);
     await startSession(req, res, user, 200);
   }),
 );

@@ -5,12 +5,20 @@ export class HttpError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details?: unknown;
-  constructor(status: number, code: string, details?: unknown) {
+  /** Extra response headers the error middleware sets, e.g. `Retry-After` on a 429. */
+  readonly headers?: Readonly<Record<string, string>>;
+  constructor(
+    status: number,
+    code: string,
+    details?: unknown,
+    headers?: Readonly<Record<string, string>>,
+  ) {
     super(typeof details === "string" ? details : code);
     this.name = "HttpError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.headers = headers;
   }
 }
 

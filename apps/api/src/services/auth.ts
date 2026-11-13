@@ -6,6 +6,7 @@ import type { UserDoc } from "../models/User.js";
 import { accountBlocked } from "../middleware/auth.js";
 import { applyAdminBootstrap } from "./roles.js";
 import { adminUsernames } from "../lib/env.js";
+import { clearFailures, reserveAttempt, throttleKey } from "./throttle.js";
 
 // Indexes are built by Mongoose when the connection opens, but `bufferCommands: false` lets a create()
 // race the build; waiting on init() once makes a duplicate username a deterministic 409, never a
@@ -51,13 +52,19 @@ export async function register(
 }
 
 /**
- * Verify credentials. Unknown username and wrong password both cost one bcrypt compare and both
- * answer the same 401 `invalid_credentials`; account status is only revealed after the password matched.
+ * Verify credentials. Unknown username and wrong password both cost one bcrypt compare, both count
+ * toward the login throttle and both answer the same 401 `invalid_credentials`; account status is only
+ * revealed after the password matched. Each attempt is counted before the compare (reserveAttempt): after
+ * 10 failed attempts in 15 minutes the key answers 429 `too_many_attempts` without a compare, even for
+ * the right password, and concurrent requests cannot get more than 10 compares; a match resets the count.
  */
-export async function login(input: LoginInput): Promise<UserDoc> {
+export async function login(input: LoginInput, ip: string | undefined): Promise<UserDoc> {
+  const key = throttleKey(input.username, ip);
+  await reserveAttempt(key);
   const user = await User.findOne({ username: input.username }).select("+passwordHash");
   const ok = await verifyPassword(input.password, user?.passwordHash ?? DUMMY_HASH);
   if (!user || !ok) throw new HttpError(401, "invalid_credentials");
+  await clearFailures(key);
   const blocked = accountBlocked(user);
   if (blocked) throw blocked;
   await applyAdminBootstrap(user);

@@ -89,5 +89,6 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
   // Headers already on the wire: only Express's default handler closes the connection, and only
   // when delegated to; returning here would leave the client hanging until the function limit.
   if (res.headersSent) return next(err);
+  if (err instanceof HttpError && err.headers) res.set(err.headers);
   res.status(status).json(body);
 };

@@ -7,7 +7,8 @@
       "apps/api/test/db.test.ts",
       "apps/api/test/models.test.ts",
       "apps/api/test/auth-indexes.test.ts",
-      "apps/api/test/roles.test.ts"
+      "apps/api/test/roles.test.ts",
+      "apps/api/test/throttle.test.ts"
     ],
     "apps/api/test/setup.ts": [
       "apps/api/test/*.test.ts",
@@ -16,7 +17,8 @@
       "apps/api/test/db.test.ts",
       "apps/api/test/models.test.ts",
       "apps/api/test/auth-indexes.test.ts",
-      "apps/api/test/roles.test.ts"
+      "apps/api/test/roles.test.ts",
+      "apps/api/test/throttle.test.ts"
     ],
     "apps/api/vitest.config.ts": [
       "apps/api/test/*.test.ts",
@@ -25,7 +27,8 @@
       "apps/api/test/db.test.ts",
       "apps/api/test/models.test.ts",
       "apps/api/test/auth-indexes.test.ts",
-      "apps/api/test/roles.test.ts"
+      "apps/api/test/roles.test.ts",
+      "apps/api/test/throttle.test.ts"
     ],
     "apps/api/package.json": [
       "apps/api/test/*.test.ts",
@@ -34,7 +37,8 @@
       "apps/api/test/db.test.ts",
       "apps/api/test/models.test.ts",
       "apps/api/test/auth-indexes.test.ts",
-      "apps/api/test/roles.test.ts"
+      "apps/api/test/roles.test.ts",
+      "apps/api/test/throttle.test.ts"
     ],
     "apps/api/README.md": [],
     "packages/shared/src/**": [

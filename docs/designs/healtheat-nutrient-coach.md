@@ -1244,6 +1244,8 @@ T9a (2026-11-11) adds the reliability baseline (`apps/api/src/lib/env.ts`, `db.t
 
 T7 (2026-11-12) adds the `ADMIN_USERNAMES` bootstrap (`apps/api/src/lib/env.ts` `adminUsernames()`, applied at login), `PUT /api/admin/users/:username/roles` (`apps/api/src/routes/admin.ts`, `apps/api/src/services/roles.ts`, `RoleUpdateInput` in `packages/shared`): a grant upserts the role's profile, a revoke keeps it and resets `activeRole` to member, each change counts in the acting admin's `AdminProfile.grantsCount`, an admin cannot remove their own `admin`, and no change may remove the last admin (`409 last_admin`; concurrent writes to one account answer `409 roles_changed`). The deployed admin is the demo account `demo_admin`. Change from D10 as approved by the owner in review (2026-11-12): the bootstrap applies at login only, and registering a listed username answers `409 username_reserved`, so a listed name can never be claimed through open registration.
 
+T4 (2026-11-12) adds the login throttle (`apps/api/src/models/LoginAttempt.ts`, `apps/api/src/services/throttle.ts`): 10 failures per username and client IP within 15 minutes make `POST /api/auth/login` answer `429 too_many_attempts` with `Retry-After`, also for the right password; a successful login resets the count. Each attempt is reserved with one atomic upsert before the bcrypt compare, so parallel requests cannot get more than 10 compares, and a TTL index removes stale windows. The limit has no per-account ceiling: a client calling the public API origin directly with rotating IPs gets 10 guesses per address (open owner decision). Bad credentials still answer the generic `401 invalid_credentials`. Behind the Next.js rewrite the client IP may be a shared Vercel hop, which makes the key effectively per username (apps/api/README.md, Login throttle).
+
 ## Diagrams
 
 See Section 1 above for the request path and the log-and-alert flow. Role model:
@@ -1314,7 +1316,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Scope Challenge — S2 (D5), S7
   - Files: apps/api/src/models/SearchCache.ts, apps/api/src/services/usda.ts, apps/api/src/routes/foods.ts
   - Verify: supertest with mocked 429 returns cached page labelled `cached`; cache miss returns 503 message
-- [ ] **T4 (P1, human: ~half day / CC: ~20 min)** — apps/api — LoginAttempt throttle, generic credential errors
+- [x] **T4 (P1, human: ~half day / CC: ~20 min)** — apps/api — LoginAttempt throttle, generic credential errors
   - Surfaced by: Architecture — A1 (D7)
   - Files: apps/api/src/models/LoginAttempt.ts, apps/api/src/routes/auth.ts
   - Verify: supertest: 11th failure → 429; success resets

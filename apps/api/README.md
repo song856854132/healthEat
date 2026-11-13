@@ -26,6 +26,7 @@ Failure modes, all JSON:
 | `409 {error: "conflict", details.fields}`   | duplicate key (unique index), for example a taken username or email                                                                                                     |
 | `401 {error: "unauthenticated"}`            | no session cookie, or a session whose account no longer exists (the session is destroyed)                                                                               |
 | `401 {error: "invalid_credentials"}`        | login with an unknown username or a wrong password; both cost one bcrypt compare and return this same body                                                              |
+| `429 {error: "too_many_attempts"}`          | `POST /api/auth/login` after 10 failures for the same username and client IP within 15 minutes, even with the right password; `Retry-After` gives the seconds left      |
 | `403 {error: "account_suspended"}`          | `status` is not `active`: login refused, and an existing session is destroyed on its next request                                                                       |
 | `403 {error: "account_deletion_pending"}`   | `deletionPending` is set (T5 cascade in progress); same handling as suspended                                                                                           |
 | `409 {error: "username_reserved"}`          | `POST /api/auth/register` with a username listed in `ADMIN_USERNAMES`: a listed name is never claimable through open registration; create the account before listing it |
@@ -48,7 +49,7 @@ responses are redacted on every deployment (`isDeployed()`), shown only on local
 | Route                                  | Body (zod schema in `@healtheat/shared`) | Answer                                                                                                                                                                                                                                                                                                                           |
 | -------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/auth/register`              | `RegisterInput`                          | `201 MeResponse`; creates `User` + `MemberProfile` (timezone canonicalised), starts a session                                                                                                                                                                                                                                    |
-| `POST /api/auth/login`                 | `LoginInput`                             | `200 MeResponse`; fresh session id on every login                                                                                                                                                                                                                                                                                |
+| `POST /api/auth/login`                 | `LoginInput`                             | `200 MeResponse`; fresh session id on every login; throttled (below)                                                                                                                                                                                                                                                             |
 | `POST /api/auth/logout`                | none                                     | `200 {ok: true}`; destroys the session and clears `he_sid` (idempotent)                                                                                                                                                                                                                                                          |
 | `GET /api/auth/me`                     | none                                     | `200 MeResponse` (`user` fields plus which role profiles exist)                                                                                                                                                                                                                                                                  |
 | `PUT /api/users/me/active-role`        | `ActiveRoleInput`                        | `200 MeResponse`; the role must be in `roles` (else `403 forbidden`); mirrored into the session                                                                                                                                                                                                                                  |
@@ -60,6 +61,17 @@ rolling, written at most once a day per session (`touchAfter`). Cookie `he_sid`:
 `{userId, activeRole}`, stored as a document (not a JSON string) so T5 can delete a user's sessions by
 `session.userId`. Passwords: `bcryptjs` cost 12 (pure JavaScript: no native module to build for the
 function's architecture); never returned (`passwordHash` has `select: false`).
+
+Login throttle (design doc D7): `LoginAttempt {key, count, windowStart}` counts login attempts per
+lowercased username plus `req.ip`. Each attempt is counted atomically before the bcrypt compare, so
+unknown usernames and wrong passwords both count and a burst of parallel requests gets at most 10
+compares. After 10 failures inside a 15-minute window that starts at the first one, login answers
+`429 too_many_attempts` with `Retry-After` and no compare, even for the right password. A successful login
+deletes the counter, and a TTL index on `windowStart` removes stale windows. The limit is per username
+and client IP, with no ceiling per account. Through the Next.js rewrite, `req.ip` (`trust proxy` 1) may be
+one shared Vercel hop, which makes the key effectively per username: anyone can then lock an account's
+logins for up to 15 minutes. A client that calls the public API origin directly is keyed by its own IP,
+so an attacker who rotates IPs gets 10 guesses per address.
 
 Privacy acknowledgment: the banner sets the readable cookie `he_privacy_ack` (1 year, `SameSite=Lax`).
 Register and login copy it to `User.privacyAckAt` when present, and set it when the account already has
@@ -92,8 +104,9 @@ src/lib/password.ts   bcryptjs cost 12: hashPassword, verifyPassword, DUMMY_HASH
 src/lib/process.ts    unhandledRejection (log, keep serving) and uncaughtException (log, exit) hooks
 src/middleware/       error handler (always JSON, never a stack), notFound, secretsGuard (503 secret_unconfigured),
                       requireAuth (401/403, loads the account), requireRole(role) (403 forbidden)
-src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile
+src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile, LoginAttempt
 src/services/auth.ts  register (user + member profile, rerunnable), login (constant-cost), me, setActiveRole
+src/services/throttle.ts  login throttle: reserveAttempt (one atomic upsert before the compare), clearFailures
 src/services/roles.ts setRoles (admin route: atomic conditional role write, lockout guards), applyAdminBootstrap (ADMIN_USERNAMES)
 src/routes/           one router per resource (health, spike, auth, users, admin); routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test

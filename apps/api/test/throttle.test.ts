@@ -1,0 +1,153 @@
+import { describe, expect, it } from "vitest";
+import request from "supertest";
+import app from "../src/app.js";
+import { LoginAttempt } from "../src/models/index.js";
+import { MAX_LOGIN_FAILURES, reserveAttempt, throttleKey } from "../src/services/throttle.js";
+
+const account = {
+  username: "throttled",
+  email: "throttled@example.com",
+  password: "correct horse battery",
+  timezone: "Asia/Taipei",
+};
+const wrong = "wrong horse battery";
+
+const register = () => request(app).post("/api/auth/register").send(account).expect(201);
+const login = (username: string, password: string) =>
+  request(app).post("/api/auth/login").send({ username, password });
+
+async function fail(times: number, username = account.username) {
+  for (let i = 0; i < times; i++) await login(username, wrong).expect(401);
+}
+
+describe("login throttle (T4, design doc D7)", () => {
+  it("answers 429 with Retry-After on the attempt after 10 failures, even with the right password", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES);
+    const locked = await login(account.username, account.password).expect(429);
+    expect(locked.body.error).toBe("too_many_attempts");
+    expect(locked.body.details).toBe("too many attempts, try again in 15 minutes");
+    const retryAfter = Number(locked.headers["retry-after"]);
+    expect(retryAfter).toBeGreaterThan(14 * 60);
+    expect(retryAfter).toBeLessThanOrEqual(15 * 60);
+    expect(locked.headers["set-cookie"]).toBeUndefined();
+    await login(account.username, wrong).expect(429);
+  });
+
+  it("lets the 10th failure through as the generic 401", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES - 1);
+    const tenth = await login(account.username, wrong).expect(401);
+    expect(tenth.body.error).toBe("invalid_credentials");
+  });
+
+  it("resets the count after a successful login", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES - 1);
+    await login(account.username, account.password).expect(200);
+    expect(await LoginAttempt.countDocuments()).toBe(0);
+    await fail(MAX_LOGIN_FAILURES - 1);
+    await login(account.username, account.password).expect(200);
+  });
+
+  it("matches the username case-insensitively, like login itself", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES, "THROTTLED");
+    await login(" throttled ", account.password).expect(429);
+  });
+
+  it("throttles unknown usernames the same way, so a 429 says nothing about which accounts exist", async () => {
+    await fail(MAX_LOGIN_FAILURES, "nobody_here");
+    const locked = await login("nobody_here", wrong).expect(429);
+    expect(locked.body.error).toBe("too_many_attempts");
+  });
+
+  it("keeps other usernames unaffected", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES, "someone_else");
+    await login(account.username, account.password).expect(200);
+  });
+
+  it("starts a new window once 15 minutes have passed since the first failure", async () => {
+    await register();
+    await fail(MAX_LOGIN_FAILURES);
+    // The TTL monitor may not have run yet; the service must ignore the stale window on its own.
+    await LoginAttempt.updateMany(
+      {},
+      { $set: { windowStart: new Date(Date.now() - 16 * 60_000) } },
+    );
+    await login(account.username, wrong).expect(401);
+    const doc = await LoginAttempt.findOne().lean();
+    expect(doc?.count).toBe(1);
+    await login(account.username, account.password).expect(200);
+  });
+
+  it("stores the window with a 15-minute TTL index and a unique key", async () => {
+    await reserveAttempt(throttleKey("indexcheck", "127.0.0.1"));
+    const indexes = await LoginAttempt.collection.indexes();
+    expect(indexes.find((i) => i.key.windowStart === 1)?.expireAfterSeconds).toBe(900);
+    expect(indexes.find((i) => i.key.key === 1)?.unique).toBe(true);
+  });
+
+  it("counts concurrent attempts atomically, including the first one on a new key", async () => {
+    const key = throttleKey("racer", "10.0.0.7");
+    const results = await Promise.allSettled(Array.from({ length: 12 }, () => reserveAttempt(key)));
+    const doc = await LoginAttempt.findOne({ key }).lean();
+    expect(doc?.count).toBe(12);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(MAX_LOGIN_FAILURES);
+    const refused = results.filter((r) => r.status === "rejected");
+    expect(refused).toHaveLength(2);
+    for (const r of refused)
+      expect(r.reason).toMatchObject({ status: 429, code: "too_many_attempts" });
+  });
+
+  // Value: protects=a concurrent burst gets at most 10 password checks per key (design doc D7);
+  // fails_when=the lock is checked before the compare but counted only after it (QA captures saw 14);
+  // why_new=the other HTTP tests send attempts one at a time; seam=none; no_claim=multi-instance load
+  it("gives a concurrent burst of wrong passwords at most 10 password checks", async () => {
+    await register();
+    const results = await Promise.all(
+      Array.from({ length: 30 }, () => login(account.username, wrong)),
+    );
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((s) => s === 401)).toHaveLength(MAX_LOGIN_FAILURES);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(30 - MAX_LOGIN_FAILURES);
+  });
+
+  it("keys on username and client IP", () => {
+    expect(throttleKey(" Hung_Ju ", "10.0.0.7")).toBe("hung_ju|10.0.0.7");
+    expect(throttleKey("hung_ju", undefined)).toBe("hung_ju|unknown");
+  });
+
+  // Generated by /ship coverage audit (T4).
+  // Value: protects=a lock keyed by client IP does not block the same username from another IP;
+  // fails_when=the route stops passing req.ip or throttleKey drops the IP; why_new=all other HTTP
+  // tests use one client IP; seam=none; no_claim=real Vercel hop IPs (X-Forwarded-For simulated)
+  it("keeps the same username unlocked from a different client IP", async () => {
+    await register();
+    for (let i = 0; i < MAX_LOGIN_FAILURES; i++)
+      await login(account.username, wrong).set("X-Forwarded-For", "10.0.1.1").expect(401);
+    await login(account.username, account.password).set("X-Forwarded-For", "10.0.1.1").expect(429);
+    await login(account.username, account.password).set("X-Forwarded-For", "10.0.1.2").expect(200);
+  });
+
+  // Generated by /ship coverage audit (T4).
+  // Value: protects=near the window end Retry-After is 1 and the message says "1 minute";
+  // fails_when=the singular branch or the remaining-time rounding breaks; why_new=existing 429 test
+  // only sees a fresh window (15 minutes); seam=none; no_claim=none beyond protects
+  it("answers Retry-After 1 and says 1 minute at the end of the window", async () => {
+    const key = throttleKey("almostdone", "10.0.0.9");
+    // A real-clock window start keeps the document out of the TTL monitor's reach while this runs.
+    const start = new Date();
+    for (let i = 0; i < MAX_LOGIN_FAILURES; i++) await reserveAttempt(key, start);
+    const now = new Date(start.getTime() + 15 * 60_000 - 200);
+    await expect(reserveAttempt(key, now)).rejects.toMatchObject({
+      status: 429,
+      details: "too many attempts, try again in 1 minute",
+      headers: { "Retry-After": "1" },
+    });
+    await expect(
+      reserveAttempt(key, new Date(start.getTime() + 15 * 60_000)),
+    ).resolves.toBeUndefined();
+  });
+});
