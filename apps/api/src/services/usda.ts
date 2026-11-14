@@ -1,9 +1,9 @@
 import {
   FOOD_SEARCH_PAGE_SIZE,
-  type FoodDetails,
+  FoodDetails,
+  FoodSearchResponse,
   type FoodNutrient,
   type FoodSearchQuery,
-  type FoodSearchResponse,
   type FoodSummary,
   type ServingSize,
 } from "@healtheat/shared";
@@ -22,6 +22,8 @@ export const SEARCH_FRESH_MS = 60 * 60 * 1000;
 export const FOOD_REFRESH_MS = 30 * 24 * 60 * 60 * 1000;
 
 const UNAVAILABLE = "USDA is unavailable right now, try again in a few minutes";
+// A message for users, so it reaches them on deployments too (HttpError `expose`).
+const unavailable = () => new HttpError(503, "usda_unavailable", UNAVAILABLE, { expose: true });
 
 // Nutrients shown on a search result row: energy (USDA reports it under 1008, or the Atwater ids
 // 2047/2048 for Foundation foods), protein, fat and carbohydrate.
@@ -47,7 +49,11 @@ async function usdaGet(path: string, params: Record<string, string>): Promise<un
     console.error("[usda]", path, "request failed:", err instanceof Error ? err.message : err);
     throw new UsdaFailure("unavailable");
   }
-  if (res.status === 404 || res.status === 400) throw new UsdaFailure("not_found");
+  if (res.status === 404 || res.status === 400) {
+    // A 400 means USDA rejected what we sent (a query it cannot parse); worth a log line, never the key.
+    if (res.status === 400) console.error("[usda]", path, "answered 400");
+    throw new UsdaFailure("not_found");
+  }
   if (!res.ok) {
     // 429 (quota), 5xx, and 401/403 (a revoked or placeholder key) all leave us without data; the
     // status goes to the log, never to the client.
@@ -182,13 +188,26 @@ const ignoreDuplicate = (err: unknown) => {
 
 type StoredSearch = Omit<FoodSearchResponse, "cached">;
 
+const emptyPage = (q: FoodSearchQuery, now: Date): StoredSearch => ({
+  query: q.q,
+  dataType: q.dataType ?? null,
+  page: q.page,
+  pageSize: FOOD_SEARCH_PAGE_SIZE,
+  totalPages: 0,
+  totalHits: 0,
+  foods: [],
+  fetchedAt: now.toISOString(),
+});
+
 export async function searchFoods(
   q: FoodSearchQuery,
   now = new Date(),
 ): Promise<FoodSearchResponse> {
   const key = searchCacheKey(q);
   const entry = await SearchCache.findOne({ key }).lean();
-  const stored = entry?.payload as StoredSearch | undefined;
+  // A page stored by older code may no longer match today's response shape: treat it as missing (refetch)
+  // rather than serving it and failing the response schema.
+  const stored = FoodSearchResponse.omit({ cached: true }).safeParse(entry?.payload).data;
   if (entry && stored && now.getTime() - entry.createdAt.getTime() < SEARCH_FRESH_MS)
     return { ...stored, cached: false };
   let raw: Raw;
@@ -202,8 +221,10 @@ export async function searchFoods(
     raw = (typeof body === "object" && body !== null ? body : {}) as Raw;
   } catch (err) {
     if (!(err instanceof UsdaFailure)) throw err;
+    // USDA rejected the query itself (400): no food matches it, and retrying will not help.
+    if (err.kind === "not_found") return { ...emptyPage(q, now), cached: false };
     if (stored) return { ...stored, cached: true };
-    throw new HttpError(503, "usda_unavailable", UNAVAILABLE);
+    throw unavailable();
   }
   const page: StoredSearch = {
     query: q.q,
@@ -253,9 +274,19 @@ const toDetails = (f: StoredFood, cached: boolean): FoodDetails => ({
   fetchedAt: f.fetchedAt.toISOString(),
 });
 
+const storedFoodFits = (doc: StoredFood): boolean => {
+  try {
+    return FoodDetails.safeParse(toDetails(doc, false)).success;
+  } catch {
+    return false;
+  }
+};
+
 /** Details with cache-on-read: a stored food younger than 30 days never reaches USDA. */
 export async function getFood(fdcId: number, now = new Date()): Promise<FoodDetails> {
-  const stored = (await Food.findOne({ fdcId }).lean()) as StoredFood | null;
+  const doc = (await Food.findOne({ fdcId }).lean()) as StoredFood | null;
+  // As for search: a stored food that no longer matches the response shape is refetched, not served.
+  const stored = doc && storedFoodFits(doc) ? doc : null;
   if (stored && now.getTime() - stored.fetchedAt.getTime() < FOOD_REFRESH_MS)
     return toDetails(stored, false);
   let raw: Raw;
@@ -268,13 +299,13 @@ export async function getFood(fdcId: number, now = new Date()): Promise<FoodDeta
     // log entries will point at it.
     if (stored) return toDetails(stored, true);
     if (err.kind === "not_found") throw new HttpError(404, "food_not_found");
-    throw new HttpError(503, "usda_unavailable", UNAVAILABLE);
+    throw unavailable();
   }
   const base = summary(raw, detailNutrients(raw.foodNutrients));
   if (!base || base.fdcId !== fdcId) {
     console.error("[usda] /food/%d returned an unusable body", fdcId);
     if (stored) return toDetails(stored, true);
-    throw new HttpError(503, "usda_unavailable", UNAVAILABLE);
+    throw unavailable();
   }
   const food: StoredFood = { ...base, servingSizes: servingSizes(raw), fetchedAt: now };
   await Food.updateOne({ fdcId }, { $set: food }, { upsert: true }).catch(ignoreDuplicate);

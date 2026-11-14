@@ -355,3 +355,71 @@ describe("USDA edge cases (coverage audit)", () => {
     ]);
   });
 });
+
+describe("USDA review fixes (T3 pass 1)", () => {
+  // Value: protects=the readable 503 message reaches users on deployments; fails_when=error.ts drops
+  // details on every deployed 5xx again (expose ignored); why_new=other 503 tests run with isDeployed()
+  // false; seam=none; no_claim=a real Vercel runtime (VERCEL=1 stubbed)
+  it("keeps the usda_unavailable message on a deployment, while other deployed 5xx details stay hidden", async () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("SESSION_SECRET", "a-real-deployment-secret");
+    vi.stubEnv("MONGODB_DB", "healtheat_test");
+    vi.stubEnv("USDA_API_KEY", "configured-key-value");
+    fetchMock.mockResolvedValueOnce(json({}, 429));
+    const res = await request(app).get("/api/foods/search?q=apple").expect(503);
+    expect(res.body).toEqual({
+      error: "usda_unavailable",
+      details: "USDA is unavailable right now, try again in a few minutes",
+    });
+    vi.stubEnv("USDA_API_KEY", "");
+    const unconfigured = await request(app).get("/api/foods/search?q=pear").expect(503);
+    expect(unconfigured.body).toEqual({ error: "usda_unconfigured" });
+  });
+
+  // Value: protects=a query USDA rejects (400) answers an empty page, not "USDA is unavailable";
+  // fails_when=searchFoods maps the 400 to usda_unavailable again; why_new=no search test sends a 400;
+  // seam=none; no_claim=which queries USDA rejects (mocked 400)
+  it("answers an empty, uncached page when USDA rejects the query with 400", async () => {
+    fetchMock.mockResolvedValueOnce(json({ error: "bad query" }, 400));
+    const res = await request(app).get("/api/foods/search?q=%22unbalanced").expect(200);
+    expect(FoodSearchResponse.parse(res.body)).toMatchObject({
+      foods: [],
+      totalHits: 0,
+      totalPages: 0,
+      cached: false,
+    });
+    expect(await SearchCache.countDocuments()).toBe(0);
+  });
+
+  // Value: protects=a stored search page in an outdated shape is refetched, not served as a misleading
+  // 400; fails_when=the stored payload is spread without a shape check; why_new=all cache tests store
+  // pages written by today's code; seam=none; no_claim=real schema migrations
+  it("refetches a cached search page whose stored shape no longer fits", async () => {
+    await SearchCache.create({
+      key: "cheddar|all|1",
+      payload: { query: "cheddar", foods: [{ fdcId: "not-a-number" }] },
+      createdAt: new Date(),
+    });
+    fetchMock.mockImplementation(async () => json(SEARCH));
+    const res = await request(app).get("/api/foods/search?q=cheddar").expect(200);
+    expect(res.body.foods).toHaveLength(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Value: protects=a stored Food in an outdated shape is refetched, not served as a 400; fails_when=the
+  // stored document is returned without a shape check; why_new=Food tests store documents written by
+  // today's code; seam=none; no_claim=real schema migrations
+  it("refetches a stored food whose shape no longer fits", async () => {
+    await Food.collection.insertOne({
+      fdcId: 1750340,
+      description: "Apples, fuji, with skin, raw",
+      dataType: "Foundation",
+      nutrients: [{ nutrientId: "energy" }],
+      fetchedAt: new Date(),
+    });
+    fetchMock.mockImplementation(async () => json(APPLE));
+    const res = await request(app).get("/api/foods/1750340").expect(200);
+    expect(FoodDetails.parse(res.body).nutrients.length).toBeGreaterThan(5);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

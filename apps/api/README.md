@@ -15,31 +15,31 @@ Express 5 REST API, deployed as one Vercel function (zero-config Express; entry 
 
 Failure modes, all JSON:
 
-| Response                                    | Meaning                                                                                                                                                                    |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `503 {error: "database_unconfigured"}`      | `MONGODB_URI` is unset                                                                                                                                                     |
-| `503 {error: "database_misconfigured"}`     | `MONGODB_URI` is present but not a `mongodb://` or `mongodb+srv://` URI, or `MONGODB_DB` is unset on a deployment                                                          |
-| `503 {error: "database_unavailable"}`       | Atlas did not answer within 5 seconds (Mongoose `serverSelectionTimeoutMS`), or the connection dropped                                                                     |
-| `503 {error: "secret_unconfigured"}`        | a deployment is running with the development `SESSION_SECRET` placeholder; only the `/api/health` routes (`/api/health`, `/api/health/db`) keep answering                  |
-| `400 invalid_json`, `413 payload_too_large` | body-parser client errors keep their own status; they are never logged as server errors                                                                                    |
-| `400 {error: "validation_error", details}`  | zod or Mongoose validation failed; `details` lists the offending paths                                                                                                     |
-| `400 {error: "invalid_id"}`                 | a malformed ObjectId (Mongoose `CastError`)                                                                                                                                |
-| `409 {error: "conflict", details.fields}`   | duplicate key (unique index), for example a taken username or email                                                                                                        |
-| `401 {error: "unauthenticated"}`            | no session cookie, or a session whose account no longer exists (the session is destroyed)                                                                                  |
-| `401 {error: "invalid_credentials"}`        | login with an unknown username or a wrong password; both cost one bcrypt compare and return this same body                                                                 |
-| `429 {error: "too_many_attempts"}`          | `POST /api/auth/login` after 10 failures for the same username and client IP within 15 minutes, even with the right password; `Retry-After` gives the seconds left         |
-| `503 {error: "usda_unavailable"}`           | USDA answered 429, 5xx or 401/403, timed out (8 s) or was unreachable, and no stored copy exists; `details` is "USDA is unavailable right now, try again in a few minutes" |
-| `503 {error: "usda_unconfigured"}`          | a deployment without `USDA_API_KEY` received a food request                                                                                                                |
-| `404 {error: "food_not_found"}`             | `GET /api/foods/:fdcId` for an id USDA does not know and that was never stored                                                                                             |
-| `403 {error: "account_suspended"}`          | `status` is not `active`: login refused, and an existing session is destroyed on its next request                                                                          |
-| `403 {error: "account_deletion_pending"}`   | `deletionPending` is set (T5 cascade in progress); same handling as suspended                                                                                              |
-| `409 {error: "username_reserved"}`          | `POST /api/auth/register` with a username listed in `ADMIN_USERNAMES`: a listed name is never claimable through open registration; create the account before listing it    |
-| `409 {error: "cannot_revoke_own_admin"}`    | an admin tried to remove `admin` from their own account (prevents locking every admin out)                                                                                 |
-| `409 {error: "last_admin"}`                 | the change would leave no admin at all (checked before and after the write, so two admins demoting each other cannot both win)                                             |
-| `409 {error: "roles_changed"}`              | another admin changed the same account's roles between this request's read and write; reload and retry                                                                     |
-| `404 {error: "not_found"}` (admin routes)   | `PUT /api/admin/users/:username/roles` named an unknown username                                                                                                           |
-| `403 {error: "forbidden"}`                  | the account does not hold the role a route needs (`requireRole` checks `roles`, never `activeRole`), or asks for an active role it does not hold                           |
-| `500 {error: "internal"}`                   | anything else; logged with its stack, `details` only on local runs                                                                                                         |
+| Response                                    | Meaning                                                                                                                                                                                        |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `503 {error: "database_unconfigured"}`      | `MONGODB_URI` is unset                                                                                                                                                                         |
+| `503 {error: "database_misconfigured"}`     | `MONGODB_URI` is present but not a `mongodb://` or `mongodb+srv://` URI, or `MONGODB_DB` is unset on a deployment                                                                              |
+| `503 {error: "database_unavailable"}`       | Atlas did not answer within 5 seconds (Mongoose `serverSelectionTimeoutMS`), or the connection dropped                                                                                         |
+| `503 {error: "secret_unconfigured"}`        | a deployment is running with the development `SESSION_SECRET` placeholder; only the `/api/health` routes (`/api/health`, `/api/health/db`) keep answering                                      |
+| `400 invalid_json`, `413 payload_too_large` | body-parser client errors keep their own status; they are never logged as server errors                                                                                                        |
+| `400 {error: "validation_error", details}`  | zod or Mongoose validation failed; `details` lists the offending paths                                                                                                                         |
+| `400 {error: "invalid_id"}`                 | a malformed ObjectId (Mongoose `CastError`)                                                                                                                                                    |
+| `409 {error: "conflict", details.fields}`   | duplicate key (unique index), for example a taken username or email                                                                                                                            |
+| `401 {error: "unauthenticated"}`            | no session cookie, or a session whose account no longer exists (the session is destroyed)                                                                                                      |
+| `401 {error: "invalid_credentials"}`        | login with an unknown username or a wrong password; both cost one bcrypt compare and return this same body                                                                                     |
+| `429 {error: "too_many_attempts"}`          | `POST /api/auth/login` after 10 failures for the same username and client IP within 15 minutes, even with the right password; `Retry-After` gives the seconds left                             |
+| `503 {error: "usda_unavailable"}`           | USDA answered 429, 5xx or 401/403, timed out (8 s) or was unreachable, and no stored copy exists; `details` is "USDA is unavailable right now, try again in a few minutes", on deployments too |
+| `503 {error: "usda_unconfigured"}`          | a deployment without `USDA_API_KEY` received a food request                                                                                                                                    |
+| `404 {error: "food_not_found"}`             | `GET /api/foods/:fdcId` for an id USDA does not know and that was never stored                                                                                                                 |
+| `403 {error: "account_suspended"}`          | `status` is not `active`: login refused, and an existing session is destroyed on its next request                                                                                              |
+| `403 {error: "account_deletion_pending"}`   | `deletionPending` is set (T5 cascade in progress); same handling as suspended                                                                                                                  |
+| `409 {error: "username_reserved"}`          | `POST /api/auth/register` with a username listed in `ADMIN_USERNAMES`: a listed name is never claimable through open registration; create the account before listing it                        |
+| `409 {error: "cannot_revoke_own_admin"}`    | an admin tried to remove `admin` from their own account (prevents locking every admin out)                                                                                                     |
+| `409 {error: "last_admin"}`                 | the change would leave no admin at all (checked before and after the write, so two admins demoting each other cannot both win)                                                                 |
+| `409 {error: "roles_changed"}`              | another admin changed the same account's roles between this request's read and write; reload and retry                                                                                         |
+| `404 {error: "not_found"}` (admin routes)   | `PUT /api/admin/users/:username/roles` named an unknown username                                                                                                                               |
+| `403 {error: "forbidden"}`                  | the account does not hold the role a route needs (`requireRole` checks `roles`, never `activeRole`), or asks for an active role it does not hold                                               |
+| `500 {error: "internal"}`                   | anything else; logged with its stack, `details` only on local runs                                                                                                                             |
 
 `GET /api/health` never forces a connection and reports `db` (`connected`, `connecting`, `disconnected`,
 `unconfigured`, `misconfigured`), the non-secret `dbName`, and `secrets` (`ok` or `missing`).
@@ -85,7 +85,9 @@ query, data type and page) and served without calling USDA for one hour; a TTL i
 hours. Opened foods are stored in `foods` (`Food`, unique `fdcId`) and re-fetched after 30 days; they are
 never deleted, because log entries will point at them. When USDA fails, the stored copy is served with
 `cached: true`; with nothing stored the route answers `503 usda_unavailable`. Search does not store the
-foods on its result page; only a food someone opens is stored.
+foods on its result page; only a food someone opens is stored. A query USDA rejects (400) answers an
+empty result page. A stored page or food that no longer matches the response shape is refetched. The
+routes have no abuse limit yet (accepted risk, TODOS.md "Food routes: abuse limit and cache footprint").
 
 Privacy acknowledgment: the banner sets the readable cookie `he_privacy_ack` (1 year, `SameSite=Lax`).
 Register and login copy it to `User.privacyAckAt` when present, and set it when the account already has
