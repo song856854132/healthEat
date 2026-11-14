@@ -4,14 +4,14 @@ Express 5 REST API, deployed as one Vercel function (zero-config Express; entry 
 
 ## Environment
 
-| Variable          | Required                                                           | Where it comes from                                                                                                                                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MONGODB_URI`     | for every database route (health works without it)                 | one Atlas M0 cluster for all environments; Secret Manager `mongodb-uri-staging` (dev VM via `~/.env.staging`), Vercel env (preview, production)                                                                                                       |
-| `MONGODB_DB`      | on every Vercel deployment (local runs default to `healtheat_dev`) | selects the database on that cluster: `healtheat_prod`, `healtheat_staging` (set by the staging workflow), `healtheat_preview`, `healtheat_dev_<user>`                                                                                                |
-| `SESSION_SECRET`  | on every Vercel deployment (preview, staging and production)       | signs the `he_sid` session cookie (express-session); Secret Manager `session-secret-staging`, Vercel env                                                                                                                                              |
-| `ADMIN_USERNAMES` | no                                                                 | comma-separated usernames that hold `admin` (design doc D10): granted at login (a listed username cannot register), authoritative (a revoked listed admin regains it at the next login). Vercel env: `demo_admin` on preview (staging) and production |
-| `USDA_API_KEY`    | on every Vercel deployment that serves `/api/foods/*`              | api.data.gov key for USDA FoodData Central, server-side only. Local runs without it use the shared `DEMO_KEY` (a few requests an hour); a deployment without it answers `503 usda_unconfigured` on the food routes. Vercel env                        |
-| `PORT`            | no (4000)                                                          | local only                                                                                                                                                                                                                                            |
+| Variable          | Required                                                           | Where it comes from                                                                                                                                                                                                                                                                                               |
+| ----------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MONGODB_URI`     | for every database route (health works without it)                 | one Atlas M0 cluster for all environments; Secret Manager `mongodb-uri-staging` (dev VM via `~/.env.staging`), Vercel env (preview, production)                                                                                                                                                                   |
+| `MONGODB_DB`      | on every Vercel deployment (local runs default to `healtheat_dev`) | selects the database on that cluster: `healtheat_prod`, `healtheat_staging` (set by the staging workflow), `healtheat_preview`, `healtheat_dev_<user>`                                                                                                                                                            |
+| `SESSION_SECRET`  | on every Vercel deployment (preview, staging and production)       | signs the `he_sid` session cookie (express-session); Secret Manager `session-secret-staging`, Vercel env                                                                                                                                                                                                          |
+| `ADMIN_USERNAMES` | no                                                                 | comma-separated usernames that hold `admin` (design doc D10): granted at login (a listed username cannot register), authoritative (a revoked listed admin regains it at the next login). Vercel env: `demo_admin` on preview (staging) and production                                                             |
+| `USDA_API_KEY`    | on every Vercel deployment that serves `/api/foods/*`              | api.data.gov key for USDA FoodData Central, server-side only. Local runs without it use the shared `DEMO_KEY` (a few requests an hour); a deployment without it answers `503 usda_unconfigured` on the food routes. Secret Manager `usda-api-key` (dev VM via `~/.env.staging`), Vercel env (preview, production) |
+| `PORT`            | no (4000)                                                          | local only                                                                                                                                                                                                                                                                                                        |
 
 Failure modes, all JSON:
 
@@ -46,7 +46,9 @@ Failure modes, all JSON:
 `GET /api/health/db` forces a live connection and answers `503 database_unavailable` unless the
 connection state is `connected` (a cached promise that survived a drop never yields a 200); the staging
 and release smokes check it together with `secrets: "ok"` on `/api/health`. Details on 5xx
-responses are redacted on every deployment (`isDeployed()`), shown only on local runs.
+responses are redacted on every deployment (`isDeployed()`), shown only on local runs, unless the
+`HttpError` was raised with `expose: true` because its details are written for users (today only
+`usda_unavailable`).
 
 ## Auth and sessions
 
