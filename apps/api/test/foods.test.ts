@@ -4,7 +4,7 @@ import request from "supertest";
 import { FoodDetails, FoodSearchResponse } from "@healtheat/shared";
 import app from "../src/app.js";
 import { Food, SearchCache } from "../src/models/index.js";
-import { FOOD_REFRESH_MS, USDA_BASE_URL } from "../src/services/usda.js";
+import { FOOD_REFRESH_MS, USDA_BASE_URL, searchCacheKey } from "../src/services/usda.js";
 
 // Recorded USDA FoodData Central payloads (fetched 2026-11-13 with DEMO_KEY, trimmed to the fields
 // the service reads): a branded search, a Foundation food with a portion, a branded food.
@@ -396,7 +396,7 @@ describe("USDA review fixes (T3 pass 1)", () => {
   // pages written by today's code; seam=none; no_claim=real schema migrations
   it("refetches a cached search page whose stored shape no longer fits", async () => {
     await SearchCache.create({
-      key: "cheddar|all|1",
+      key: searchCacheKey({ q: "cheddar", page: 1 }),
       payload: { query: "cheddar", foods: [{ fdcId: "not-a-number" }] },
       createdAt: new Date(),
     });
