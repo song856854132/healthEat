@@ -33,4 +33,6 @@ export type WhoAmI = z.infer<typeof WhoAmI>;
 export const APP_NAME = "healthEat";
 
 export * from "./auth.js";
+export * from "./allergens.js";
 export * from "./foods.js";
+export { ALLERGEN_SEED } from "./allergens.seed.js";
