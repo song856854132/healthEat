@@ -310,3 +310,58 @@ describe("allergens on GET /api/foods/:fdcId", () => {
     );
   });
 });
+
+// ---- Ship coverage audit (T11): error paths and edges the tests above leave open ----
+// Attribution: added by the /ship test coverage audit, pass 1.
+describe("dictionary edges (coverage audit)", () => {
+  // Value: protects=a dictionary that fails to seed answers 500, never an empty list or a food with no allergens;
+  //   fails_when=the seed catch swallows every error (not just 11000), so the list is empty and foods look allergen-free;
+  //   why_new=seeding tests above only cover success and the concurrent-duplicate race; seam=none (spy on the model);
+  //   no_claim=which status a real Atlas outage gives (requireDb covers a dropped connection)
+  it("answers 500, never an empty dictionary or allergen-free food, when seeding fails", async () => {
+    vi.spyOn(Allergen, "bulkWrite").mockRejectedValue(new Error("seed write failed"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    fetchMock.mockImplementation(async () => json(CHEDDAR));
+    await request(app).get("/api/allergens").expect(500);
+    await request(app).get("/api/foods/2095236").expect(500);
+    expect(await FoodAllergen.countDocuments()).toBe(0);
+  });
+
+  // Value: protects=two first opens of one food both answer the same allergens and leave one row per pair;
+  //   fails_when=the unique (fdcId, allergenId) index or the 11000 filter in matchAndStore is dropped (duplicate rows, error log);
+  //   why_new=concurrency is only tested for seeding, not for storing a food's matches; seam=none;
+  //   no_claim=interleavings across separate serverless instances (one process here)
+  it("stores one copy of the matches when two first reads of a food race", async () => {
+    fetchMock.mockImplementation(async () => json(CHEDDAR));
+    await request(app).get("/api/allergens").expect(200); // seed first, so only the food write races
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const [a, b] = await Promise.all([
+      request(app).get("/api/foods/2095236").expect(200),
+      request(app).get("/api/foods/2095236").expect(200),
+    ]);
+    expect(keysOf(a.body)).toEqual(["lactose", "milk"]);
+    expect(keysOf(b.body)).toEqual(["lactose", "milk"]);
+    expect(await FoodAllergen.countDocuments({ fdcId: 2095236 })).toBe(2);
+    expect(errors.mock.calls.filter((c) => String(c[0]).startsWith("[dictionary]"))).toEqual([]);
+    const again = await request(app).get("/api/foods/2095236").expect(200);
+    expect(keysOf(again.body)).toEqual(["lactose", "milk"]);
+  });
+
+  // Value: protects=exclude phrases also hide words in the description (SR Legacy peanut butter, almond milk are not milk);
+  //   fails_when=mask() is applied to ingredient segments only, flagging plant-based foods as a milk allergy;
+  //   why_new=the exclude test above only uses ingredient text; seam=none; no_claim=coverage of every plant-milk spelling
+  it("applies exclude phrases to description matches too", () => {
+    const pb = match({
+      description: "Peanut butter, smooth style, without salt",
+      ingredientsText: null,
+    });
+    expect(pb.milk).toBeUndefined();
+    expect(pb.lactose).toBeUndefined();
+    expect(pb.peanuts).toMatchObject({ matchKind: "description" });
+    expect(match({ description: "Beverages, almond milk, unsweetened" }).milk).toBeUndefined();
+    expect(match({ description: "Butter, salted" }).milk).toMatchObject({
+      matchKind: "description",
+      matchedSynonym: "butter",
+    });
+  });
+});

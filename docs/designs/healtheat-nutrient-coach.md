@@ -1350,7 +1350,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Verify: unit test: second call within 5 min does not aggregate; only publicLogs members and publicListing curators listed
 - [x] **T11 (P2, human: ~1 day / CC: ~30 min)** — packages/shared + apps/api — Dictionary seed with descriptionKeywords, matchKind, "food-category estimate" label, PROVENANCE.md and license check
   - Surfaced by: Code Quality — C4 (D12); Scope Challenge — S6
-  - Files: packages/shared/data/allergens.seed.json, packages/shared/data/PROVENANCE.md, apps/api/src/services/dictionary.ts
+  - Files: packages/shared/src/allergens.seed.ts (was planned as data/allergens.seed.json; a TS module so the API imports it through the shared build), packages/shared/data/PROVENANCE.md, apps/api/src/services/dictionary.ts
   - Verify: unit test: "soy lecithin" in parentheses matches; "parmesan" description matches histamine-rich with matchKind description
 - [ ] **T12 (P2, human: ~1 day / CC: ~30 min)** — apps/web — Privacy banner + ack cookie, Delete account action, policy text, active-role view semantics, phone field
   - Surfaced by: Code Quality — C5 (R3-7, R3-9, R3-11, R3-14), C3 (D11)
