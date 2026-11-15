@@ -12,6 +12,7 @@ import { authRouter } from "./routes/auth.js";
 import { usersRouter } from "./routes/users.js";
 import { adminRouter } from "./routes/admin.js";
 import { foodsRouter } from "./routes/foods.js";
+import { allergensRouter } from "./routes/allergens.js";
 import { requireDb } from "./lib/db.js";
 import { sessionMiddleware } from "./lib/session.js";
 import { errorHandler, notFound } from "./middleware/error.js";
@@ -45,6 +46,8 @@ app.use("/api/admin", ...withSession, adminRouter);
 // spend the USDA quota and grow the caches on the shared cluster), upgrade when a global hourly budget for
 // uncached USDA calls and smaller cache entries are designed (follow-up in TODOS.md).
 app.use("/api/foods", requireDb, foodsRouter);
+// Public read of the allergen dictionary; it lives in the database, so the database has to answer.
+app.use("/api/allergens", requireDb, allergensRouter);
 
 app.use(notFound);
 app.use(errorHandler);

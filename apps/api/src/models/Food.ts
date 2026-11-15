@@ -27,6 +27,9 @@ const FoodSchema = new Schema({
   nutrients: { type: [NutrientSchema], default: [] },
   servingSizes: { type: [ServingSizeSchema], default: [] },
   fetchedAt: { type: Date, required: true },
+  // When this copy's FoodAllergen rows were last written; null until they are (a fresh USDA copy, or a
+  // write that failed), so the next read matches it again (services/dictionary.ts).
+  allergensMatchedAt: { type: Date, default: null },
 });
 
 export type FoodAttrs = InferSchemaType<typeof FoodSchema>;

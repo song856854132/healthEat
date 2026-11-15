@@ -5,3 +5,5 @@ export { AdminProfile } from "./AdminProfile.js";
 export { LoginAttempt } from "./LoginAttempt.js";
 export { SearchCache } from "./SearchCache.js";
 export { Food } from "./Food.js";
+export { Allergen } from "./Allergen.js";
+export { FoodAllergen } from "./FoodAllergen.js";
