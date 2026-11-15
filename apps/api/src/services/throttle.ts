@@ -66,7 +66,7 @@ export async function reserveAttempt(key: string, now = new Date()): Promise<voi
     429,
     "too_many_attempts",
     `too many attempts, try again in ${minutes} minute${minutes === 1 ? "" : "s"}`,
-    { "Retry-After": String(retryAfter) },
+    { headers: { "Retry-After": String(retryAfter) } },
   );
 }
 

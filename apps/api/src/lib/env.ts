@@ -21,6 +21,8 @@ const EnvSchema = z.object({
   SESSION_SECRET: z.preprocess(empty, z.string().default(LOCAL_DEV_PLACEHOLDER)),
   // Comma-separated usernames that hold `admin` (design doc D10): the bootstrap for the first Admin.
   ADMIN_USERNAMES: z.preprocess(empty, z.string().optional()),
+  // USDA FoodData Central key (api.data.gov). Server-side only; never sent to the browser.
+  USDA_API_KEY: z.preprocess(empty, z.string().optional()),
 });
 export type Env = z.infer<typeof EnvSchema>;
 
@@ -92,4 +94,15 @@ export function adminUsernames(): Set<string> {
       .map((u) => u.trim().toLowerCase())
       .filter(Boolean),
   );
+}
+
+/**
+ * Key for USDA FoodData Central. A local run without one uses api.data.gov's shared `DEMO_KEY`
+ * (a few requests an hour, enough to click around); a deployment without one gets undefined, and
+ * the food routes answer 503 `usda_unconfigured` instead of quietly sharing the demo quota.
+ */
+export function usdaApiKey(): string | undefined {
+  const key = env().USDA_API_KEY;
+  if (key) return key;
+  return isDeployed() ? undefined : "DEMO_KEY";
 }

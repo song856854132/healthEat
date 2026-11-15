@@ -27,8 +27,9 @@ export function toHttpResponse(err: unknown): {
   body: { error: string; details?: unknown };
 } {
   if (err instanceof HttpError) {
-    // 5xx details describe our own configuration or infrastructure; never ship them off this machine.
-    const details = err.status >= 500 && isDeployed() ? undefined : err.details;
+    // 5xx details describe our own configuration or infrastructure; never ship them off this machine,
+    // unless the error says they were written for users (`expose`).
+    const details = err.status >= 500 && isDeployed() && !err.expose ? undefined : err.details;
     return { status: err.status, body: { error: err.code, details } };
   }
   if (err instanceof ZodError) {

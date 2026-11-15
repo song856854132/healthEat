@@ -38,4 +38,16 @@
 **Priority:** P1
 **Depends on:** nothing
 
+### Food routes: abuse limit and cache footprint
+
+**What:** Cap what anonymous callers of `/api/foods/*` can spend: a global hourly budget for uncached USDA calls (a Mongo counter shared by every instance) and smaller cache entries (store only the fields a result row renders), plus a bound or prune for `Food` documents no log entry references.
+
+**Why:** Deferred from plan: `docs/designs/healtheat-nutrient-coach.md` (T3), owner decision dec-c0d8580f on 2026-11-14. A script that varies the search text can spend the USDA key's 3,600-an-hour quota and grow `searchcaches` and `foods` on the shared 512 MB M0 cluster, which also holds production.
+
+**Context:** A per-IP limit is unreliable here: behind the Next.js rewrite `req.ip` may be one shared Vercel hop (see the Login throttle note in `apps/api/README.md`). The code marker is in `apps/api/src/app.ts` (`gstack-shortcut(dec-c0d8580f-...)`).
+
+**Effort:** M
+**Priority:** P1
+**Depends on:** nothing
+
 ## Completed

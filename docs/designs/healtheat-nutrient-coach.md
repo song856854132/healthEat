@@ -1246,6 +1246,8 @@ T7 (2026-11-12) adds the `ADMIN_USERNAMES` bootstrap (`apps/api/src/lib/env.ts` 
 
 T4 (2026-11-12) adds the login throttle (`apps/api/src/models/LoginAttempt.ts`, `apps/api/src/services/throttle.ts`): 10 failures per username and client IP within 15 minutes make `POST /api/auth/login` answer `429 too_many_attempts` with `Retry-After`, also for the right password; a successful login resets the count. Each attempt is reserved with one atomic upsert before the bcrypt compare, so parallel requests cannot get more than 10 compares, and a TTL index removes stale windows. The limit has no per-account ceiling: a client calling the public API origin directly with rotating IPs gets 10 guesses per address (open owner decision). Bad credentials still answer the generic `401 invalid_credentials`. Behind the Next.js rewrite the client IP may be a shared Vercel hop, which makes the key effectively per username (apps/api/README.md, Login throttle).
 
+T3 (2026-11-13) adds the USDA proxy (`apps/api/src/services/usda.ts`, `apps/api/src/routes/foods.ts`, `FoodSearchQuery`, `FoodSearchResponse` and `FoodDetails` in `packages/shared`): `GET /api/foods/search` and `GET /api/foods/:fdcId`, public and session-free. Search pages live in `SearchCache` (D5: key = normalized query, data type and page; 24 h TTL index); a page younger than one hour is served without calling USDA, an older one is refreshed, and on a USDA 429, 5xx, rejected key or timeout the stored page is served with `cached: true`, else `503 usda_unavailable` ("USDA is unavailable right now, try again in a few minutes"). Opened foods are cached in `Food` (unique `fdcId`) and re-fetched after 30 days rather than expired, since log entries and allergen matches will reference them; search does not store result foods ("cache touched items" is read as the foods someone opens). The details response does not yet carry `allergens[]` or `localStats`; they arrive with T11 and T6. Tests use payloads recorded from the live API (`apps/api/test/fixtures/usda/`). Open question 4/10 is answered: the search takes `pageSize` and `pageNumber`. Owner decision 2026-11-14 (dec-c0d8580f): the public food routes ship without an abuse limit; a script can spend the USDA quota and grow the caches on the shared M0 cluster, and the follow-up (a global hourly budget for uncached USDA calls, smaller cache entries) is in `TODOS.md`. The USDA key is set as a Vercel secret for Preview and Production.
+
 ## Diagrams
 
 See Section 1 above for the request path and the log-and-alert flow. Role model:
@@ -1312,7 +1314,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Scope Challenge — D4 structure, S1 stale versions
   - Files: package.json, apps/web/package.json, apps/api/package.json, packages/shared/package.json
   - Verify: `npm ci && npm run build` succeeds
-- [ ] **T3 (P1, human: ~half day / CC: ~20 min)** — apps/api — SearchCache collection with TTL and USDA 429/5xx fallback
+- [x] **T3 (P1, human: ~half day / CC: ~20 min)** — apps/api — SearchCache collection with TTL and USDA 429/5xx fallback
   - Surfaced by: Scope Challenge — S2 (D5), S7
   - Files: apps/api/src/models/SearchCache.ts, apps/api/src/services/usda.ts, apps/api/src/routes/foods.ts
   - Verify: supertest with mocked 429 returns cached page labelled `cached`; cache miss returns 503 message
