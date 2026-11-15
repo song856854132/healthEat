@@ -80,10 +80,6 @@
     "playwright.config.ts": ["e2e/*.spec.ts", "e2e/auth.spec.ts", "e2e/spike.spec.ts"],
     ".gstack/pregate.json": [],
     "scripts/e2e/**": ["e2e/auth.spec.ts", "e2e/spike.spec.ts"],
-    "apps/api/test/fixtures/**": [
-      "apps/api/test/foods.test.ts",
-      "apps/api/test/dictionary.test.ts"
-    ],
-    "packages/shared/data/**": []
+    "apps/api/test/fixtures/**": ["apps/api/test/foods.test.ts", "apps/api/test/dictionary.test.ts"]
   }
 }
