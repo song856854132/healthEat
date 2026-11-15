@@ -41,7 +41,7 @@ describe("seed", () => {
     expect(new Set(keys).size).toBe(keys.length);
     const allergies = ALLERGEN_SEED.filter((a) => a.tier !== "sensitivity");
     expect(allergies).toHaveLength(14);
-    expect(keys).toEqual(expect.arrayContaining(["histamine-rich", "lactose", "fodmap-high"]));
+    expect(keys).toEqual(expect.arrayContaining(["histamine", "lactose", "fodmap"]));
     // Every phrase survives normalization (a phrase of only punctuation would never match).
     for (const a of ALLERGEN_SEED)
       for (const p of [...a.synonyms, ...a.descriptionKeywords, ...a.excludePhrases])
@@ -74,7 +74,7 @@ describe("matcher", () => {
 
   it('matches "parmesan" in the description as histamine-rich with matchKind description, on every data type', () => {
     const foundation = match({ description: "Cheese, parmesan, hard", ingredientsText: null });
-    expect(foundation["histamine-rich"]).toMatchObject({
+    expect(foundation["histamine"]).toMatchObject({
       matchKind: "description",
       matchedSynonym: "parmesan",
     });
@@ -83,7 +83,7 @@ describe("matcher", () => {
       description: "PARMESAN CHEESE",
       ingredientsText: "PASTEURIZED PART-SKIM COW'S MILK, CHEESE CULTURE, SALT, ENZYMES",
     });
-    expect(branded["histamine-rich"]).toMatchObject({ matchKind: "description" });
+    expect(branded["histamine"]).toMatchObject({ matchKind: "description" });
     expect(branded.milk).toMatchObject({ matchKind: "ingredient", matchedSynonym: "milk" });
   });
 
@@ -135,7 +135,7 @@ describe("matcher", () => {
 
   it("prefers an ingredient match over a description match for the same allergen", () => {
     const m = match({ description: "Parmesan crisps", ingredientsText: "PARMESAN, SALT" });
-    expect(m["histamine-rich"]).toMatchObject({ matchKind: "ingredient" });
+    expect(m["histamine"]).toMatchObject({ matchKind: "ingredient" });
   });
 
   it("matches accented and hyphenated label text", () => {
@@ -222,7 +222,7 @@ describe("allergens on GET /api/foods/:fdcId", () => {
     const body = FoodDetails.parse((await request(app).get("/api/foods/1750340").expect(200)).body);
     expect(body.allergens).toEqual([
       {
-        key: "fodmap-high",
+        key: "fodmap",
         displayName: "High-FODMAP foods",
         tier: "sensitivity",
         matchKind: "description",

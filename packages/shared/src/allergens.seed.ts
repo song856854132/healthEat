@@ -577,7 +577,7 @@ export const ALLERGEN_SEED: readonly AllergenEntry[] = [
     ],
   },
   {
-    key: "histamine-rich",
+    key: "histamine",
     displayName: "Histamine-rich foods",
     tier: "sensitivity",
     synonyms: [
@@ -625,7 +625,7 @@ export const ALLERGEN_SEED: readonly AllergenEntry[] = [
     excludePhrases: [],
   },
   {
-    key: "fodmap-high",
+    key: "fodmap",
     displayName: "High-FODMAP foods",
     tier: "sensitivity",
     synonyms: [
