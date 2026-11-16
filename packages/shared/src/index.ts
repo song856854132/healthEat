@@ -35,4 +35,5 @@ export const APP_NAME = "healthEat";
 export * from "./auth.js";
 export * from "./allergens.js";
 export * from "./foods.js";
+export * from "./logs.js";
 export { ALLERGEN_SEED } from "./allergens.seed.js";
