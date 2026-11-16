@@ -6,7 +6,7 @@ import {
   type MatchKind,
 } from "@healtheat/shared";
 import type { Types } from "mongoose";
-import { Allergen, Food, FoodAllergen } from "../models/index.js";
+import { Allergen, DictionarySeed, Food, FoodAllergen } from "../models/index.js";
 
 // Allergen dictionary and matcher (design doc: Allergen matching, D12). The matcher is plain string
 // work so it can run over a whole batch of cached foods in one request (T5 re-match).
@@ -131,26 +131,41 @@ const toEntry = (doc: {
   excludePhrases: doc.excludePhrases ?? [],
 });
 
+const SEED_MARKER = "allergens";
+
 /**
- * The stored dictionary documents. An empty collection (a new database) is seeded from ALLERGEN_SEED
- * first; the seed never overwrites an entry, so Curator edits survive. Two first requests seeding at
- * once both upsert by the unique key and end with one copy.
+ * The stored dictionary documents. Every ALLERGEN_SEED key not yet recorded in the DictionarySeed marker is
+ * upserted first ($setOnInsert: an existing entry, a Curator's edit, is never overwritten), and only then
+ * recorded. So a new database is seeded, a seed that failed partway is finished on the next read, two first
+ * reads both wait for the full seed, and an entry added to the seed later reaches existing databases; a seed
+ * entry a Curator deleted is listed in the marker and stays deleted.
  */
 async function dictionaryDocs() {
-  const docs = await Allergen.find().lean();
-  if (docs.length > 0) return docs;
-  await Allergen.bulkWrite(
-    ALLERGEN_SEED.map((a) => ({
-      updateOne: {
-        filter: { key: a.key },
-        update: { $setOnInsert: { ...a, source: "seed", updatedBy: null } },
-        upsert: true,
-      },
-    })),
-    { ordered: false },
-  ).catch((err: unknown) => {
-    if ((err as { code?: number }).code !== 11000) throw err;
-  });
+  const marker = await DictionarySeed.findById(SEED_MARKER).lean();
+  const seeded = new Set(marker?.keys ?? []);
+  const missing = ALLERGEN_SEED.filter((a) => !seeded.has(a.key));
+  if (missing.length > 0) {
+    await Allergen.bulkWrite(
+      missing.map((a) => ({
+        updateOne: {
+          filter: { key: a.key },
+          update: { $setOnInsert: { ...a, source: "seed", updatedBy: null } },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    ).catch((err: unknown) => {
+      // Two first reads upserting the same key: one insert wins, the other's is a duplicate.
+      if ((err as { code?: number }).code !== 11000) throw err;
+    });
+    await DictionarySeed.updateOne(
+      { _id: SEED_MARKER },
+      { $addToSet: { keys: { $each: missing.map((a) => a.key) } } },
+      { upsert: true },
+    ).catch((err: unknown) => {
+      if ((err as { code?: number }).code !== 11000) throw err;
+    });
+  }
   return Allergen.find().lean();
 }
 
@@ -206,6 +221,10 @@ export async function matchAndStore(
 ): Promise<FoodAllergenMatch[]> {
   const matches = matchFood(food, await loadDictionary());
   try {
+    // A newer USDA copy stored meanwhile is matched by its own request: this stale match writes nothing,
+    // so it cannot replace that copy's rows (the check narrows the race to the write itself).
+    if (!(await Food.exists({ fdcId: food.fdcId, fetchedAt: food.fetchedAt })))
+      return matches.map(view).sort(byName);
     await FoodAllergen.bulkWrite(
       [
         { deleteMany: { filter: { fdcId: food.fdcId } } },

@@ -10,9 +10,10 @@ import {
   type AllergenEntry as Entry,
 } from "@healtheat/shared";
 import app from "../src/app.js";
-import { Allergen, Food, FoodAllergen } from "../src/models/index.js";
+import { Allergen, DictionarySeed, Food, FoodAllergen } from "../src/models/index.js";
 import {
   ingredientSegments,
+  matchAndStore,
   matchFood,
   normalize,
   type DictionaryEntry,
@@ -363,5 +364,51 @@ describe("dictionary edges (coverage audit)", () => {
       matchKind: "description",
       matchedSynonym: "butter",
     });
+  });
+});
+
+// ---- Review fixes (T11 pass 1) ----
+describe("review fixes (T11 pass 1)", () => {
+  it("finishes a partial first seed instead of treating any stored entry as seeded", async () => {
+    // A first read that died after writing one entry: no marker yet.
+    await Allergen.create({ ...ALLERGEN_SEED[0], source: "seed" });
+    const res = await request(app).get("/api/allergens").expect(200);
+    expect(res.body.allergens.map((a: { key: string }) => a.key).sort()).toEqual(
+      ALLERGEN_SEED.map((a) => a.key).sort(),
+    );
+    expect(await Allergen.countDocuments()).toBe(ALLERGEN_SEED.length);
+  });
+
+  it("adds a seed entry introduced by a later release, and keeps a Curator's deletion", async () => {
+    await request(app).get("/api/allergens").expect(200);
+    // An older release seeded everything but lupin; a Curator deleted mustard.
+    await Allergen.deleteOne({ key: "lupin" });
+    await DictionarySeed.updateOne({ _id: "allergens" }, { $pull: { keys: "lupin" } });
+    await Allergen.deleteOne({ key: "mustard" });
+    const keys = (await request(app).get("/api/allergens").expect(200)).body.allergens.map(
+      (a: { key: string }) => a.key,
+    );
+    expect(keys).toContain("lupin");
+    expect(keys).not.toContain("mustard");
+  });
+
+  it("a stale copy's match writes nothing: the newer copy keeps its rows and its own unset stamp", async () => {
+    fetchMock.mockImplementationOnce(async () =>
+      json({ ...CHEDDAR, ingredients: "PEANUTS, SALT" }),
+    );
+    await request(app).get("/api/foods/2095236").expect(200);
+    const newer = await Food.findOne({ fdcId: 2095236 }).lean();
+    await Food.updateOne({ fdcId: 2095236 }, { $set: { allergensMatchedAt: null } });
+    // A slow request still holding an older copy (milk) finishes its match now.
+    const stale = {
+      fdcId: 2095236,
+      description: "CHEDDAR CHEESE",
+      ingredientsText: "MILK, SALT",
+      fetchedAt: new Date(newer!.fetchedAt.getTime() - 60_000),
+    };
+    expect((await matchAndStore(stale)).map((a) => a.key)).toEqual(["lactose", "milk"]);
+    const rows = await FoodAllergen.find({ fdcId: 2095236 }).lean();
+    expect(rows.map((r) => r.matchedSynonym)).toEqual(["peanuts"]);
+    expect((await Food.findOne({ fdcId: 2095236 }).lean())?.allergensMatchedAt).toBeNull();
   });
 });

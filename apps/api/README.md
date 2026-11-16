@@ -94,8 +94,11 @@ routes have no abuse limit yet (accepted risk, TODOS.md "Food routes: abuse limi
 
 Allergen dictionary and matcher (design doc: Allergen matching, D12; T11): `allergens` (`Allergen {key,
 displayName, tier, synonyms, descriptionKeywords, excludePhrases, source, updatedBy}`) is seeded from
-`ALLERGEN_SEED` (`packages/shared`, provenance in `packages/shared/data/PROVENANCE.md`) the first time it is
-read empty. The seed never overwrites an entry, so a Curator edit survives; deleting every entry reseeds.
+`ALLERGEN_SEED` (`packages/shared`, provenance in `packages/shared/data/PROVENANCE.md`) when it is first
+read. A marker document (`dictionaryseeds`) lists the seed keys already written; any seed key missing
+from it is upserted on the next read, so a partial first seed is finished and a later seed addition
+reaches existing databases. The seed never overwrites an entry, and a seed entry a Curator deleted stays
+deleted.
 Each opened food is matched once per USDA copy and its rows are stored in `foodallergens` (`FoodAllergen
 {fdcId, allergenId, matchKind, matchedSynonym, matchedAt}`, unique per food and allergen). The ingredient
 text is split at commas, semicolons, colons, periods and brackets, and a synonym must match whole words

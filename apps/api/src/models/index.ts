@@ -7,3 +7,4 @@ export { SearchCache } from "./SearchCache.js";
 export { Food } from "./Food.js";
 export { Allergen } from "./Allergen.js";
 export { FoodAllergen } from "./FoodAllergen.js";
+export { DictionarySeed } from "./DictionarySeed.js";
