@@ -10,7 +10,8 @@
       "apps/api/test/roles.test.ts",
       "apps/api/test/throttle.test.ts",
       "apps/api/test/foods.test.ts",
-      "apps/api/test/dictionary.test.ts"
+      "apps/api/test/dictionary.test.ts",
+      "apps/api/test/logs.test.ts"
     ],
     "apps/api/test/setup.ts": [
       "apps/api/test/*.test.ts",
@@ -22,7 +23,8 @@
       "apps/api/test/roles.test.ts",
       "apps/api/test/throttle.test.ts",
       "apps/api/test/foods.test.ts",
-      "apps/api/test/dictionary.test.ts"
+      "apps/api/test/dictionary.test.ts",
+      "apps/api/test/logs.test.ts"
     ],
     "apps/api/vitest.config.ts": [
       "apps/api/test/*.test.ts",
@@ -34,7 +36,8 @@
       "apps/api/test/roles.test.ts",
       "apps/api/test/throttle.test.ts",
       "apps/api/test/foods.test.ts",
-      "apps/api/test/dictionary.test.ts"
+      "apps/api/test/dictionary.test.ts",
+      "apps/api/test/logs.test.ts"
     ],
     "apps/api/package.json": [
       "apps/api/test/*.test.ts",
@@ -46,7 +49,8 @@
       "apps/api/test/roles.test.ts",
       "apps/api/test/throttle.test.ts",
       "apps/api/test/foods.test.ts",
-      "apps/api/test/dictionary.test.ts"
+      "apps/api/test/dictionary.test.ts",
+      "apps/api/test/logs.test.ts"
     ],
     "apps/api/README.md": [],
     "packages/shared/src/**": [
@@ -59,7 +63,8 @@
       "apps/api/test/roles.test.ts",
       "packages/shared/src/foods.test.ts",
       "apps/api/test/foods.test.ts",
-      "apps/api/test/dictionary.test.ts"
+      "apps/api/test/dictionary.test.ts",
+      "apps/api/test/logs.test.ts"
     ],
     "apps/web/**": ["e2e/*.spec.ts", "e2e/auth.spec.ts", "e2e/spike.spec.ts"],
     "e2e/**": ["e2e/*.spec.ts", "e2e/auth.spec.ts", "e2e/spike.spec.ts"],
@@ -80,6 +85,10 @@
     "playwright.config.ts": ["e2e/*.spec.ts", "e2e/auth.spec.ts", "e2e/spike.spec.ts"],
     ".gstack/pregate.json": [],
     "scripts/e2e/**": ["e2e/auth.spec.ts", "e2e/spike.spec.ts"],
-    "apps/api/test/fixtures/**": ["apps/api/test/foods.test.ts", "apps/api/test/dictionary.test.ts"]
+    "apps/api/test/fixtures/**": [
+      "apps/api/test/foods.test.ts",
+      "apps/api/test/dictionary.test.ts",
+      "apps/api/test/logs.test.ts"
+    ]
   }
 }
