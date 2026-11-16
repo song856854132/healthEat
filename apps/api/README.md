@@ -141,11 +141,11 @@ src/lib/process.ts    unhandledRejection (log, keep serving) and uncaughtExcepti
 src/middleware/       error handler (always JSON, never a stack), notFound, secretsGuard (503 secret_unconfigured),
                       requireAuth (401/403, loads the account), requireRole(role) (403 forbidden)
 src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile, LoginAttempt, SearchCache, Food,
-                      Allergen, FoodAllergen
+                      Allergen, FoodAllergen, DictionarySeed
 src/services/auth.ts  register (user + member profile, rerunnable), login (constant-cost), me, setActiveRole
 src/services/throttle.ts  login throttle: reserveAttempt (one atomic upsert before the compare), clearFailures
 src/services/usda.ts  USDA FoodData Central proxy: searchFoods (SearchCache), getFood (Food cache-on-read), normalization
-src/services/dictionary.ts  allergen dictionary: seed-on-empty, matchFood (normalizer + matcher), matchAndStore, allergensForFood
+src/services/dictionary.ts  allergen dictionary: seed on read (DictionarySeed marker), matchFood (normalizer + matcher), matchAndStore, allergensForFood
 src/services/roles.ts setRoles (admin route: atomic conditional role write, lockout guards), applyAdminBootstrap (ADMIN_USERNAMES)
 src/routes/           one router per resource (health, spike, auth, users, admin, foods, allergens); routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test
