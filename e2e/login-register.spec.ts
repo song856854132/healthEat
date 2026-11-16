@@ -1,16 +1,11 @@
-import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { makeAccount } from "./helpers";
 
 // Lane B: the /register and /login pages and the signed-in nav, driven through a real browser so
 // the forms, the client-side validation (RegisterInput/LoginInput from @healtheat/shared) and the
 // he_sid cookie set by Express through the /api/* rewrite are exercised together. Each run
-// registers a fresh throwaway account with a random password, as e2e/auth.spec.ts does.
-const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-const account = {
-  username: `ui_${suffix}`.slice(0, 24),
-  email: `ui_${suffix}@example.com`,
-  password: randomUUID(),
-};
+// registers fresh throwaway accounts (e2e/helpers.ts).
+const account = makeAccount("ui");
 
 test("register, see the nav, log out and log back in through the pages", async ({
   page,
@@ -77,4 +72,63 @@ test("register, see the nav, log out and log back in through the pages", async (
   await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
   await expect(page.getByTestId("nav-username")).toHaveText(account.username);
   await expect(page.getByTestId("nav-role")).toHaveText("Member");
+});
+
+test("a /me answer sent before login cannot sign the user out again", async ({ page, request }) => {
+  // Register through a separate cookie jar, so the browser tab itself starts signed out.
+  const acct = makeAccount("race");
+  const reg = await request.post("/api/auth/register", { data: acct });
+  expect(reg.status(), await reg.text()).toBe(201);
+
+  // Hold every /me answer the page asks for before the login (a slow cold function): each is
+  // fetched now, without a session, so it is a 401, and delivered only after the login succeeded.
+  let holding = true;
+  const held: Promise<void>[] = [];
+  let releaseAll!: () => void;
+  const gate = new Promise<void>((r) => (releaseAll = r));
+  await page.route("**/api/auth/me", async (route) => {
+    if (!holding) return route.continue();
+    const deliver = (async () => {
+      const res = await route.fetch();
+      await gate;
+      await route.fulfill({ response: res }).catch(() => undefined); // the page may have aborted it
+    })();
+    held.push(deliver);
+    await deliver;
+  });
+
+  await page.goto("/login");
+  await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+  await expect.poll(() => held.length, { timeout: 30_000 }).toBeGreaterThan(0);
+  holding = false;
+  await page.getByLabel("Username").fill(acct.username);
+  await page.getByLabel("Password").fill(acct.password);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByTestId("nav-username")).toHaveText(acct.username, { timeout: 30_000 });
+
+  releaseAll();
+  await Promise.all(held);
+  await page.waitForTimeout(500); // let React apply whatever the stale answers would do
+  await expect(page.getByTestId("nav-username")).toHaveText(acct.username);
+  await expect(page).toHaveURL(/\/$/);
+});
+
+test("a failed logout keeps showing the live session and says so", async ({ page }) => {
+  const acct = makeAccount("out");
+  // page.request shares the tab's cookies: this signs the tab in.
+  const reg = await page.request.post("/api/auth/register", { data: acct });
+  expect(reg.status(), await reg.text()).toBe(201);
+  await page.goto("/");
+  await expect(page.getByTestId("nav-username")).toHaveText(acct.username, { timeout: 30_000 });
+
+  await page.route("**/api/auth/logout", (route) =>
+    route.fulfill({ status: 503, json: { error: "database_unavailable" } }),
+  );
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page.getByTestId("nav-error")).toContainText("Could not log out");
+  await expect(page.getByTestId("nav-username")).toHaveText(acct.username);
+
+  await page.unroute("**/api/auth/logout");
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page.getByRole("link", { name: "Log in" })).toBeVisible({ timeout: 30_000 });
 });

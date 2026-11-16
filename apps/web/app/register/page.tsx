@@ -1,69 +1,44 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
 import { PASSWORD_MIN_LENGTH, RegisterInput } from "@healtheat/shared";
-import { useAuth } from "../auth-context";
 import { Field } from "../field";
-import { postAuth } from "../lib/api";
-import type { FormErrors } from "../lib/api";
 import { browserTimeZone, issuesToFieldErrors } from "../lib/form";
+import { FormAlert, useAuthForm } from "../use-auth-form";
+import type { Validate } from "../use-auth-form";
+
+const FIELDS = ["username", "email", "password"] as const;
+
+const validate: Validate = (data) => {
+  const parsed = RegisterInput.safeParse({
+    username: data.get("username"),
+    email: data.get("email"),
+    password: data.get("password"),
+    timezone: browserTimeZone(),
+  });
+  if (parsed.success) return { ok: true, body: parsed.data };
+  const { timezone, ...fields } = issuesToFieldErrors(parsed.error.issues, {
+    email: () => "Enter a valid email address.",
+    password: (i) =>
+      i.code === "too_big"
+        ? "That password is too long."
+        : `Use at least ${PASSWORD_MIN_LENGTH} characters.`,
+  });
+  // The time zone is not an input the user can fix; say so at form level.
+  return {
+    ok: false,
+    errors: { form: timezone ? "Your browser reported an unknown time zone." : undefined, fields },
+  };
+};
 
 export default function RegisterPage() {
-  const { me, setMe } = useAuth();
-  const router = useRouter();
-  const [errors, setErrors] = useState<FormErrors>({ fields: {} });
-  const [pending, setPending] = useState(false);
-
-  // Already signed in (or just registered): this page has nothing to offer.
-  useEffect(() => {
-    if (me) router.replace("/");
-  }, [me, router]);
-
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const data = new FormData(e.currentTarget);
-    const parsed = RegisterInput.safeParse({
-      username: data.get("username"),
-      email: data.get("email"),
-      password: data.get("password"),
-      timezone: browserTimeZone(),
-    });
-    if (!parsed.success) {
-      const fields = issuesToFieldErrors(parsed.error.issues, {
-        email: () => "Enter a valid email address.",
-        password: (i) =>
-          i.code === "too_big"
-            ? "That password is too long."
-            : `Use at least ${PASSWORD_MIN_LENGTH} characters.`,
-      });
-      // The time zone is not a field the user can fix; say so at form level.
-      const { timezone, ...rest } = fields;
-      setErrors({
-        form: timezone ? "Your browser reported an unknown time zone." : undefined,
-        fields: rest,
-      });
-      return;
-    }
-    setPending(true);
-    setErrors({ fields: {} });
-    const result = await postAuth("/api/auth/register", parsed.data);
-    setPending(false);
-    if (result.ok) setMe(result.me);
-    else setErrors(result.errors);
-  }
+  const { errors, pending, onSubmit } = useAuthForm("/api/auth/register", FIELDS, validate);
 
   return (
     <main>
       <h1>Create your account</h1>
       <form className="auth-form" onSubmit={onSubmit} noValidate>
-        {errors.form ? (
-          <p role="alert" className="form-error">
-            {errors.form}
-          </p>
-        ) : null}
+        <FormAlert message={errors.form} />
         <Field
           name="username"
           label="Username"

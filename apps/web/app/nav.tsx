@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { APP_NAME } from "@healtheat/shared";
 import { useAuth } from "./auth-context";
 
@@ -10,10 +11,19 @@ const ROLE_LABELS = { member: "Member", curator: "Curator", admin: "Admin" } as 
 export function Nav() {
   const { me, logout } = useAuth();
   const router = useRouter();
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   async function onLogout() {
-    await logout();
-    router.push("/");
+    setPending(true);
+    setLogoutError(null);
+    try {
+      const result = await logout();
+      if (result.ok) router.push("/");
+      else setLogoutError(result.message); // the server session is still live; keep showing it
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -31,9 +41,14 @@ export function Nav() {
               <span data-testid="nav-role" className="role-badge">
                 {ROLE_LABELS[me.user.activeRole]}
               </span>
-              <button type="button" onClick={onLogout}>
+              <button type="button" onClick={onLogout} disabled={pending}>
                 Log out
               </button>
+              {logoutError ? (
+                <span data-testid="nav-error" className="field-error">
+                  {logoutError}
+                </span>
+              ) : null}
             </>
           ) : (
             <>
