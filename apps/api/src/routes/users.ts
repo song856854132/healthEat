@@ -1,11 +1,15 @@
 import { Router } from "express";
 import {
   ActiveRoleInput,
+  AdminProfileInput,
+  CuratorProfileInput,
+  EditableProfileKind,
   LogEntryCreateInput,
   LogEntryCreated,
   LogListResponse,
   LogsQuery,
   MeResponse,
+  RoleProfileView,
   SESSION_COOKIE,
   UserAllergensInput,
   UserAllergensResponse,
@@ -15,10 +19,11 @@ import { currentUser, destroySession, requireAuth, requireRole } from "../middle
 import { deleteAccount } from "../services/account.js";
 import * as auth from "../services/auth.js";
 import * as logs from "../services/logs.js";
+import * as profiles from "../services/profiles.js";
 
 // /api/users/me/*: routes scoped to the caller (design doc REST table). There is no route that names
 // another member, so no account can address someone else's logs or allergen settings (A2, D18).
-// Profile edits land here later.
+// Role profiles: the Curator's and the Admin's (T21); the member profile edit is not built yet.
 export const usersRouter = Router();
 
 // Deletes the caller's account and everything it owns (T5 cascade, D6), then ends this session. The
@@ -51,6 +56,28 @@ usersRouter.put(
     await auth.setActiveRole(user, role);
     req.session.activeRole = role;
     res.json(MeResponse.parse(await auth.me(user)));
+  }),
+);
+
+// The caller's own role profile, for a role they hold (403 otherwise). An unknown kind, or `member`
+// (not editable yet), is a 400 from the kind schema.
+usersRouter.get(
+  "/me/profiles/:kind",
+  ...requireAuth,
+  asyncHandler(async (req, res) => {
+    const kind = EditableProfileKind.parse(req.params.kind);
+    res.json(RoleProfileView.parse(await profiles.getProfile(currentUser(res), kind)));
+  }),
+);
+
+usersRouter.put(
+  "/me/profiles/:kind",
+  ...requireAuth,
+  asyncHandler(async (req, res) => {
+    const kind = EditableProfileKind.parse(req.params.kind);
+    const input =
+      kind === "curator" ? CuratorProfileInput.parse(req.body) : AdminProfileInput.parse(req.body);
+    res.json(RoleProfileView.parse(await profiles.updateProfile(currentUser(res), kind, input)));
   }),
 );
 

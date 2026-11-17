@@ -48,8 +48,27 @@ export const AllergenEntry = z.object({
 });
 export type AllergenEntry = z.infer<typeof AllergenEntry>;
 
+/** Body of POST /api/allergens (curator): a new dictionary entry. */
+export const AllergenCreateInput = AllergenEntry;
+export type AllergenCreateInput = z.infer<typeof AllergenCreateInput>;
+
+/**
+ * Body of PUT /api/allergens/:id (curator): every editable field, replacing the stored ones. The key is
+ * the entry's stable identifier in URLs, so it cannot change: a body that sends one is refused (400).
+ */
+export const AllergenUpdateInput = AllergenEntry.omit({ key: true }).strict();
+export type AllergenUpdateInput = z.infer<typeof AllergenUpdateInput>;
+
 /** An allergen as GET /api/allergens returns it. */
-export const AllergenView = AllergenEntry.extend({ id: z.string(), source: AllergenSource });
+export const AllergenView = AllergenEntry.extend({
+  id: z.string(),
+  source: AllergenSource,
+  /**
+   * True while a re-match after an edit has foods left to process: the Curator page offers "Continue
+   * re-match" (POST /api/curate/allergens/:id/rematch) until it is false.
+   */
+  rematchPending: z.boolean(),
+});
 export type AllergenView = z.infer<typeof AllergenView>;
 
 /** Response of GET /api/allergens: the whole dictionary, ordered by display name. */
@@ -66,3 +85,22 @@ export const FoodAllergenMatch = z.object({
   matchedSynonym: z.string(),
 });
 export type FoodAllergenMatch = z.infer<typeof FoodAllergenMatch>;
+
+/**
+ * Progress of the re-match after a dictionary write (design doc, Re-match on dictionary change). The
+ * write's own request runs it for up to 60 seconds; `done: false` (HTTP 202) means foods are left and
+ * POST /api/curate/allergens/:id/rematch continues it.
+ */
+export const RematchProgress = z.object({
+  done: z.boolean(),
+  processed: z.number().int().min(0),
+  remaining: z.number().int().min(0),
+});
+export type RematchProgress = z.infer<typeof RematchProgress>;
+
+/** Response of POST and PUT /api/allergens: the stored entry and how far its re-match got. */
+export const AllergenWriteResponse = z.object({
+  allergen: AllergenView,
+  rematch: RematchProgress,
+});
+export type AllergenWriteResponse = z.infer<typeof AllergenWriteResponse>;

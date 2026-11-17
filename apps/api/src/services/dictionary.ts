@@ -1,6 +1,8 @@
 import {
   ALLERGEN_SEED,
+  type AllergenCreateInput,
   type AllergenTier,
+  type AllergenUpdateInput,
   type AllergenView,
   type FoodAllergenMatch,
   type MatchKind,
@@ -175,23 +177,29 @@ export async function loadDictionary(): Promise<DictionaryEntry[]> {
   return (await dictionaryDocs()).map(toEntry).sort(byName);
 }
 
+type StoredAllergen = Parameters<typeof toEntry>[0] & {
+  source: string;
+  rematchCursor?: number | null;
+};
+
+function allergenView(d: StoredAllergen): AllergenView {
+  const { key, displayName, tier, synonyms, descriptionKeywords, excludePhrases } = toEntry(d);
+  return {
+    id: String(d._id),
+    key,
+    displayName,
+    tier,
+    synonyms,
+    descriptionKeywords,
+    excludePhrases,
+    source: d.source as AllergenView["source"],
+    rematchPending: d.rematchCursor !== null && d.rematchCursor !== undefined,
+  };
+}
+
 /** GET /api/allergens: the whole dictionary, ordered by display name. */
 export async function listAllergens(): Promise<AllergenView[]> {
-  return (await dictionaryDocs())
-    .map((d) => {
-      const { key, displayName, tier, synonyms, descriptionKeywords, excludePhrases } = toEntry(d);
-      return {
-        id: String(d._id),
-        key,
-        displayName,
-        tier,
-        synonyms,
-        descriptionKeywords,
-        excludePhrases,
-        source: d.source as AllergenView["source"],
-      };
-    })
-    .sort(byName);
+  return (await dictionaryDocs()).map(allergenView).sort(byName);
 }
 
 const view = (m: Match): FoodAllergenMatch => ({
@@ -378,6 +386,12 @@ export async function rematchAllergen(
   }
 }
 
+/** An allergen id from a URL; anything that is not an ObjectId names no allergen. */
+const objectId = (id: string) => {
+  if (!/^[a-f0-9]{24}$/i.test(id)) throw new HttpError(404, "allergen_not_found");
+  return new Types.ObjectId(id);
+};
+
 /**
  * DELETE /api/allergens/:id (R3-3): no matching pass. The allergen's FoodAllergen and UserAllergen rows
  * go first, then the entry, then its FoodAllergen rows once more, for a food matched by a concurrent
@@ -385,12 +399,88 @@ export async function rematchAllergen(
  * retry after the entry is already gone still sweeps its rows before answering 404.
  */
 export async function deleteAllergen(id: string): Promise<void> {
-  if (!/^[a-f0-9]{24}$/i.test(id)) throw new HttpError(404, "allergen_not_found");
-  const allergenId = new Types.ObjectId(id);
+  const allergenId = objectId(id);
   const existed = (await Allergen.exists({ _id: allergenId })) !== null;
   await FoodAllergen.deleteMany({ allergenId });
   await UserAllergen.deleteMany({ allergenId });
   if (!existed) throw new HttpError(404, "allergen_not_found"); // rows left by a crash are gone now
   await Allergen.deleteOne({ _id: allergenId });
   await FoodAllergen.deleteMany({ allergenId });
+}
+
+export type AllergenWrite = { allergen: AllergenView; rematch: RematchResult };
+
+/**
+ * Re-matches a just-written allergen inside the write's own request (design doc, Re-match on dictionary
+ * change), then reads the entry back so the answer shows whether foods are still left.
+ */
+async function rematchAfterWrite(
+  id: Types.ObjectId,
+  opts?: Parameters<typeof rematchAllergen>[1],
+): Promise<AllergenWrite> {
+  const rematch = await rematchAllergen(id, opts);
+  const doc = await Allergen.findById(id).lean();
+  if (!doc) throw new HttpError(404, "allergen_not_found"); // deleted by another Curator meanwhile
+  return { allergen: allergenView(doc), rematch };
+}
+
+/**
+ * POST /api/allergens (curator): a new entry, written by `curatorId`, with its re-match started in the
+ * same insert (cursor 0) so no food can be skipped if the request dies before the first batch. A key that
+ * already exists, including a seed key, is the driver's duplicate key error, answered 409 conflict.
+ */
+export async function createAllergen(
+  input: AllergenCreateInput,
+  curatorId: Types.ObjectId,
+  opts?: Parameters<typeof rematchAllergen>[1],
+): Promise<AllergenWrite> {
+  await dictionaryDocs(); // seed first, so a new entry never takes a seed key the seed has not written yet
+  const doc = await Allergen.create({
+    ...input,
+    source: "curator",
+    updatedBy: curatorId,
+    updatedAt: new Date(),
+    rematchCursor: 0,
+    rematchRun: 1,
+  });
+  return rematchAfterWrite(doc._id, opts);
+}
+
+/**
+ * PUT /api/allergens/:id (curator): replaces every editable field and restarts the re-match in the same
+ * update, so a crash after the write leaves the entry flagged `rematchPending` rather than stale. Every
+ * edit restarts it, even one that only renames the entry: the pass is cheap (D6), and deciding from a
+ * read made before the write would race a concurrent edit. The entry's source becomes "curator".
+ */
+export async function updateAllergen(
+  id: string,
+  input: AllergenUpdateInput,
+  curatorId: Types.ObjectId,
+  opts?: Parameters<typeof rematchAllergen>[1],
+): Promise<AllergenWrite> {
+  const allergenId = objectId(id);
+  const res = await Allergen.updateOne(
+    { _id: allergenId },
+    {
+      $set: {
+        ...input,
+        source: "curator",
+        updatedBy: curatorId,
+        updatedAt: new Date(),
+        rematchCursor: 0,
+      },
+      $inc: { rematchRun: 1 },
+    },
+    { runValidators: true },
+  );
+  if (res.matchedCount === 0) throw new HttpError(404, "allergen_not_found");
+  return rematchAfterWrite(allergenId, opts);
+}
+
+/** POST /api/curate/allergens/:id/rematch (curator): continues an unfinished re-match from its cursor. */
+export async function continueRematch(
+  id: string,
+  opts?: Parameters<typeof rematchAllergen>[1],
+): Promise<RematchResult> {
+  return rematchAllergen(objectId(id), opts);
 }

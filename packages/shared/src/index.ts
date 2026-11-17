@@ -36,4 +36,5 @@ export * from "./auth.js";
 export * from "./allergens.js";
 export * from "./foods.js";
 export * from "./logs.js";
+export * from "./admin.js";
 export { ALLERGEN_SEED } from "./allergens.seed.js";
