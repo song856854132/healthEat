@@ -14,3 +14,15 @@ export function makeAccount(prefix: string) {
     timezone: "UTC",
   };
 }
+
+/**
+ * Asserts that `check` keeps passing for `ms`, sampling every 50 ms: for "this must not change"
+ * claims, where waiting until an expectation passes would succeed at once.
+ */
+export async function holdsFor(check: () => Promise<void>, ms = 2_000): Promise<void> {
+  const until = Date.now() + ms;
+  do {
+    await check();
+    await new Promise((r) => setTimeout(r, 50));
+  } while (Date.now() < until);
+}

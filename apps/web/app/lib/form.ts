@@ -1,25 +1,33 @@
-// Structural shape of a zod issue, so apps/web does not import zod itself: the schemas come from
-// @healtheat/shared and their safeParse errors carry these fields.
-export type Issue = { code: string; path: PropertyKey[]; message: string };
+import { isValidTimeZone } from "@healtheat/shared";
 
 /**
- * First zod issue per top-level field. `friendly` replaces zod's generic wording for a field
- * (return undefined to keep the schema's own message, such as the username rule).
+ * First message per field from zod's `error.flatten(mapper).fieldErrors`. The pages pass a mapper
+ * that swaps zod's generic wording for friendlier text where it helps.
  */
-export function issuesToFieldErrors(
-  issues: readonly Issue[],
-  friendly: Record<string, (issue: Issue) => string | undefined> = {},
+export function firstPerField(
+  fieldErrors: Partial<Record<string, readonly string[]>>,
 ): Record<string, string> {
   const fields: Record<string, string> = {};
-  for (const issue of issues) {
-    const key = String(issue.path[0] ?? "");
-    if (!key || fields[key]) continue;
-    fields[key] = friendly[key]?.(issue) ?? issue.message;
+  for (const [key, messages] of Object.entries(fieldErrors)) {
+    if (messages?.[0]) fields[key] = messages[0];
   }
   return fields;
 }
 
-/** The browser's IANA time zone, sent with registration (design doc, Auth and sessions). */
+/** Sent when the browser reports no usable zone; the account's time zone can be corrected later. */
+export const FALLBACK_TIME_ZONE = "UTC";
+
+/**
+ * The browser's IANA time zone, sent with registration (design doc, Auth and sessions). Falls back to
+ * UTC when the browser reports none, or one this runtime cannot compute dates in ("Etc/Unknown"):
+ * the form has no time zone input, so a bad value would block registration for good.
+ */
 export function browserTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  let tz: string | undefined;
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    tz = undefined;
+  }
+  return tz && isValidTimeZone(tz) ? tz : FALLBACK_TIME_ZONE;
 }

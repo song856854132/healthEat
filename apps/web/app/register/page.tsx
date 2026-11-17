@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { PASSWORD_MIN_LENGTH, RegisterInput } from "@healtheat/shared";
 import { Field } from "../field";
-import { browserTimeZone, issuesToFieldErrors } from "../lib/form";
+import { FALLBACK_TIME_ZONE, browserTimeZone, firstPerField } from "../lib/form";
 import { FormAlert, useAuthForm } from "../use-auth-form";
-import type { Validate } from "../use-auth-form";
+import type { Retry, Validate } from "../use-auth-form";
 
 const FIELDS = ["username", "email", "password"] as const;
 
@@ -17,13 +17,16 @@ const validate: Validate = (data) => {
     timezone: browserTimeZone(),
   });
   if (parsed.success) return { ok: true, body: parsed.data };
-  const { timezone, ...fields } = issuesToFieldErrors(parsed.error.issues, {
-    email: () => "Enter a valid email address.",
-    password: (i) =>
-      i.code === "too_big"
-        ? "That password is too long."
-        : `Use at least ${PASSWORD_MIN_LENGTH} characters.`,
-  });
+  const { timezone, ...fields } = firstPerField(
+    parsed.error.flatten((i) => {
+      if (i.path[0] === "email") return "Enter a valid email address.";
+      if (i.path[0] === "password")
+        return i.code === "too_big"
+          ? "That password is too long."
+          : `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
+      return i.message; // the username rule is already worded for people
+    }).fieldErrors,
+  );
   // The time zone is not an input the user can fix; say so at form level.
   return {
     ok: false,
@@ -31,8 +34,16 @@ const validate: Validate = (data) => {
   };
 };
 
+// The browser and the API can disagree on a zone (one ICU knows "America/Ciudad_Juarez", the other
+// not). The form has no time zone input, so retry once with UTC rather than block registration.
+const retry: Retry = (body, invalidPaths) => {
+  const sent = body as { timezone?: string };
+  if (!invalidPaths.includes("timezone") || sent.timezone === FALLBACK_TIME_ZONE) return undefined;
+  return { ...sent, timezone: FALLBACK_TIME_ZONE };
+};
+
 export default function RegisterPage() {
-  const { errors, pending, onSubmit } = useAuthForm("/api/auth/register", FIELDS, validate);
+  const { errors, pending, onSubmit } = useAuthForm("/api/auth/register", FIELDS, validate, retry);
 
   return (
     <main>
@@ -66,7 +77,12 @@ export default function RegisterPage() {
           error={errors.fields.password}
           hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}
         />
-        <button type="submit" className="primary" disabled={pending}>
+        <button
+          type="submit"
+          className="primary"
+          disabled={pending}
+          aria-busy={pending || undefined}
+        >
           {pending ? "Creating account…" : "Create account"}
         </button>
         <p className="form-footer">

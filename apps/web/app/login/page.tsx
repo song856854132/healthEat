@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { LoginInput } from "@healtheat/shared";
 import { Field } from "../field";
-import { issuesToFieldErrors } from "../lib/form";
+import { firstPerField } from "../lib/form";
 import { FormAlert, useAuthForm } from "../use-auth-form";
 import type { Validate } from "../use-auth-form";
 
@@ -18,10 +18,12 @@ const validate: Validate = (data) => {
   return {
     ok: false,
     errors: {
-      fields: issuesToFieldErrors(parsed.error.issues, {
-        username: (i) => (i.code === "too_big" ? undefined : "Enter your username."),
-        password: (i) => (i.code === "too_big" ? undefined : "Enter your password."),
-      }),
+      fields: firstPerField(
+        parsed.error.flatten((i) => {
+          if (i.code === "too_big") return i.message;
+          return i.path[0] === "password" ? "Enter your password." : "Enter your username.";
+        }).fieldErrors,
+      ),
     },
   };
 };
@@ -51,7 +53,12 @@ export default function LoginPage() {
           required
           error={errors.fields.password}
         />
-        <button type="submit" className="primary" disabled={pending}>
+        <button
+          type="submit"
+          className="primary"
+          disabled={pending}
+          aria-busy={pending || undefined}
+        >
           {pending ? "Logging in…" : "Log in"}
         </button>
         <p className="form-footer">

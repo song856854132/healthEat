@@ -1,4 +1,4 @@
-import type { MeResponse } from "@healtheat/shared";
+import { MeResponse } from "@healtheat/shared";
 
 // Same-origin calls only: the Next.js rewrite proxies /api/* to Express, so the session cookie
 // (he_sid, HttpOnly, set by the server) rides along without CORS or an API URL in the client.
@@ -16,66 +16,115 @@ const CONFLICT_MESSAGES: Record<string, string> = {
   email: "An account with that email already exists.",
 };
 
-/** GET /api/auth/me: the signed-in account, or null when the API answers 401 (signed out). */
-export async function fetchMe(signal?: AbortSignal): Promise<MeResponse | null> {
-  const res = await fetch("/api/auth/me", {
-    credentials: "same-origin",
-    cache: "no-store",
-    signal,
-  });
-  if (res.status === 401) return null;
-  if (!res.ok) throw new Error(`GET /api/auth/me answered ${res.status}`);
-  return (await res.json()) as MeResponse;
+// Called when any API answer says the session is gone (401 `unauthenticated`), so the nav stops
+// showing an account the server no longer recognises (expiry, suspension, logout in another tab).
+const signedOutListeners = new Set<() => void>();
+
+export function onSignedOut(listener: () => void): () => void {
+  signedOutListeners.add(listener);
+  return () => {
+    signedOutListeners.delete(listener);
+  };
 }
 
 /**
- * POST /api/auth/logout. Succeeds on 2xx, and on 401 (the session is already gone). Anything else,
- * or no answer at all, leaves the server session alive, so the caller must keep showing it.
+ * Same-origin fetch for every API call from the browser. A 401 `unauthenticated` notifies the
+ * `onSignedOut` listeners; the response is returned untouched either way.
+ */
+export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const res = await fetch(path, { credentials: "same-origin", cache: "no-store", ...init });
+  if (res.status === 401) {
+    const body = (await res
+      .clone()
+      .json()
+      .catch(() => ({}))) as ErrorBody;
+    if (body.error === "unauthenticated") for (const listener of signedOutListeners) listener();
+  }
+  return res;
+}
+
+/**
+ * GET /api/auth/me: the signed-in account, or null when the server says there is no session (401,
+ * or 403 for a suspended or deleted account, whose session the API destroys on the spot). Rejects on
+ * anything else (5xx, network error, unexpected body): that says nothing about the session.
+ */
+export async function fetchMe(signal?: AbortSignal): Promise<MeResponse | null> {
+  const res = await apiFetch("/api/auth/me", { signal });
+  if (res.status === 401 || res.status === 403) return null;
+  if (!res.ok) throw new Error(`GET /api/auth/me answered ${res.status}`);
+  const parsed = MeResponse.safeParse(await res.json());
+  if (!parsed.success) throw new Error("GET /api/auth/me sent an unexpected body");
+  return parsed.data;
+}
+
+/**
+ * POST /api/auth/logout (idempotent: 200 even without a session). Anything but 2xx, or no answer at
+ * all, leaves the server session alive, so the caller must keep showing it.
  */
 export async function logout(): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
-    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
-    if (res.ok || res.status === 401) return { ok: true };
+    const res = await apiFetch("/api/auth/logout", { method: "POST" });
+    if (res.ok) return { ok: true };
     return { ok: false, message: `Could not log out (HTTP ${res.status}). Try again.` };
   } catch {
     return { ok: false, message: NETWORK_ERROR };
   }
 }
 
+export type AuthResult =
+  { ok: true; me: MeResponse } | { ok: false; errors: FormErrors; invalidPaths: string[] };
+
 /**
- * POST a JSON body; resolves to the parsed MeResponse on success or the mapped form errors. Never
- * rejects. `knownFields` are the inputs the form renders; errors for any other path go to the
- * form-level message so they are never silently dropped.
+ * POST a JSON body; resolves to the account on success or the mapped form errors. Never rejects.
+ * `knownFields` are the inputs the form renders; errors for any other path go to the form-level
+ * message so they are never silently dropped. `invalidPaths` lists every path a 400
+ * validation_error named, so a caller can retry with a corrected value.
  */
 export async function postAuth(
   path: "/api/auth/register" | "/api/auth/login",
   body: unknown,
   knownFields: readonly string[],
-): Promise<{ ok: true; me: MeResponse } | { ok: false; errors: FormErrors }> {
+): Promise<AuthResult> {
+  const fail = (form: string): AuthResult => ({
+    ok: false,
+    errors: { form, fields: {} },
+    invalidPaths: [],
+  });
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await apiFetch(path, {
       method: "POST",
-      credentials: "same-origin",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
   } catch {
-    return { ok: false, errors: { form: NETWORK_ERROR, fields: {} } };
+    return fail(NETWORK_ERROR);
   }
   if (res.ok) {
-    // A 2xx with a non-JSON or cut-off body (a protection page, a bad rewrite) must not hang the form.
-    try {
-      return { ok: true, me: (await res.json()) as MeResponse };
-    } catch {
-      return { ok: false, errors: { form: BAD_RESPONSE, fields: {} } };
-    }
+    // A 2xx that is not a MeResponse (a protection page, a misrouted rewrite, a proxy stub) must not
+    // hang the form or reach the nav, which reads me.user.
+    const parsed = MeResponse.safeParse(await res.json().catch(() => undefined));
+    return parsed.success ? { ok: true, me: parsed.data } : fail(BAD_RESPONSE);
   }
   const parsed = (await res.json().catch(() => ({}))) as ErrorBody;
   return {
     ok: false,
-    errors: mapApiError(res.status, parsed, knownFields, res.headers.get("retry-after")),
+    errors: mapApiError(res.status, parsed, knownFields),
+    invalidPaths: validationPaths(parsed),
   };
+}
+
+function validationPaths(body: ErrorBody): string[] {
+  if (body.error !== "validation_error" || !Array.isArray(body.details)) return [];
+  return (body.details as { path?: unknown }[])
+    .map((d) => d.path)
+    .filter((p): p is string => typeof p === "string");
+}
+
+/** "too many attempts, try again in 3 minutes" -> "Too many attempts, try again in 3 minutes." */
+function sentence(text: string): string {
+  const t = text.trim();
+  return t.charAt(0).toUpperCase() + t.slice(1) + (/[.!?]$/.test(t) ? "" : ".");
 }
 
 /** Map the API's JSON error body (apps/api/README.md, error table) onto form errors. */
@@ -83,7 +132,6 @@ export function mapApiError(
   status: number,
   body: ErrorBody,
   knownFields: readonly string[],
-  retryAfter: string | null = null,
 ): FormErrors {
   const fields: Record<string, string> = {};
   const other: string[] = [];
@@ -109,15 +157,16 @@ export function mapApiError(
     }
     case "conflict": {
       const names = (body.details as { fields?: unknown } | undefined)?.fields;
+      let unshown = false;
       if (Array.isArray(names)) {
         for (const n of names) {
           if (typeof n === "string" && knownFields.includes(n))
             fields[n] = CONFLICT_MESSAGES[n] ?? `That ${n} is taken.`;
-          else other.push(String(n));
+          else unshown = true;
         }
       }
       const form =
-        other.length || !Object.keys(fields).length
+        unshown || !Object.keys(fields).length
           ? "An account with those details already exists."
           : undefined;
       return { form, fields };
@@ -131,14 +180,15 @@ export function mapApiError(
       return { form: "This account is suspended.", fields };
     case "account_deletion_pending":
       return { form: "This account is being deleted and can no longer sign in.", fields };
-    case "too_many_attempts": {
-      const seconds = Number(retryAfter);
-      const minutes = Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds / 60) : 15;
+    case "too_many_attempts":
+      // The API words the wait itself (apps/api/src/services/throttle.ts); show it as sent.
       return {
-        form: `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+        form:
+          typeof body.details === "string" && body.details.trim()
+            ? sentence(body.details)
+            : "Too many attempts. Try again later.",
         fields,
       };
-    }
     default:
       return {
         form: `Something went wrong (${body.error ?? `HTTP ${status}`}). Try again.`,

@@ -9,7 +9,7 @@ import { useAuth } from "./auth-context";
 const ROLE_LABELS = { member: "Member", curator: "Curator", admin: "Admin" } as const;
 
 export function Nav() {
-  const { me, logout } = useAuth();
+  const { me, checkFailed, recheck, logout } = useAuth();
   const router = useRouter();
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -33,7 +33,20 @@ export function Nav() {
           {APP_NAME}
         </Link>
         <div className="nav-session" aria-live="polite">
-          {me === undefined ? null : me ? (
+          {me === undefined ? (
+            // Not known yet. After a failed check (5xx, offline) say so instead of showing the
+            // signed-out links: the session may well still be live.
+            checkFailed ? (
+              <>
+                <span data-testid="nav-error" className="field-error">
+                  Could not check your session.
+                </span>
+                <button type="button" onClick={() => void recheck()}>
+                  Retry
+                </button>
+              </>
+            ) : null
+          ) : me ? (
             <>
               <span data-testid="nav-username" className="nav-user">
                 {me.user.username}
@@ -41,7 +54,12 @@ export function Nav() {
               <span data-testid="nav-role" className="role-badge">
                 {ROLE_LABELS[me.user.activeRole]}
               </span>
-              <button type="button" onClick={onLogout} disabled={pending}>
+              <button
+                type="button"
+                onClick={onLogout}
+                disabled={pending}
+                aria-busy={pending || undefined}
+              >
                 Log out
               </button>
               {logoutError ? (

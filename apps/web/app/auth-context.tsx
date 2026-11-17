@@ -11,13 +11,24 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import type { MeResponse } from "@healtheat/shared";
-import { fetchMe, logout as apiLogout } from "./lib/api";
+import { fetchMe, logout as apiLogout, onSignedOut } from "./lib/api";
 
-// undefined = still asking GET /api/auth/me; null = signed out (401); otherwise the account.
+// undefined = not known yet (still asking, or every answer so far was an error); null = signed out
+// (the server said so); otherwise the account.
 type Session = MeResponse | null | undefined;
 
 type AuthState = {
   me: Session;
+  /**
+   * The last GET /api/auth/me failed (5xx, network error, unexpected body). `me` keeps what it was:
+   * only the server saying "no session" signs the user out in the UI.
+   */
+  checkFailed: boolean;
+  /**
+   * Ask GET /api/auth/me again. Resolves to the answer it applied, or undefined when it failed or a
+   * newer session change made it stale.
+   */
+  recheck: () => Promise<Session>;
   /** The account a login or register just returned; wins over any /me answer still in flight. */
   setMe: (me: MeResponse) => void;
   /** Ends the server session; `me` is cleared only when the server confirms. */
@@ -28,36 +39,70 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMeState] = useState<Session>(undefined);
-  // Bumped by every explicit session change. A /me answer that started under an older generation is
-  // stale (it may be a 401 from before the login set he_sid) and is dropped instead of applied.
+  const [checkFailed, setCheckFailed] = useState(false);
+  // Bumped by every check and every explicit session change. A /me answer that started under an
+  // older generation is stale (it may be a 401 from before the login set he_sid) and is dropped.
   const generation = useRef(0);
+  const inFlight = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    const gen = generation.current;
-    const controller = new AbortController();
-    fetchMe(controller.signal)
-      .catch(() => (controller.signal.aborted ? undefined : null)) // API down: show signed-out nav
-      .then((result) => {
-        if (result !== undefined && gen === generation.current) setMeState(result);
-      });
-    return () => controller.abort();
-  }, []);
-
-  const setMe = useCallback((next: MeResponse) => {
+  const apply = useCallback((next: MeResponse | null) => {
     generation.current += 1;
+    inFlight.current?.abort();
+    setCheckFailed(false);
     setMeState(next);
   }, []);
 
-  const logout = useCallback(async () => {
-    const result = await apiLogout();
-    if (result.ok) {
-      generation.current += 1;
-      setMeState(null);
+  const recheck = useCallback(async (): Promise<Session> => {
+    const gen = ++generation.current;
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
+    try {
+      const result = await fetchMe(controller.signal);
+      if (gen !== generation.current) return undefined;
+      setCheckFailed(false);
+      setMeState(result);
+      return result;
+    } catch {
+      if (gen === generation.current) setCheckFailed(true);
+      return undefined;
+    } finally {
+      if (inFlight.current === controller) inFlight.current = null;
     }
-    return result;
   }, []);
 
-  const value = useMemo(() => ({ me, setMe, logout }), [me, setMe, logout]);
+  useEffect(() => {
+    void recheck();
+    // The server can end the session while this tab sits open (expiry, suspension, logout in another
+    // tab): look again whenever the user comes back to the tab, and on any 401 from the API.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void recheck();
+    };
+    const onFocus = () => void recheck();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    const unsubscribe = onSignedOut(() => apply(null));
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+      unsubscribe();
+      generation.current += 1;
+      inFlight.current?.abort();
+    };
+  }, [recheck, apply]);
+
+  const setMe = useCallback((next: MeResponse) => apply(next), [apply]);
+
+  const logout = useCallback(async () => {
+    const result = await apiLogout();
+    if (result.ok) apply(null);
+    return result;
+  }, [apply]);
+
+  const value = useMemo(
+    () => ({ me, checkFailed, recheck, setMe, logout }),
+    [me, checkFailed, recheck, setMe, logout],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

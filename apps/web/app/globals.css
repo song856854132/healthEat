@@ -161,5 +161,9 @@ button.primary {
 }
 button:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Only a button waiting on a request shows the busy cursor. */
+button[aria-busy="true"] {
   cursor: progress;
 }
