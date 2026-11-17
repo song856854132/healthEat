@@ -4,6 +4,7 @@ import { DUMMY_HASH, hashPassword, verifyPassword } from "../lib/password.js";
 import { AdminProfile, CuratorProfile, MemberProfile, User } from "../models/index.js";
 import type { UserDoc } from "../models/User.js";
 import { accountBlocked } from "../middleware/auth.js";
+import { deleteAccount } from "./account.js";
 import { applyAdminBootstrap } from "./roles.js";
 import { adminUsernames } from "../lib/env.js";
 import { clearFailures, reserveAttempt, throttleKey } from "./throttle.js";
@@ -66,7 +67,11 @@ export async function login(input: LoginInput, ip: string | undefined): Promise<
   if (!user || !ok) throw new HttpError(401, "invalid_credentials");
   await clearFailures(key);
   const blocked = accountBlocked(user);
-  if (blocked) throw blocked;
+  if (blocked) {
+    // The member asked for deletion and it failed part way: the right password finishes it (D6 rerun).
+    if (user.deletionPending) await deleteAccount(user._id);
+    throw blocked;
+  }
   await applyAdminBootstrap(user);
   return user;
 }

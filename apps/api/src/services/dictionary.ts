@@ -313,7 +313,11 @@ export async function rematchAllergen(
   let processed = 0;
   for (;;) {
     const doc = await Allergen.findById(allergenId).lean();
-    if (!doc) throw new HttpError(404, "allergen_not_found");
+    if (!doc) {
+      // Deleted while this pass ran: drop any rows a batch wrote after the delete's own sweep.
+      await FoodAllergen.deleteMany({ allergenId });
+      throw new HttpError(404, "allergen_not_found");
+    }
     const cursor = doc.rematchCursor;
     const run = doc.rematchRun ?? 0;
     if (cursor === null || cursor === undefined) return { done: true, processed, remaining: 0 };
@@ -377,15 +381,16 @@ export async function rematchAllergen(
 /**
  * DELETE /api/allergens/:id (R3-3): no matching pass. The allergen's FoodAllergen and UserAllergen rows
  * go first, then the entry, then its FoodAllergen rows once more, for a food matched by a concurrent
- * request while the entry still existed. Every step is rerunnable; a retry after a crash before the
- * entry was deleted finds it and finishes.
+ * request while the entry still existed. Every step is rerunnable: a retry finishes the job, and a
+ * retry after the entry is already gone still sweeps its rows before answering 404.
  */
 export async function deleteAllergen(id: string): Promise<void> {
   if (!/^[a-f0-9]{24}$/i.test(id)) throw new HttpError(404, "allergen_not_found");
   const allergenId = new Types.ObjectId(id);
-  if (!(await Allergen.exists({ _id: allergenId }))) throw new HttpError(404, "allergen_not_found");
+  const existed = (await Allergen.exists({ _id: allergenId })) !== null;
   await FoodAllergen.deleteMany({ allergenId });
   await UserAllergen.deleteMany({ allergenId });
+  if (!existed) throw new HttpError(404, "allergen_not_found"); // rows left by a crash are gone now
   await Allergen.deleteOne({ _id: allergenId });
   await FoodAllergen.deleteMany({ allergenId });
 }

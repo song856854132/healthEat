@@ -33,11 +33,6 @@ function syncRoles(user: UserDoc, roles: Role[], activeRole: Role): void {
 const adminCount = (excluding?: UserDoc) =>
   User.countDocuments({ roles: "admin", ...(excluding ? { _id: { $ne: excluding._id } } : {}) });
 
-/** True when `user` is an admin and no other account holds the role (the lockout guard's question). */
-export async function isLastAdmin(user: UserDoc): Promise<boolean> {
-  return user.roles.includes("admin") && (await adminCount(user)) === 0;
-}
-
 /**
  * An admin sets `target`'s complete role set (always containing `member`). Returns the number of roles
  * granted plus revoked; the acting admin's AdminProfile counts them (`grantsCount`, `lastAuditAt`).

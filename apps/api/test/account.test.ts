@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import app from "../src/app.js";
 import {
@@ -13,6 +13,9 @@ import {
 } from "../src/models/index.js";
 import { deleteAccount } from "../src/services/account.js";
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 // T5: the account deletion cascade (D6): flag first, then everything the account owns, then the User;
 // every step rerunnable. Shared by self-delete and the Admin delete of T21.
 
@@ -140,28 +143,96 @@ describe("DELETE /api/users/me", () => {
     await request(app).delete("/api/users/me").expect(401);
   });
 
-  it("refuses login once flagged after a crash part way, and a rerun of the cascade finishes it", async () => {
+  it("retries the cascade once when a step fails, so one blip still deletes everything", async () => {
     const { agent, user } = await fullAccount("dana");
     vi.spyOn(UserAllergen, "deleteMany").mockRejectedValueOnce(new Error("network blip"));
+    await agent.delete("/api/users/me").expect(204);
+    expect(await owned(user._id)).toEqual(EMPTY);
+  });
+
+  it("locks a half-deleted account, and the member's next login with the right password finishes it", async () => {
+    const { agent, user } = await fullAccount("dana");
+    vi.spyOn(UserAllergen, "deleteMany")
+      .mockRejectedValueOnce(new Error("network blip"))
+      .mockRejectedValueOnce(new Error("network blip"));
     await agent.delete("/api/users/me").expect(500);
 
-    const half = await owned(user._id);
-    expect(half).toMatchObject({ user: 1, logs: 0, allergens: 1 });
+    expect(await owned(user._id)).toMatchObject({ user: 1, logs: 0, allergens: 1 });
     expect((await User.findById(user._id).lean())?.deletionPending).toBe(true);
-    // The flag alone locks the account: login is refused after the password matched, the session too.
+    // The flag alone locks the account: the session is refused, and so is a login with a wrong password.
+    await agent.get("/api/users/me/logs").expect(403);
+    await request(app)
+      .post("/api/auth/login")
+      .send({ username: "dana", password: "wrong password!" })
+      .expect(401);
+    expect(await owned(user._id)).toMatchObject({ user: 1, allergens: 1 });
+
     const login = await request(app)
       .post("/api/auth/login")
       .send({ username: "dana", password: PASSWORD })
       .expect(403);
     expect(login.body.error).toBe("account_deletion_pending");
-    await agent.get("/api/users/me/logs").expect(403);
-
-    await deleteAccount(user._id);
     expect(await owned(user._id)).toEqual(EMPTY);
+  });
+
+  it("refuses an Admin whose only fellow Admin is being deleted or suspended", async () => {
+    const { agent, user } = await fullAccount("dana");
+    await User.updateOne({ _id: user._id }, { $set: { roles: ["member", "admin"] } });
+    await member("eli");
+    await User.updateOne(
+      { username: "eli" },
+      { $set: { roles: ["member", "admin"], deletionPending: true } },
+    );
+    await member("fay");
+    await User.updateOne(
+      { username: "fay" },
+      { $set: { roles: ["member", "admin"], status: "suspended" } },
+    );
+    expect((await agent.delete("/api/users/me").expect(409)).body.error).toBe("last_admin");
+    expect((await User.findById(user._id).lean())?.deletionPending).toBe(false);
+  });
+
+  it("clears its own flag and refuses when the other Admin went at the same moment", async () => {
+    const { user } = await fullAccount("dana");
+    await User.updateOne({ _id: user._id }, { $set: { roles: ["member", "admin"] } });
+    await member("eli");
+    await User.updateOne({ username: "eli" }, { $set: { roles: ["member", "admin"] } });
+    // The other Admin is flagged between this delete's first check and its own flag.
+    const real = User.updateOne.bind(User);
+    vi.spyOn(User, "updateOne").mockImplementationOnce((async (
+      ...args: Parameters<typeof real>
+    ) => {
+      await real({ username: "eli" }, { $set: { deletionPending: true } });
+      return real(...args);
+    }) as typeof User.updateOne);
+    await expect(deleteAccount(user._id, { keepAnAdmin: true })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect((await User.findById(user._id).lean())?.deletionPending).toBe(false);
+    expect(await owned(user._id)).toMatchObject({ user: 1, logs: 1 });
   });
 });
 
 describe("deleteAccount", () => {
+  it("sweeps a log entry written after its first delete, once the User is gone", async () => {
+    const { user } = await fullAccount("dana");
+    const real = User.deleteOne.bind(User);
+    vi.spyOn(User, "deleteOne").mockImplementationOnce(((...args: Parameters<typeof real>) => {
+      // A request that passed requireAuth before the flag writes now.
+      return LogEntry.create({
+        userId: user._id,
+        date: "2026-11-16",
+        meal: "lunch",
+        fdcId: 1,
+        grams: 10,
+        source: "search",
+        confidence: 1,
+      }).then(() => real(...args));
+    }) as typeof User.deleteOne);
+    await deleteAccount(user._id);
+    expect(await owned(user._id)).toEqual(EMPTY);
+  });
+
   it("is a no-op for an account that is already gone", async () => {
     const { user } = await fullAccount("dana");
     await deleteAccount(user._id);

@@ -1,5 +1,5 @@
 import type { Types } from "mongoose";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import app from "../src/app.js";
 import {
@@ -12,6 +12,9 @@ import {
 } from "../src/models/index.js";
 import { loadDictionary, rematchAllergen, startRematch } from "../src/services/dictionary.js";
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 // T5: re-match one allergen over the cached foods in cursor batches (D6, S4, R3-4), and the allergen
 // DELETE cascade (R3-3).
 
@@ -152,6 +155,22 @@ describe("rematchAllergen", () => {
     }
   });
 
+  it("drops the rows it wrote when the allergen is deleted while the pass runs", async () => {
+    await cacheFoods(8);
+    const id = await peanutId();
+    await startRematch(id);
+    const real = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementationOnce((async (
+      ...args: Parameters<typeof real>
+    ) => {
+      const out = await real(...args);
+      await Allergen.deleteOne({ _id: id }); // the Curator's delete (and its sweeps) landed meanwhile
+      return out;
+    }) as typeof FoodAllergen.bulkWrite);
+    await expect(rematchAllergen(id, { batchSize: 4 })).rejects.toMatchObject({ status: 404 });
+    expect(await FoodAllergen.countDocuments({ allergenId: id })).toBe(0);
+  });
+
   it("answers 404 for an allergen that does not exist", async () => {
     await expect(startRematch(new User()._id)).rejects.toMatchObject({ status: 404 });
     await expect(rematchAllergen(new User()._id)).rejects.toMatchObject({ status: 404 });
@@ -246,6 +265,26 @@ describe("DELETE /api/allergens/:id", () => {
       del.mockRestore();
     }
     expect(await Allergen.exists({ _id: id })).toBeNull();
+    expect(await FoodAllergen.countDocuments({ allergenId: id })).toBe(0);
+  });
+
+  it("still sweeps rows left by a crash after the entry was deleted, answering 404", async () => {
+    await cacheFoods(6);
+    const id = await peanutId();
+    await startRematch(id);
+    await rematchAllergen(id);
+    const { agent: cura } = await login("cura", ["member", "curator"]);
+    await Allergen.deleteOne({ _id: id }); // the entry is gone ...
+    await FoodAllergen.create({
+      fdcId: 3,
+      allergenId: id,
+      matchKind: "ingredient",
+      matchedSynonym: "peanuts",
+      matchedAt: new Date(),
+    }).catch(() => undefined);
+    // ... but rows remain (a crash before the final sweep). A retry cleans them up.
+    expect(await FoodAllergen.countDocuments({ allergenId: id })).toBeGreaterThan(0);
+    await cura.delete(`/api/allergens/${id}`).expect(404);
     expect(await FoodAllergen.countDocuments({ allergenId: id })).toBe(0);
   });
 

@@ -135,10 +135,14 @@ Deletion and re-match (design doc D6, R3-3, R3-4; T5): no Mongo transactions, ev
 Account deletion (`services/account.ts`, shared by `DELETE /api/users/me` and the Admin delete of T21) sets
 `User.deletionPending` first, so login and every session of the account answer `403
 account_deletion_pending` from then on; then it deletes the account's `LogEntry`, `UserAllergen`, the three
-role profiles and its `sessions` documents, then the `User`. A crash part way leaves the account locked but
-present; rerunning the cascade finishes it. `DELETE /api/allergens/:id` deletes the allergen's
-`FoodAllergen` and `UserAllergen` rows, then the entry, then its `FoodAllergen` rows once more (a food
-matched meanwhile). After a dictionary edit, `startRematch` sets `Allergen.rematchCursor` to 0 (the next
+role profiles and its `sessions` documents, then the `User`, then the logs and settings once more (a write
+that passed `requireAuth` before the flag). The route retries a failed cascade once; if that fails too the
+account stays locked, and the member's next login with the right password finishes the deletion before
+answering 403. The only usable Admin (active, not being deleted) gets `409 last_admin`, checked before and
+after the flag. `DELETE /api/allergens/:id` deletes the allergen's `FoodAllergen` and `UserAllergen` rows,
+then the entry, then its `FoodAllergen` rows once more (a food matched meanwhile); a retry after the entry
+is gone still sweeps its rows before answering 404, and a re-match that finds its allergen gone drops the
+rows it wrote. After a dictionary edit, `startRematch` sets `Allergen.rematchCursor` to 0 (the next
 fdcId to process) and bumps `rematchRun`; `rematchAllergen` walks the cached foods in fdcId batches of 500,
 one ordered `bulkWrite` per batch (delete the allergen's rows in the batch's range, insert the new matches),
 and moves the cursor only if neither the cursor nor the run changed meanwhile. It stops after 60 seconds
