@@ -40,7 +40,7 @@ async function cacheFoods(n: number) {
 }
 
 const tahini = {
-  key: "tahini-paste",
+  key: "tahini",
   displayName: "Tahini",
   tier: "allergy",
   synonyms: ["tahini"],
@@ -67,7 +67,7 @@ describe("POST /api/allergens", () => {
     await member.post("/api/allergens").send(tahini).expect(403);
     const { agent: admin } = await account("adam", ["member", "admin"]);
     await admin.post("/api/allergens").send(tahini).expect(403);
-    expect(await Allergen.countDocuments({ key: "tahini-paste" })).toBe(0);
+    expect(await Allergen.countDocuments({ key: "tahini" })).toBe(0);
   });
 
   it("creates a curator entry, matches every cached food in the same request and counts the edit", async () => {
@@ -75,19 +75,19 @@ describe("POST /api/allergens", () => {
     const { agent, user } = await account("cleo", ["member", "curator"]);
     const res = await agent.post("/api/allergens").send(tahini).expect(201);
     expect(res.body.allergen).toMatchObject({
-      key: "tahini-paste",
+      key: "tahini",
       source: "curator",
       rematchPending: false,
     });
     expect(res.body.rematch).toEqual({ done: true, processed: 7, remaining: 0 });
-    const stored = await Allergen.findOne({ key: "tahini-paste" }).lean();
+    const stored = await Allergen.findOne({ key: "tahini" }).lean();
     expect(String(stored?.updatedBy)).toBe(String(user._id));
     expect(await rowsOf(stored?._id)).toEqual([3, 6]);
     const profile = await CuratorProfile.findOne({ userId: user._id }).lean();
     expect(profile?.editsCount).toBe(1);
     expect(profile?.lastEditAt).toBeInstanceOf(Date);
     const list = await request(app).get("/api/allergens").expect(200);
-    expect(list.body.allergens.find((a: { key: string }) => a.key === "tahini-paste")).toBeTruthy();
+    expect(list.body.allergens.find((a: { key: string }) => a.key === "tahini")).toBeTruthy();
   });
 
   it("answers 409 for a key that exists, seed keys included, and 400 for an invalid entry", async () => {
