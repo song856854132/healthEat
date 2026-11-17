@@ -1,3 +1,4 @@
+import type { Types } from "mongoose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import app from "../src/app.js";
@@ -48,7 +49,7 @@ const tahini = {
   excludePhrases: [],
 };
 
-const rowsOf = async (allergenId: unknown) =>
+const rowsOf = async (allergenId: Types.ObjectId | string) =>
   (await FoodAllergen.find({ allergenId }).sort({ fdcId: 1 }).lean()).map((r) => r.fdcId);
 
 /** Every Date.now() call jumps a minute, so the 60-second re-match budget runs out after one batch. */
@@ -82,7 +83,7 @@ describe("POST /api/allergens", () => {
     expect(res.body.rematch).toEqual({ done: true, processed: 7, remaining: 0 });
     const stored = await Allergen.findOne({ key: "tahini" }).lean();
     expect(String(stored?.updatedBy)).toBe(String(user._id));
-    expect(await rowsOf(stored?._id)).toEqual([3, 6]);
+    expect(await rowsOf(stored!._id)).toEqual([3, 6]);
     const profile = await CuratorProfile.findOne({ userId: user._id }).lean();
     expect(profile?.editsCount).toBe(1);
     expect(profile?.lastEditAt).toBeInstanceOf(Date);

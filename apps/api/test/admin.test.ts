@@ -33,7 +33,7 @@ async function make(username: string, roles: string[] = ["member"]) {
   return { agent, user };
 }
 
-const grants = async (userId: unknown) =>
+const grants = async (userId: mongoose.Types.ObjectId) =>
   (await AdminProfile.findOne({ userId }).lean())?.grantsCount ?? 0;
 
 const sessionsOf = (userId: unknown) =>
