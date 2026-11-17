@@ -1,4 +1,4 @@
-import type { Types } from "mongoose";
+import { Types } from "mongoose";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import app from "../src/app.js";
@@ -10,7 +10,13 @@ import {
   User,
   UserAllergen,
 } from "../src/models/index.js";
-import { loadDictionary, rematchAllergen, startRematch } from "../src/services/dictionary.js";
+import {
+  createAllergen,
+  loadDictionary,
+  matchAndStore,
+  rematchAllergen,
+  startRematch,
+} from "../src/services/dictionary.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -69,7 +75,7 @@ describe("rematchAllergen", () => {
     expect(rest).toEqual({ done: true, processed: 6, remaining: 0 });
     // Resumed at fdcId 5: the first batch it wrote covered 5..8, never food 4 again.
     const firstFilter = (bulk.mock.calls[0]![0] as [{ deleteMany: { filter: unknown } }])[0];
-    expect(firstFilter.deleteMany.filter).toMatchObject({ fdcId: { $gte: 5, $lte: 8 } });
+    expect(firstFilter.deleteMany.filter).toMatchObject({ fdcId: { $in: [5, 6, 7, 8] } });
     expect(await peanutRows(id)).toEqual([3, 6, 9]);
   });
 
@@ -192,6 +198,108 @@ async function login(username: string, roles: string[] = ["member"]) {
   if (roles.includes("curator")) await CuratorProfile.create({ userId: user!._id });
   return { agent, user: user! };
 }
+
+describe("re-match racing a first match of a food", () => {
+  // Value: protects=a food matched by a concurrent first read keeps its allergen row through a re-match
+  //   batch whose fdcId range covers it; fails_when=the batch deletes over its whole [cursor, last] range
+  //   again; why_new=T21 runs the re-match from live routes, so a food can be cached mid-batch; seam=none;
+  //   no_claim=timing of real concurrent requests (the interleaving is injected)
+  it("keeps the row of a food cached and matched after the batch read the foods", async () => {
+    await cacheFoods(6);
+    await Food.deleteOne({ fdcId: 3 }); // not cached yet when the batch reads the foods
+    const id = await peanutId();
+    await startRematch(id);
+    const original = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    let injected = false;
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementation((async (ops: never, opts: never) => {
+      if (!injected) {
+        injected = true;
+        // Another request caches food 3 and matches it while this batch is between its read and its write.
+        await Food.create({
+          fdcId: 3,
+          description: "FOOD 3",
+          dataType: "Branded",
+          ingredientsText: "SUGAR, PEANUTS, SALT",
+          fetchedAt: new Date(),
+          allergensMatchedAt: new Date(),
+        });
+        await FoodAllergen.create({
+          fdcId: 3,
+          allergenId: id,
+          matchKind: "ingredient",
+          matchedSynonym: "peanuts",
+          matchedAt: new Date(),
+        });
+      }
+      return original(ops, opts);
+    }) as never);
+    const res = await rematchAllergen(id, { batchSize: 10 });
+    expect(res.done).toBe(true);
+    expect(await peanutRows(id)).toEqual([3, 6]);
+  });
+
+  // Value: protects=a food matched against the dictionary as it was before a Curator edit, but written
+  //   after that edit's re-match passed it, does not keep the old matches; fails_when=matchAndStore stops
+  //   re-checking the dictionary version after its write; why_new=same T21 race, mirror case; seam=none;
+  //   no_claim=timing of real concurrent requests (the interleaving is injected)
+  it("matches again when a Curator edit and its re-match land between the dictionary read and the write", async () => {
+    const food = {
+      fdcId: 42,
+      description: "CAROB BAR",
+      dataType: "Branded",
+      ingredientsText: "CAROB, OATS, SALT",
+      fetchedAt: new Date(),
+    };
+    await Food.create(food);
+    await loadDictionary();
+    const curator = new Types.ObjectId();
+    const original = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    let injected = false;
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementation((async (ops: never, opts: never) => {
+      if (!injected) {
+        injected = true;
+        // A Curator adds carob; its re-match writes the carob row for food 42 before this write lands.
+        await createAllergen(
+          {
+            key: "carob",
+            displayName: "Carob",
+            tier: "allergy",
+            synonyms: ["carob"],
+            descriptionKeywords: [],
+            excludePhrases: [],
+          },
+          curator,
+        );
+      }
+      return original(ops, opts);
+    }) as never);
+    const matches = await matchAndStore(food);
+    expect(matches.map((m) => m.key)).toContain("carob");
+    const carob = (await Allergen.findOne({ key: "carob" }).lean())!;
+    expect(await FoodAllergen.countDocuments({ fdcId: 42, allergenId: carob._id })).toBe(1);
+    expect((await Food.findOne({ fdcId: 42 }).lean())?.allergensMatchedAt).toBeInstanceOf(Date);
+  });
+
+  it("leaves the food unstamped when the dictionary keeps changing, so the next read matches again", async () => {
+    const food = {
+      fdcId: 43,
+      description: "OAT BAR",
+      dataType: "Branded",
+      ingredientsText: "OATS, SALT",
+      fetchedAt: new Date(),
+    };
+    await Food.create(food);
+    await loadDictionary();
+    const id = await peanutId();
+    const original = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementation((async (ops: never, opts: never) => {
+      await Allergen.updateOne({ _id: id }, { $inc: { rematchRun: 1 } }); // an edit on every attempt
+      return original(ops, opts);
+    }) as never);
+    await matchAndStore(food);
+    expect((await Food.findOne({ fdcId: 43 }).lean())?.allergensMatchedAt ?? null).toBeNull();
+  });
+});
 
 describe("DELETE /api/allergens/:id", () => {
   it("removes the entry with its FoodAllergen and UserAllergen rows, and counts the Curator's edit", async () => {

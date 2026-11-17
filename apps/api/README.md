@@ -157,9 +157,13 @@ once more (a food matched meanwhile); a retry after the entry is gone still swee
 404, and a re-match that finds its allergen gone drops the rows it wrote. After a dictionary edit,
 `startRematch` sets `Allergen.rematchCursor` to 0 (the next fdcId to process) and bumps `rematchRun`;
 `rematchAllergen` walks the cached foods in fdcId batches of 500, one ordered `bulkWrite` per batch (delete
-the allergen's rows in the batch's range, insert the new matches), and moves the cursor only if neither the
-cursor nor the run changed meanwhile. It stops after 60 seconds with `{done: false, processed, remaining}`
-and resumes from the cursor; null means done.
+the allergen's rows for the foods the batch read, insert the new matches), and moves the cursor only if
+neither the cursor nor the run changed meanwhile. It stops after 60 seconds with `{done: false, processed,
+remaining}` and resumes from the cursor; null means done. A food cached and matched by another request while
+a batch runs keeps its rows, and `matchAndStore` reads the dictionary version (each entry's id and
+`rematchRun`) again after its write: if a Curator add or edit landed meanwhile, its re-match may already have
+passed the food, so the food is matched once more against the new dictionary; if the dictionary moves again,
+the food is left unstamped and its next read matches it.
 
 Curator and Admin (T21, D18): `POST /api/allergens` and `PUT /api/allergens/:id` start the re-match in the
 same write (the new entry is inserted with cursor 0; an edit sets it to 0 and bumps `rematchRun` in its
