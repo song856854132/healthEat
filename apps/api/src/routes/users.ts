@@ -10,11 +10,12 @@ import {
   UserAllergensInput,
   UserAllergensResponse,
 } from "@healtheat/shared";
-import { asyncHandler } from "../lib/http.js";
+import { HttpError, asyncHandler } from "../lib/http.js";
 import { currentUser, destroySession, requireAuth, requireRole } from "../middleware/auth.js";
 import { deleteAccount } from "../services/account.js";
 import * as auth from "../services/auth.js";
 import * as logs from "../services/logs.js";
+import { isLastAdmin } from "../services/roles.js";
 
 // /api/users/me/*: routes scoped to the caller (design doc REST table). There is no route that names
 // another member, so no account can address someone else's logs or allergen settings (A2, D18).
@@ -23,12 +24,15 @@ export const usersRouter = Router();
 
 // Deletes the caller's account and everything it owns (T5 cascade, D6), then ends this session. A crash
 // part way leaves the account flagged `deletionPending`: it can no longer log in, and rerunning the
-// cascade (Admin delete, T21) finishes it.
+// cascade (Admin delete, T21) finishes it. The only Admin cannot delete themselves (409 last_admin, the
+// same lockout guard as role changes): grant the role to someone else first.
 usersRouter.delete(
   "/me",
   ...requireAuth,
   asyncHandler(async (req, res) => {
-    await deleteAccount(currentUser(res)._id);
+    const user = currentUser(res);
+    if (await isLastAdmin(user)) throw new HttpError(409, "last_admin");
+    await deleteAccount(user._id);
     await destroySession(req);
     res.clearCookie(SESSION_COOKIE, { path: "/" });
     res.status(204).end();

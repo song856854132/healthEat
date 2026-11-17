@@ -119,6 +119,23 @@ describe("DELETE /api/users/me", () => {
     await other.get("/api/users/me/logs").expect(200);
   });
 
+  // Value: protects=the deployment always keeps an Admin: the only Admin cannot self-delete;
+  //   fails_when=the last_admin guard on DELETE /me is removed; why_new=roles.test.ts guards role
+  //   writes only; seam=none; no_claim=two last admins deleting at the same instant (not raced here)
+  it("refuses the only Admin with 409 last_admin and writes nothing, but lets an Admin go when another remains", async () => {
+    const { agent, user } = await fullAccount("dana");
+    await User.updateOne({ _id: user._id }, { $set: { roles: ["member", "admin"] } });
+    const res = await agent.delete("/api/users/me").expect(409);
+    expect(res.body.error).toBe("last_admin");
+    expect(await owned(user._id)).toMatchObject({ user: 1, logs: 1, allergens: 1, sessions: 2 });
+    expect((await User.findById(user._id).lean())?.deletionPending).toBe(false);
+
+    await member("eli");
+    await User.updateOne({ username: "eli" }, { $set: { roles: ["member", "admin"] } });
+    await agent.delete("/api/users/me").expect(204);
+    expect(await owned(user._id)).toEqual(EMPTY);
+  });
+
   it("is 401 without a session", async () => {
     await request(app).delete("/api/users/me").expect(401);
   });
