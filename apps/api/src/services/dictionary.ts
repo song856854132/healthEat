@@ -177,6 +177,20 @@ export async function loadDictionary(): Promise<DictionaryEntry[]> {
   return (await dictionaryDocs()).map(toEntry).sort(byName);
 }
 
+/**
+ * Which dictionary a match ran against: every entry's id with its `rematchRun`. A Curator add, edit or
+ * delete changes it (an add or edit bumps `rematchRun`, T5/T21), so a match can tell afterwards that the
+ * dictionary moved while it ran.
+ */
+const versionOf = (docs: { _id: Types.ObjectId; rematchRun?: number | null }[]) =>
+  docs
+    .map((d) => `${String(d._id)}:${d.rematchRun ?? 0}`)
+    .sort()
+    .join(",");
+
+const currentVersion = async () =>
+  versionOf(await Allergen.find({}, { _id: 1, rematchRun: 1 }).lean());
+
 type StoredAllergen = Parameters<typeof toEntry>[0] & {
   source: string;
   rematchCursor?: number | null;
@@ -218,52 +232,67 @@ type MatchableFood = {
   allergensMatchedAt?: Date | null;
 };
 
+/** Most matches of one food against a dictionary that keeps changing under it before giving up. */
+const MATCH_ATTEMPTS = 2;
+
 /**
  * Matches one cached food against the dictionary and replaces its FoodAllergen rows: one ordered
  * bulkWrite (delete that food's rows, insert the new ones), then the food is stamped matched. No
  * transaction (D6): a crash between the two leaves the stamp unset, and the next read matches again.
  * A failed write is logged and the computed matches are still returned.
+ *
+ * A Curator edit can land while this runs: its re-match may pass this food before this write, which
+ * then replaces the new rows with matches from the old dictionary. So the dictionary version is read
+ * again after the write; if it moved, the food is matched once more against the new one. If it moves
+ * again, the food is left unstamped and the next read matches it.
  */
 export async function matchAndStore(
   food: MatchableFood,
   now = new Date(),
 ): Promise<FoodAllergenMatch[]> {
-  const matches = matchFood(food, await loadDictionary());
-  try {
-    // A newer USDA copy stored meanwhile is matched by its own request: this stale match writes nothing,
-    // so it cannot replace that copy's rows (the check narrows the race to the write itself).
-    if (!(await Food.exists({ fdcId: food.fdcId, fetchedAt: food.fetchedAt })))
-      return matches.map(view).sort(byName);
-    await FoodAllergen.bulkWrite(
-      [
-        { deleteMany: { filter: { fdcId: food.fdcId } } },
-        ...matches.map((m) => ({
-          insertOne: {
-            document: {
-              fdcId: food.fdcId,
-              allergenId: m.entry.id,
-              matchKind: m.matchKind,
-              matchedSynonym: m.matchedSynonym,
-              matchedAt: now,
+  let matches: Match[] = [];
+  for (let attempt = 1; attempt <= MATCH_ATTEMPTS; attempt++) {
+    const docs = await dictionaryDocs();
+    const version = versionOf(docs);
+    matches = matchFood(food, docs.map(toEntry).sort(byName));
+    try {
+      // A newer USDA copy stored meanwhile is matched by its own request: this stale match writes
+      // nothing, so it cannot replace that copy's rows (the check narrows the race to the write itself).
+      if (!(await Food.exists({ fdcId: food.fdcId, fetchedAt: food.fetchedAt }))) break;
+      await FoodAllergen.bulkWrite(
+        [
+          { deleteMany: { filter: { fdcId: food.fdcId } } },
+          ...matches.map((m) => ({
+            insertOne: {
+              document: {
+                fdcId: food.fdcId,
+                allergenId: m.entry.id,
+                matchKind: m.matchKind,
+                matchedSynonym: m.matchedSynonym,
+                matchedAt: now,
+              },
             },
-          },
-        })),
-      ],
-      { ordered: true },
-    );
-    // Only the copy that was matched: a newer USDA copy written meanwhile keeps its own null stamp.
-    await Food.updateOne(
-      { fdcId: food.fdcId, fetchedAt: food.fetchedAt },
-      { $set: { allergensMatchedAt: now } },
-    );
-  } catch (err) {
-    // A concurrent match of the same food inserted the same rows first (duplicate key): it stamps them.
-    if ((err as { code?: number }).code !== 11000)
-      console.error(
-        "[dictionary] storing matches for %d failed:",
-        food.fdcId,
-        err instanceof Error ? err.message : err,
+          })),
+        ],
+        { ordered: true },
       );
+      if ((await currentVersion()) !== version) continue; // the dictionary moved: match again
+      // Only the copy that was matched: a newer USDA copy written meanwhile keeps its own null stamp.
+      await Food.updateOne(
+        { fdcId: food.fdcId, fetchedAt: food.fetchedAt },
+        { $set: { allergensMatchedAt: now } },
+      );
+      break;
+    } catch (err) {
+      // A concurrent match of the same food inserted the same rows first (duplicate key): it stamps them.
+      if ((err as { code?: number }).code !== 11000)
+        console.error(
+          "[dictionary] storing matches for %d failed:",
+          food.fdcId,
+          err instanceof Error ? err.message : err,
+        );
+      break;
+    }
   }
   return matches.map(view).sort(byName);
 }
@@ -307,7 +336,7 @@ export async function startRematch(allergenId: Types.ObjectId): Promise<void> {
 /**
  * Re-matches one allergen over the cached foods, resuming from its `rematchCursor` (the next fdcId to
  * process; null when there is nothing left). Each batch of foods, in fdcId order, is one ordered
- * bulkWrite: delete this allergen's rows in the batch's fdcId range, then insert the new matches (D6, no
+ * bulkWrite: delete this allergen's rows for the foods the batch read, then insert the new matches (D6, no
  * transaction). The cursor then moves past the batch only if neither it nor the run counter changed since
  * this batch read them, so an edit that restarted the re-match meanwhile is never overwritten (the counter
  * catches a restart during the first batch, when the cursor was already 0). A crash
@@ -359,7 +388,11 @@ export async function rematchAllergen(
         await FoodAllergen.bulkWrite(
           [
             {
-              deleteMany: { filter: { allergenId: entry.id, fdcId: { $gte: cursor, $lte: last } } },
+              // Only the foods this batch read: a food cached and matched by another request after the
+              // read keeps its row, which that request matched against the current dictionary.
+              deleteMany: {
+                filter: { allergenId: entry.id, fdcId: { $in: foods.map((f) => f.fdcId) } },
+              },
             },
             ...inserts,
           ],
