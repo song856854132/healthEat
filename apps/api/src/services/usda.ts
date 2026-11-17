@@ -10,6 +10,7 @@ import {
 import { usdaApiKey } from "../lib/env.js";
 import { HttpError } from "../lib/http.js";
 import { Food, SearchCache } from "../models/index.js";
+import { allergensForFood, matchAndStore } from "./dictionary.js";
 
 // USDA FoodData Central proxy (design doc: REST table, D5 search cache, S7 failure handling). Every
 // nutrient value the app shows comes from here, never from a model's memory.
@@ -255,9 +256,14 @@ type StoredFood = {
   nutrients: FoodNutrient[];
   servingSizes: ServingSize[];
   fetchedAt: Date;
+  allergensMatchedAt?: Date | null;
 };
 
-const toDetails = (f: StoredFood, cached: boolean): FoodDetails => ({
+const toDetails = (
+  f: StoredFood,
+  cached: boolean,
+  allergens: FoodDetails["allergens"],
+): FoodDetails => ({
   fdcId: f.fdcId,
   description: f.description,
   dataType: f.dataType,
@@ -270,25 +276,33 @@ const toDetails = (f: StoredFood, cached: boolean): FoodDetails => ({
     amountPer100g,
   })),
   servingSizes: f.servingSizes.map(({ label, grams }) => ({ label, grams })),
+  allergens,
   cached,
   fetchedAt: f.fetchedAt.toISOString(),
 });
 
 const storedFoodFits = (doc: StoredFood): boolean => {
   try {
-    return FoodDetails.safeParse(toDetails(doc, false)).success;
+    return FoodDetails.safeParse(toDetails(doc, false, [])).success;
   } catch {
     return false;
   }
 };
 
-/** Details with cache-on-read: a stored food younger than 30 days never reaches USDA. */
+// A stored copy served as is, with its allergens (matched now if it never was).
+const fromStore = async (f: StoredFood, cached: boolean) =>
+  toDetails(f, cached, await allergensForFood(f));
+
+/**
+ * Details with cache-on-read: a stored food younger than 30 days never reaches USDA. Every fresh USDA copy
+ * is matched against the allergen dictionary again (its ingredient text may have changed).
+ */
 export async function getFood(fdcId: number, now = new Date()): Promise<FoodDetails> {
   const doc = (await Food.findOne({ fdcId }).lean()) as StoredFood | null;
   // As for search: a stored food that no longer matches the response shape is refetched, not served.
   const stored = doc && storedFoodFits(doc) ? doc : null;
   if (stored && now.getTime() - stored.fetchedAt.getTime() < FOOD_REFRESH_MS)
-    return toDetails(stored, false);
+    return fromStore(stored, false);
   let raw: Raw;
   try {
     const body = await usdaGet(`/food/${fdcId}`, {});
@@ -297,17 +311,22 @@ export async function getFood(fdcId: number, now = new Date()): Promise<FoodDeta
     if (!(err instanceof UsdaFailure)) throw err;
     // A food USDA no longer lists, or cannot serve now, is still shown from its stored copy:
     // log entries will point at it.
-    if (stored) return toDetails(stored, true);
+    if (stored) return fromStore(stored, true);
     if (err.kind === "not_found") throw new HttpError(404, "food_not_found");
     throw unavailable();
   }
   const base = summary(raw, detailNutrients(raw.foodNutrients));
   if (!base || base.fdcId !== fdcId) {
     console.error("[usda] /food/%d returned an unusable body", fdcId);
-    if (stored) return toDetails(stored, true);
+    if (stored) return fromStore(stored, true);
     throw unavailable();
   }
-  const food: StoredFood = { ...base, servingSizes: servingSizes(raw), fetchedAt: now };
+  const food: StoredFood = {
+    ...base,
+    servingSizes: servingSizes(raw),
+    fetchedAt: now,
+    allergensMatchedAt: null,
+  };
   await Food.updateOne({ fdcId }, { $set: food }, { upsert: true }).catch(ignoreDuplicate);
-  return toDetails(food, false);
+  return toDetails(food, false, await matchAndStore(food, now));
 }

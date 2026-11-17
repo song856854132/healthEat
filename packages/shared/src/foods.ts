@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FoodAllergenMatch } from "./allergens.js";
 
 /** USDA FoodData Central data types the search can be narrowed to (design doc, Pages: /search). */
 export const FOOD_DATA_TYPES = ["Branded", "Foundation", "SR Legacy", "Survey (FNDDS)"] as const;
@@ -62,9 +63,13 @@ export type FoodSearchResponse = z.infer<typeof FoodSearchResponse>;
 export const ServingSize = z.object({ label: z.string(), grams: z.number().positive() });
 export type ServingSize = z.infer<typeof ServingSize>;
 
-/** Response of GET /api/foods/:fdcId. `cached` has the same meaning as in FoodSearchResponse. */
+/**
+ * Response of GET /api/foods/:fdcId. `cached` has the same meaning as in FoodSearchResponse.
+ * `allergens` lists the dictionary entries this food matched, ordered by display name.
+ */
 export const FoodDetails = FoodSummary.extend({
   servingSizes: z.array(ServingSize),
+  allergens: z.array(FoodAllergenMatch),
   cached: z.boolean(),
   fetchedAt: z.string().datetime(),
 });

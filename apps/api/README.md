@@ -61,7 +61,8 @@ responses are redacted on every deployment (`isDeployed()`), shown only on local
 | `PUT /api/users/me/active-role`        | `ActiveRoleInput`                                           | `200 MeResponse`; the role must be in `roles` (else `403 forbidden`); mirrored into the session                                                                                                                                                                                                                                  |
 | `PUT /api/admin/users/:username/roles` | `RoleUpdateInput` (admin only)                              | `200 MeResponse` of the target; the complete role set (must include `member`). A grant upserts the role's empty profile; a revoke keeps the profile and resets `activeRole` to `member` if it was active (the target's session follows on its next request). Each change counts in the acting admin's `AdminProfile.grantsCount` |
 | `GET /api/foods/search`                | query `FoodSearchQuery` (`q`, `dataType?`, `page?`); public | `200 FoodSearchResponse`: 25 results per page with headline nutrients per 100 g; `cached: true` marks a stored page served because USDA failed                                                                                                                                                                                   |
-| `GET /api/foods/:fdcId`                | none; public                                                | `200 FoodDetails`: every nutrient per 100 g, serving sizes in grams, brand owner and ingredients for branded foods; `cached` as for search                                                                                                                                                                                       |
+| `GET /api/foods/:fdcId`                | none; public                                                | `200 FoodDetails`: every nutrient per 100 g, serving sizes in grams, brand owner and ingredients for branded foods, and `allergens[]` (`FoodAllergenMatch`: key, name, tier, `matchKind`, matched synonym); `cached` as for search                                                                                               |
+| `GET /api/allergens`                   | none; public                                                | `200 AllergenListResponse`: the whole allergen dictionary by display name (seeded on first use)                                                                                                                                                                                                                                  |
 
 Sessions: `express-session` + `connect-mongo`, collection `sessions` in the same database, 14-day TTL,
 rolling, written at most once a day per session (`touchAfter`). Cookie `he_sid`: `HttpOnly`, `SameSite=Lax`,
@@ -90,6 +91,23 @@ never deleted, because log entries will point at them. When USDA fails, the stor
 foods on its result page; only a food someone opens is stored. A query USDA rejects (400) answers an
 empty result page. A stored page or food that no longer matches the response shape is refetched. The
 routes have no abuse limit yet (accepted risk, TODOS.md "Food routes: abuse limit and cache footprint").
+
+Allergen dictionary and matcher (design doc: Allergen matching, D12; T11): `allergens` (`Allergen {key,
+displayName, tier, synonyms, descriptionKeywords, excludePhrases, source, updatedBy}`) is seeded from
+`ALLERGEN_SEED` (`packages/shared`, provenance in `packages/shared/data/PROVENANCE.md`) when it is first
+read. A marker document (`dictionaryseeds`) lists the seed keys already written; any seed key missing
+from it is upserted on the next read, so a partial first seed is finished and a later seed addition
+reaches existing databases. The seed never overwrites an entry, and a seed entry a Curator deleted stays
+deleted.
+Each opened food is matched once per USDA copy and its rows are stored in `foodallergens` (`FoodAllergen
+{fdcId, allergenId, matchKind, matchedSynonym, matchedAt}`, unique per food and allergen). The ingredient
+text is split at commas, semicolons, colons, periods and brackets, and a synonym must match whole words
+inside one ingredient (`ingredient`). The description is searched for `descriptionKeywords` when the food
+has no ingredient text, and for sensitivity-tier allergens on every food (`description`, shown with the
+label "food-category estimate"). An exclude phrase hides its words from that allergen only ("cocoa butter"
+is not milk). `Food.allergensMatchedAt` is set after the rows are written; a food without it (cached before
+T11, or a failed write) is matched again on its next read. A dictionary edit reaches already matched foods
+only through the re-match pass (T5).
 
 Privacy acknowledgment: the banner sets the readable cookie `he_privacy_ack` (1 year, `SameSite=Lax`).
 Register and login copy it to `User.privacyAckAt` when present, and set it when the account already has
@@ -122,12 +140,14 @@ src/lib/password.ts   bcryptjs cost 12: hashPassword, verifyPassword, DUMMY_HASH
 src/lib/process.ts    unhandledRejection (log, keep serving) and uncaughtException (log, exit) hooks
 src/middleware/       error handler (always JSON, never a stack), notFound, secretsGuard (503 secret_unconfigured),
                       requireAuth (401/403, loads the account), requireRole(role) (403 forbidden)
-src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile, LoginAttempt, SearchCache, Food
+src/models/           Mongoose models: User, MemberProfile, CuratorProfile, AdminProfile, LoginAttempt, SearchCache, Food,
+                      Allergen, FoodAllergen, DictionarySeed
 src/services/auth.ts  register (user + member profile, rerunnable), login (constant-cost), me, setActiveRole
 src/services/throttle.ts  login throttle: reserveAttempt (one atomic upsert before the compare), clearFailures
 src/services/usda.ts  USDA FoodData Central proxy: searchFoods (SearchCache), getFood (Food cache-on-read), normalization
+src/services/dictionary.ts  allergen dictionary: seed on read (DictionarySeed marker), matchFood (normalizer + matcher), matchAndStore, allergensForFood
 src/services/roles.ts setRoles (admin route: atomic conditional role write, lockout guards), applyAdminBootstrap (ADMIN_USERNAMES)
-src/routes/           one router per resource (health, spike, auth, users, admin, foods); routers never touch fetch or process.env
+src/routes/           one router per resource (health, spike, auth, users, admin, foods, allergens); routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test
 test/fixtures/usda/   recorded USDA payloads (search, a Foundation food, a branded food) for the food tests
 ```
