@@ -181,6 +181,34 @@ describe("PUT /api/allergens/:id", () => {
     await agent.put("/api/allergens/0123456789abcdef01234567").send(body).expect(404);
     await agent.put("/api/allergens/nope").send(body).expect(404);
     expect((await Allergen.findById(sesame._id).lean())?.source).toBe("seed");
+    // Value: protects=a refused dictionary write is not counted on the Curator's profile; fails_when=
+    //   countEdit moves before the write or into a finally; why_new=only successful writes checked
+    //   editsCount; seam=none; no_claim=none beyond protects
+    expect((await CuratorProfile.findOne({}).lean())?.editsCount).toBe(0);
+  });
+
+  // Value: protects=an edit whose re-match runs out of time answers 202 with rematchPending, not 200;
+  //   fails_when=PUT stops routing through sendWrite or hardcodes 200; why_new=only POST's 202 path was
+  //   tested; seam=none; no_claim=real 60 s timing (Date.now mocked)
+  it("answers 202 with the foods left when the edit's re-match runs out of time", async () => {
+    await cacheFoods(501);
+    await loadDictionary();
+    const sesame = (await Allergen.findOne({ key: "sesame" }).lean())!;
+    const { agent } = await account("cleo", ["member", "curator"]);
+    slowClock();
+    const res = await agent
+      .put(`/api/allergens/${sesame._id}`)
+      .send({
+        displayName: "Sesame",
+        tier: "allergy",
+        synonyms: ["tahini"],
+        descriptionKeywords: [],
+        excludePhrases: [],
+      })
+      .expect(202);
+    vi.restoreAllMocks();
+    expect(res.body.rematch).toEqual({ done: false, processed: 500, remaining: 1 });
+    expect(res.body.allergen.rematchPending).toBe(true);
   });
 
   it("is 403 for a member", async () => {

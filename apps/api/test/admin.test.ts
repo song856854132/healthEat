@@ -295,12 +295,39 @@ describe("GET and PUT /api/users/me/profiles/:kind", () => {
       .send({ credentials: null })
       .expect(200);
     expect(cleared.body).toMatchObject({ credentials: null, bio: "Dairy-free cook" });
+    // Value: protects=an empty string clears a profile field like null does; fails_when=the "" branch
+    //   of changes() is dropped and "" is stored; why_new=only null was sent; seam=none; no_claim=none
+    //   beyond protects
+    const blanked = await agent
+      .put("/api/users/me/profiles/curator")
+      .send({ bio: "  " })
+      .expect(200);
+    expect(blanked.body).toMatchObject({ bio: null, publicListing: true });
     await agent.put("/api/users/me/profiles/curator").send({ editsCount: 99 }).expect(400);
     await agent
       .put("/api/users/me/profiles/curator")
       .send({ specialties: ["Dairy", "dairy"] })
       .expect(400);
     expect((await CuratorProfile.findOne({}).lean())?.editsCount).toBe(0);
+  });
+
+  // Value: protects=a held role whose profile document is missing reads as empty and the first edit
+  //   creates it; fails_when=updateProfile loses upsert (the edit is silently dropped) or getProfile
+  //   throws on a missing doc; why_new=every other test creates the profile first; seam=none;
+  //   no_claim=how a profile goes missing (grant upserts it, roles.test.ts)
+  it("reads a missing role profile as empty and creates it on the first edit", async () => {
+    const { agent, user } = await make("cleo");
+    await User.updateOne({ _id: user._id }, { $set: { roles: ["member", "curator"] } });
+    expect(await CuratorProfile.countDocuments({ userId: user._id })).toBe(0);
+    const empty = await agent.get("/api/users/me/profiles/curator").expect(200);
+    expect(empty.body).toMatchObject({ bio: null, specialties: [], editsCount: 0 });
+    const res = await agent
+      .put("/api/users/me/profiles/curator")
+      .send({ bio: "Gluten-free baker" })
+      .expect(200);
+    expect(res.body).toMatchObject({ bio: "Gluten-free baker", editsCount: 0 });
+    const stored = await CuratorProfile.findOne({ userId: user._id }).lean();
+    expect(stored?.bio).toBe("Gluten-free baker");
   });
 
   it("an admin edits their private note; a role not held is 403 and member or unknown kinds are 400", async () => {
