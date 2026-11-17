@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { FoodDetails, FoodSearchResponse, LogEntryCreated } from "@healtheat/shared";
+// From source, not "@healtheat/shared": the preview's Playwright job runs only `npm ci`, so the
+// package's dist/ is not built there. Playwright compiles the TypeScript itself.
+import { FoodDetails, FoodSearchResponse, LogEntryCreated } from "../packages/shared/src/index";
 import { randomUUID } from "node:crypto";
 
 // Lane B (T24): /search?q=&dataType=&page= and /food/[fdcId] in a real browser. The first spec goes
