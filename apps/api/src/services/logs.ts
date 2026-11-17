@@ -194,9 +194,19 @@ export async function setUserAllergens(
   const dictionary = new Map((await loadDictionary()).map((e) => [e.key, e]));
   const unknown = input.allergens.map((a) => a.key).filter((k) => !dictionary.has(k));
   if (unknown.length > 0) throw new HttpError(400, "unknown_allergen", { keys: unknown });
-  const settings = input.allergens.map((a) => {
+  const settings = input.allergens.map((a, i) => {
     const entry = dictionary.get(a.key)!;
     const mode = a.mode ?? defaultMode(entry.tier);
+    // The schema refuses a threshold with an explicit avoid; a tier that defaults to avoid must refuse it too
+    // rather than drop it without a word.
+    if (a.weeklyThreshold !== undefined && mode !== "track") {
+      throw new HttpError(400, "validation_error", [
+        {
+          path: `allergens.${i}.weeklyThreshold`,
+          message: `weeklyThreshold applies to track mode only; ${a.key} defaults to avoid, so send mode: "track"`,
+        },
+      ]);
+    }
     return {
       allergenId: entry.id,
       mode,

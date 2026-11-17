@@ -23,6 +23,10 @@ const json = (body: unknown, status = 200) =>
 
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  // A fixed midday start (the clock still runs) so a run never straddles UTC midnight between the
+  // test's own "today" and the server's.
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  vi.setSystemTime(new Date("2026-11-16T12:00:00Z"));
   fetchMock = vi.fn(async (url: string | URL) => {
     const id = Number(new URL(String(url)).pathname.split("/").pop());
     if (id === 2095236) return json(CHEDDAR);
@@ -32,6 +36,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -361,6 +366,15 @@ describe("GET and PUT /api/users/me/allergens", () => {
       .put("/api/users/me/allergens")
       .send({ allergens: [{ key: "soy", mode: "avoid", weeklyThreshold: 2 }] })
       .expect(400);
+    // No mode: soy's tier defaults to avoid, so the threshold is refused, not silently dropped.
+    const defaulted = await alice
+      .put("/api/users/me/allergens")
+      .send({ allergens: [{ key: "soy", weeklyThreshold: 2 }] })
+      .expect(400);
+    expect(defaulted.body).toMatchObject({
+      error: "validation_error",
+      details: [{ path: "allergens.0.weeklyThreshold" }],
+    });
     expect(await UserAllergen.countDocuments()).toBe(0);
   });
 
