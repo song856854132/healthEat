@@ -334,6 +334,85 @@ describe("re-match racing a first match of a food", () => {
   });
 });
 
+describe("re-match batch racing a food refresh or a newer re-match", () => {
+  // Value: protects=a re-match batch that read a food's old USDA copy does not leave that copy's match
+  //   after the refreshed copy was matched; fails_when=the batch stops re-checking the foods' fetchedAt
+  //   after its write; why_new=follow-up to #36 (pre-existing race); seam=none; no_claim=timing of real
+  //   concurrent requests (the interleaving is injected)
+  it("rewrites a food refreshed from USDA between the batch read and the batch write", async () => {
+    await cacheFoods(6);
+    const id = await peanutId();
+    await startRematch(id);
+    const original = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    let injected = false;
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementation((async (ops: never, opts: never) => {
+      if (!injected) {
+        injected = true;
+        // USDA's new copy of food 3 has no peanuts; the refresh stores and matches it before this write.
+        const fresh = {
+          fdcId: 3,
+          description: "FOOD 3",
+          ingredientsText: "SUGAR, SALT",
+          fetchedAt: new Date(Date.now() + 60_000),
+          allergensMatchedAt: null,
+        };
+        await Food.updateOne({ fdcId: 3 }, { $set: fresh });
+        await matchAndStore(fresh);
+      }
+      return original(ops, opts);
+    }) as never);
+    const res = await rematchAllergen(id, { batchSize: 10 });
+    expect(res.done).toBe(true);
+    expect(await peanutRows(id)).toEqual([6]);
+    expect((await Food.findOne({ fdcId: 3 }).lean())?.allergensMatchedAt).toBeInstanceOf(Date);
+  });
+
+  // Value: protects=a re-match pass for an older edit, whose batch write lands after a newer edit's pass
+  //   already rewrote those foods, does not leave the older entry's matches; fails_when=the batch stops
+  //   re-checking rematchRun after its write; why_new=follow-up to #36 (pre-existing race); seam=none;
+  //   no_claim=timing of real concurrent requests (the interleaving is injected)
+  it("rewrites a batch with the newer entry when a newer edit's re-match finished before this batch's write", async () => {
+    await cacheFoods(8);
+    const id = await peanutId();
+    await startRematch(id);
+    const original = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    let injected = false;
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementation((async (ops: never, opts: never) => {
+      if (!injected) {
+        injected = true;
+        // A Curator edits the entry to match "salt" (every food), and its re-match runs to the end.
+        await Allergen.updateOne(
+          { _id: id },
+          { $set: { synonyms: ["salt"], rematchCursor: 0 }, $inc: { rematchRun: 1 } },
+        );
+        expect((await rematchAllergen(id, { batchSize: 4 })).done).toBe(true);
+      }
+      return original(ops, opts);
+    }) as never);
+    const res = await rematchAllergen(id, { batchSize: 4 });
+    expect(res.done).toBe(true);
+    expect(await peanutRows(id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("leaves the batch's foods unstamped when the entry keeps changing, so their next read matches again", async () => {
+    await cacheFoods(4);
+    await Food.updateMany({}, { $set: { allergensMatchedAt: new Date() } });
+    const id = await peanutId();
+    await startRematch(id);
+    const original = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    let writes = 0;
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementation((async (ops: never, opts: never) => {
+      const out = await original(ops, opts);
+      // An edit after each of the first two writes (no cursor reset, so the pass then ends).
+      if (++writes <= 2) await Allergen.updateOne({ _id: id }, { $inc: { rematchRun: 1 } });
+      return out;
+    }) as never);
+    expect((await rematchAllergen(id, { batchSize: 10 })).done).toBe(true);
+    const stamps = (await Food.find().lean()).map((f) => f.allergensMatchedAt ?? null);
+    expect(stamps).toEqual([null, null, null, null]);
+  });
+});
+
 describe("DELETE /api/allergens/:id", () => {
   it("removes the entry with its FoodAllergen and UserAllergen rows, and counts the Curator's edit", async () => {
     await cacheFoods(6);
