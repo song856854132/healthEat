@@ -129,8 +129,8 @@ inside one ingredient (`ingredient`). The description is searched for `descripti
 has no ingredient text, and for sensitivity-tier allergens on every food (`description`, shown with the
 label "food-category estimate"). An exclude phrase hides its words from that allergen only ("cocoa butter"
 is not milk). `Food.allergensMatchedAt` is set after the rows are written; a food without it (cached before
-T11, or a failed write) is matched again on its next read. A dictionary edit reaches already matched foods
-only through the re-match pass (T5).
+T11, a failed write, or a dictionary that kept changing during the match) is matched again on its next read.
+A dictionary edit reaches already matched foods only through the re-match pass (T5).
 
 Log routes (design doc A2, R3-25 to R3-27; T6): `logentries` (`LogEntry {userId, date, meal, fdcId, grams,
 source, confidence, photoBatchId, createdAt}`, indexes `{userId, date}` and `{date}`) and `userallergens`
@@ -161,9 +161,10 @@ the allergen's rows for the foods the batch read, insert the new matches), and m
 neither the cursor nor the run changed meanwhile. It stops after 60 seconds with `{done: false, processed,
 remaining}` and resumes from the cursor; null means done. A food cached and matched by another request while
 a batch runs keeps its rows, and `matchAndStore` reads the dictionary version (each entry's id and
-`rematchRun`) again after its write: if a Curator add or edit landed meanwhile, its re-match may already have
-passed the food, so the food is matched once more against the new dictionary; if the dictionary moves again,
-the food is left unstamped and its next read matches it.
+`rematchRun`) again after its write: if a Curator add, edit or delete landed meanwhile (its re-match or its
+last row sweep may already have passed the food), the food is matched once more against the new dictionary,
+which also drops a deleted entry's row; if the dictionary moves again, the food is left unstamped and its
+next read matches it.
 
 Curator and Admin (T21, D18): `POST /api/allergens` and `PUT /api/allergens/:id` start the re-match in the
 same write (the new entry is inserted with cursor 0; an edit sets it to 0 and bumps `rematchRun` in its
