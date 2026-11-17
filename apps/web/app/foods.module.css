@@ -1,0 +1,289 @@
+/* Search, Results and Details. A module, not globals.css, so these pages own their styles.
+   Colours come from the tokens in globals.css (--ink, --paper, --line); the rest is local. */
+
+.wide {
+  max-width: 880px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.searchForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+.searchForm input,
+.searchForm select,
+.portionRow select,
+.portionRow input,
+.logForm select {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  min-height: 40px;
+}
+.searchForm input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.searchForm select {
+  flex: 0 1 auto;
+}
+.searchForm button {
+  margin-right: 0;
+  min-height: 40px;
+}
+
+.source {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  margin: 4px 0 0;
+}
+.status {
+  margin-top: 24px;
+}
+.error {
+  margin-top: 24px;
+  padding: 12px 16px;
+  border: 1px solid #b3261e;
+  border-radius: 8px;
+}
+.error h1 {
+  font-size: 1.5rem;
+}
+.errorText {
+  color: #b3261e;
+  margin: 8px 0 0;
+}
+.cached {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.cached strong {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  margin-right: 6px;
+}
+
+/* Results */
+.results {
+  border: 0;
+  padding: 0;
+}
+.resultsHeading {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.resultList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.resultRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.resultMain {
+  min-width: 0;
+}
+.resultTitle {
+  display: block;
+  font-weight: 600;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+.meta {
+  display: block;
+  font-size: 0.85rem;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+.headline {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  font-size: 0.85rem;
+  grid-column: 1 / -1;
+}
+.headline div {
+  min-width: 0;
+}
+.headline dt {
+  opacity: 0.7;
+}
+.headline dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.logLink {
+  grid-column: 2;
+  grid-row: 1;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+.pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+@media (min-width: 768px) {
+  .resultRow {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .headline {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .headline div {
+    width: 64px;
+    text-align: right;
+  }
+  .logLink {
+    grid-column: 3;
+  }
+}
+
+/* Details */
+.food section {
+  margin-top: 20px;
+}
+.food h2 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+.food h1 {
+  overflow-wrap: anywhere;
+}
+.crumb {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+.chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+}
+.chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.chip[data-tier="allergy"],
+.chip[data-tier="both"] {
+  border-color: #b3261e;
+  border-width: 2px;
+}
+.chipName {
+  font-weight: 600;
+}
+.chipTier,
+.chipEstimate {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+.chipEstimate {
+  font-style: italic;
+}
+.portionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.portionRow select {
+  max-width: 100%;
+}
+.gramsInput {
+  width: 7em;
+}
+.logForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.primary {
+  font-weight: 600;
+  border-color: var(--ink);
+  min-height: 40px;
+}
+.logOutcome {
+  flex-basis: 100%;
+}
+.alert {
+  padding: 8px 12px;
+  border: 2px solid #b3261e;
+  border-radius: 6px;
+  margin: 4px 0;
+}
+.tableWrap {
+  overflow-x: auto;
+}
+.nutrients {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.nutrients th,
+.nutrients td {
+  text-align: left;
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.nutrients td {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.nutrients thead th:not(:first-child) {
+  text-align: right;
+  white-space: nowrap;
+}
+.nutrients tbody th {
+  font-weight: 400;
+}
+
+@media (prefers-color-scheme: dark) {
+  .error,
+  .alert,
+  .chip[data-tier="allergy"],
+  .chip[data-tier="both"] {
+    border-color: #f2b8b5;
+  }
+  .errorText {
+    color: #f2b8b5;
+  }
+}

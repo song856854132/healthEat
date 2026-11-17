@@ -1403,6 +1403,11 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Scope revision — D18 (replaces the cut coach depth in phase 3)
   - Files: apps/api/src/models/IngredientToken.ts, apps/api/src/services/dictionary.ts, apps/web/app/curate/unmatched/page.tsx
   - Verify: unit test: caching a food with "soy lecithin" (matched) and "xanthan gum" (unmatched) creates one token; mapping it appends the synonym and FoodAllergen rows appear
+- [ ] **T24 (P1, human: ~1 day / CC: ~30 min)** — apps/web + e2e — Search and Results with the query, data type and page in the URL, and the food Details page with portions, allergens and "log this" (lane B item 3; number proposed 2026-11-17, owner to confirm)
+  - Surfaced by: Implementation Tasks: order and dependencies, Lane B item 3
+  - Files: apps/web/app/search/page.tsx, apps/web/app/search/results.tsx, apps/web/app/search/search-form.tsx, apps/web/app/food/[fdcId]/page.tsx, apps/web/app/food/[fdcId]/food-view.tsx, apps/web/app/food/[fdcId]/log-form.tsx, apps/web/app/lib/foods.ts, e2e/search-details.spec.ts
+  - Verify: Playwright: search USDA, open a result, log it (log-in prompt when signed out); URL keeps query, data type and page across Next, reload and Back; cached label; usda_unavailable with Try again; allergen chips and portion scaling; unknown and malformed fdcId; no horizontal scroll at 360 px
+  - Not yet: Details `localStats` (#39, lane A); Curator synonym breakdown and member-only result actions after #29
 
 _No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision._
 
@@ -1425,7 +1430,7 @@ Lane A (owner: `apps/api`, `packages/shared`), in order:
 Lane B (teammate: `apps/web`), in order:
 1. **T12, web-only part**: privacy banner and acknowledgment cookie, `/privacy`, `/about`, footer, nav shell. No API needed. First task.
 2. Login and Register pages and the signed-in nav, against the `/api/auth/*` contract, as soon as T9 is on `main` (mock the API locally before that).
-3. Search and Results page with URL state, then Details with local data, against T3.
+3. **T24** Search and Results page with URL state, then Details with local data, against T3.
 4. Member Home widgets and the day log page against T6 and T10 (phase 1 bands follow with the summary service).
 5. **T19** band rendering spec and **T21**'s Curator and Admin pages once their APIs exist.
 6. **T17** Playwright flows grow alongside each page.
