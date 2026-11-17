@@ -161,13 +161,14 @@ the allergen's rows in the batch's range, insert the new matches), and moves the
 cursor nor the run changed meanwhile. It stops after 60 seconds with `{done: false, processed, remaining}`
 and resumes from the cursor; null means done.
 
-Curator and Admin (T21, D18): `POST` and `PUT /api/allergens` start the re-match in the same write (the new
-entry is inserted with cursor 0; an edit sets it to 0 and bumps `rematchRun` in its update), so a request
-that dies before the first batch leaves the entry `rematchPending` instead of stale, and run the pass in the
-same request. Every edit restarts it, a rename included: deciding from a read made before the write would
-race a concurrent edit. The Admin routes act through the same guards as role changes: no Admin suspends or
-deletes themselves, and a suspension that would leave no usable Admin is undone and refused. Suspension
-deletes the account's sessions; Admin delete is `deleteAccount` with `keepAnAdmin`.
+Curator and Admin (T21, D18): `POST /api/allergens` and `PUT /api/allergens/:id` start the re-match in the
+same write (the new entry is inserted with cursor 0; an edit sets it to 0 and bumps `rematchRun` in its
+update), so a request that dies before the first batch leaves the entry `rematchPending` instead of stale,
+and run the pass in the same request. Every edit restarts it, a rename included: deciding from a read made
+before the write would race a concurrent edit. The Admin routes act through the same guards as role
+changes: no Admin suspends or deletes themselves, and a suspension that would leave no usable Admin is
+undone and refused. Suspension deletes the account's sessions; Admin delete is `deleteAccount` with
+`keepAnAdmin`.
 
 Privacy acknowledgment: the banner sets the readable cookie `he_privacy_ack` (1 year, `SameSite=Lax`).
 Register and login copy it to `User.privacyAckAt` when present, and set it when the account already has

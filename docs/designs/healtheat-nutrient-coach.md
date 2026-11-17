@@ -154,7 +154,7 @@ UML "Design" wiki page lists at minimum: User, MemberProfile, CuratorProfile, Ad
 | `POST /api/curate/allergens/:id/rematch` | Continue an unfinished re-match from `rematchCursor`; returns `{done, processed, remaining}` | curator |
 | `GET /api/curate/unmatched?status=&page=`, `PUT /api/curate/unmatched/:token` (phase 3) | Unmatched ingredient queue; `PUT` body `{action: "map", allergenId}` appends the token to that Allergen's synonyms and re-matches, or `{action: "ignore"}` | curator |
 | `GET/PUT /api/users/me/allergens` | Avoid and track lists with thresholds | session |
-| `GET /api/admin/users?q=&role=&page=`, `GET /api/admin/users/:username`, `PUT /api/admin/users/:username/roles`, `PUT /api/admin/users/:username/status`, `DELETE /api/admin/users/:username` | Account management: list and filter, inspect account fields (never logs), grant or revoke `curator` and `admin`, suspend or reactivate, delete with the same cascade as self-delete; every change increments `AdminProfile.grantsCount` | admin |
+| `GET /api/admin/users?q=&role=&status=&page=`, `GET /api/admin/users/:username`, `PUT /api/admin/users/:username/roles`, `PUT /api/admin/users/:username/status`, `DELETE /api/admin/users/:username` | Account management: list and filter, inspect account fields (never logs), grant or revoke `curator` and `admin`, suspend or reactivate, delete with the same cascade as self-delete; every change increments `AdminProfile.grantsCount` | admin |
 
 Every handler: zod-validated input, `asyncHandler` wrapper, central error middleware, JSON errors `{error, details}`. Services layer (`services/usda.ts`, `services/vision.ts`, `services/summary.ts`, `services/dictionary.ts`) is the only place vendors are called; routers never touch `fetch`.
 
