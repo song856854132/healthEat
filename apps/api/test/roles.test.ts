@@ -276,4 +276,19 @@ describe("role writes under concurrency (setRoles)", () => {
     expect((await User.findOne({ username: "dana" }))!.roles).toContain("admin");
     await dana.get("/api/auth/me").expect(200);
   });
+
+  // Value: protects=a demotion cannot leave only an Admin who is being deleted (the same usable-admin
+  //   count as self-delete, T5); fails_when=setRoles counts deletionPending or suspended admins;
+  //   why_new=the test above uses only active admins; seam=none; no_claim=status changes (T21)
+  it("does not count an Admin who is being deleted when refusing to remove the last admin", async () => {
+    await registerAgent("demo_admin");
+    await registerAgent("dana");
+    const admin = (await User.findOne({ username: "demo_admin" }))!;
+    await setRoles(admin, (await User.findOne({ username: "dana" }))!, ["member", "admin"]);
+    await User.updateOne({ username: "demo_admin" }, { $set: { deletionPending: true } });
+    await expect(
+      setRoles(admin, (await User.findOne({ username: "dana" }))!, ["member"]),
+    ).rejects.toMatchObject({ status: 409, code: "last_admin" });
+    expect((await User.findOne({ username: "dana" }))!.roles).toContain("admin");
+  });
 });

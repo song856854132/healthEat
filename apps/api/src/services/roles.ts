@@ -1,3 +1,4 @@
+import type { Types } from "mongoose";
 import type { Role } from "@healtheat/shared";
 import { adminUsernames } from "../lib/env.js";
 import { HttpError } from "../lib/http.js";
@@ -30,8 +31,17 @@ function syncRoles(user: UserDoc, roles: Role[], activeRole: Role): void {
   user.unmarkModified("activeRole");
 }
 
-const adminCount = (excluding?: UserDoc) =>
-  User.countDocuments({ roles: "admin", ...(excluding ? { _id: { $ne: excluding._id } } : {}) });
+/**
+ * Accounts that can still act as Admin: the role, active, and not being deleted. Every lockout guard
+ * (role changes here, self-delete in services/account.ts) counts with this one definition.
+ */
+export const usableAdminCount = (excluding?: Types.ObjectId) =>
+  User.countDocuments({
+    roles: "admin",
+    status: "active",
+    deletionPending: { $ne: true },
+    ...(excluding ? { _id: { $ne: excluding } } : {}),
+  });
 
 /**
  * An admin sets `target`'s complete role set (always containing `member`). Returns the number of roles
@@ -51,7 +61,8 @@ export async function setRoles(actor: UserDoc, target: UserDoc, roles: Role[]): 
   const revoked = current.filter((r) => r !== "member" && !roles.includes(r));
   if (granted.length === 0 && revoked.length === 0) return 0;
   const revokesAdmin = revoked.includes("admin");
-  if (revokesAdmin && (await adminCount(target)) === 0) throw new HttpError(409, "last_admin");
+  if (revokesAdmin && (await usableAdminCount(target._id)) === 0)
+    throw new HttpError(409, "last_admin");
 
   const next = [...current.filter((r) => !revoked.includes(r)), ...granted];
   const activeRole: Role = next.includes(target.activeRole as Role)
@@ -64,7 +75,7 @@ export async function setRoles(actor: UserDoc, target: UserDoc, roles: Role[]): 
   );
   if (written.matchedCount === 0) throw new HttpError(409, "roles_changed");
 
-  if (revokesAdmin && (await adminCount()) === 0) {
+  if (revokesAdmin && (await usableAdminCount()) === 0) {
     // Lost a race with another demotion: put this account's admin role back and refuse.
     await User.updateOne({ _id: target._id }, { $addToSet: { roles: "admin" } });
     throw new HttpError(409, "last_admin");
