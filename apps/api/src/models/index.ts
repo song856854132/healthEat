@@ -8,3 +8,5 @@ export { Food } from "./Food.js";
 export { Allergen } from "./Allergen.js";
 export { FoodAllergen } from "./FoodAllergen.js";
 export { DictionarySeed } from "./DictionarySeed.js";
+export { LogEntry } from "./LogEntry.js";
+export { UserAllergen } from "./UserAllergen.js";
