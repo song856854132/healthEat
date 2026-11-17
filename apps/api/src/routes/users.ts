@@ -34,7 +34,7 @@ usersRouter.delete(
       await deleteAccount(userId, { keepAnAdmin: true });
     } catch (err) {
       if (err instanceof HttpError) throw err;
-      await deleteAccount(userId);
+      await deleteAccount(userId, { keepAnAdmin: true });
     }
     await destroySession(req);
     res.clearCookie(SESSION_COOKIE, { path: "/" });

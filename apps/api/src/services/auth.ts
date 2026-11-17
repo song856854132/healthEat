@@ -68,9 +68,18 @@ export async function login(input: LoginInput, ip: string | undefined): Promise<
   await clearFailures(key);
   const blocked = accountBlocked(user);
   if (blocked) {
-    // The member asked for deletion and it failed part way: the right password finishes it (D6 rerun).
-    if (user.deletionPending) await deleteAccount(user._id);
-    throw blocked;
+    if (!user.deletionPending) throw blocked;
+    // The member asked for deletion and it failed part way: the right password finishes it (D6 rerun),
+    // unless they are now the last usable Admin; then the deletion is called off and they log in.
+    try {
+      await deleteAccount(user._id, { keepAnAdmin: true });
+      throw blocked;
+    } catch (err) {
+      if (!(err instanceof HttpError && err.code === "last_admin")) throw err;
+      user.deletionPending = false;
+      const still = accountBlocked(user);
+      if (still) throw still;
+    }
   }
   await applyAdminBootstrap(user);
   return user;

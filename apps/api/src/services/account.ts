@@ -1,5 +1,6 @@
 import mongoose, { type Types } from "mongoose";
 import { HttpError } from "../lib/http.js";
+import { usableAdminCount } from "./roles.js";
 import {
   AdminProfile,
   CuratorProfile,
@@ -15,34 +16,29 @@ import {
 // `deletionPending`), then the member's data, then the User. Every step is a plain delete by userId, so
 // a rerun after a crash converges. SymptomEntry joins the list when it exists (phase 3).
 
-/** Accounts that can still act as Admin: the role, active, not being deleted. */
-const usableAdmins = (excluding: Types.ObjectId) =>
-  User.countDocuments({
-    _id: { $ne: excluding },
-    roles: "admin",
-    status: "active",
-    deletionPending: { $ne: true },
-  });
-
 /**
  * Deletes the account and everything it owns: log entries, allergen settings, the three role profiles
  * and its sessions, then the User. Safe to call again on an account that is half deleted or gone.
  *
- * `keepAnAdmin` (self-delete): an Admin is refused with 409 last_admin when no other usable Admin
- * remains. It is checked before the flag and again after it, clearing the flag, so two last Admins
- * deleting themselves at the same moment cannot both go (the same guard as role changes).
+ * `keepAnAdmin` (self-delete and its retries): an Admin is refused with 409 last_admin when no other
+ * usable Admin remains (roles.ts usableAdminCount, the same count as role changes). It is checked before
+ * the flag and again after it; a refusal clears the flag, so two last Admins deleting themselves at the
+ * same moment cannot both go, and a flagged last Admin gets their account back.
  */
 export async function deleteAccount(
   userId: Types.ObjectId,
   { keepAnAdmin = false }: { keepAnAdmin?: boolean } = {},
 ): Promise<void> {
   const isAdmin = keepAnAdmin && (await User.exists({ _id: userId, roles: "admin" })) !== null;
-  if (isAdmin && (await usableAdmins(userId)) === 0) throw new HttpError(409, "last_admin");
-  await User.updateOne({ _id: userId }, { $set: { deletionPending: true } });
-  if (isAdmin && (await usableAdmins(userId)) === 0) {
+  const lastAdmin = async () => isAdmin && (await usableAdminCount(userId)) === 0;
+  const refuse = async () => {
+    // The deletion is called off: clear a flag an earlier failed attempt may have left.
     await User.updateOne({ _id: userId }, { $set: { deletionPending: false } });
     throw new HttpError(409, "last_admin");
-  }
+  };
+  if (await lastAdmin()) await refuse();
+  await User.updateOne({ _id: userId }, { $set: { deletionPending: true } });
+  if (await lastAdmin()) await refuse();
   const sweepMemberData = async () => {
     await LogEntry.deleteMany({ userId });
     await UserAllergen.deleteMany({ userId });

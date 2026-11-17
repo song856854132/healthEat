@@ -139,6 +139,36 @@ describe("DELETE /api/users/me", () => {
     expect(await owned(user._id)).toEqual(EMPTY);
   });
 
+  // Value: protects=a database blip inside the last-admin check never deletes the only Admin;
+  //   fails_when=the route's retry drops keepAnAdmin; why_new=other tests fail steps after the guard;
+  //   seam=none; no_claim=a blip on both attempts (that answers 500 and leaves the account as it was)
+  it("keeps the only Admin when the guard's own query fails once", async () => {
+    const { agent, user } = await fullAccount("dana");
+    await User.updateOne({ _id: user._id }, { $set: { roles: ["member", "admin"] } });
+    vi.spyOn(User, "exists").mockRejectedValueOnce(new Error("network blip"));
+    expect((await agent.delete("/api/users/me").expect(409)).body.error).toBe("last_admin");
+    expect(await owned(user._id)).toMatchObject({ user: 1, logs: 1, allergens: 1 });
+    expect((await User.findById(user._id).lean())?.deletionPending).toBe(false);
+  });
+
+  // Value: protects=a flagged last Admin logs back in instead of being deleted by the login rerun;
+  //   fails_when=login reruns the cascade without keepAnAdmin; why_new=the login test uses a member;
+  //   seam=none; no_claim=none beyond protects
+  it("gives a flagged last Admin their account back at login instead of finishing the deletion", async () => {
+    const { user } = await fullAccount("dana");
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { roles: ["member", "admin"], deletionPending: true } },
+    );
+    await request(app)
+      .post("/api/auth/login")
+      .send({ username: "dana", password: PASSWORD })
+      .expect(200);
+    const after = await User.findById(user._id).lean();
+    expect(after?.deletionPending).toBe(false);
+    expect(await owned(user._id)).toMatchObject({ user: 1, logs: 1, allergens: 1 });
+  });
+
   it("is 401 without a session", async () => {
     await request(app).delete("/api/users/me").expect(401);
   });
