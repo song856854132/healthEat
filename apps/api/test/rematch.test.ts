@@ -413,6 +413,74 @@ describe("re-match batch racing a food refresh or a newer re-match", () => {
   });
 });
 
+describe("re-match batch check after its write (#37 review notes)", () => {
+  // Value: protects=a stored food without a Date fetchedAt does not stop an allergen's re-match for
+  //   good; fails_when=the post-write check calls getTime() on a missing fetchedAt again; why_new=#37
+  //   review note; seam=none; no_claim=how such a document got stored (inserted past the schema)
+  it("finishes the re-match when a stored food has no fetchedAt", async () => {
+    await cacheFoods(4);
+    await Food.collection.insertOne({
+      fdcId: 5,
+      description: "FOOD 5",
+      ingredientsText: "PEANUTS",
+    });
+    const id = await peanutId();
+    await startRematch(id);
+    expect((await rematchAllergen(id, { batchSize: 10 })).done).toBe(true);
+    expect(await peanutRows(id)).toEqual([3, 5]);
+  });
+
+  // Value: protects=when only a food's USDA copy keeps moving, only that food is left unstamped;
+  //   fails_when=the fallback unstamps the whole batch again; why_new=#37 review note; seam=none;
+  //   no_claim=timing of real concurrent refreshes (injected after each write)
+  it("leaves only the food whose copy kept changing unstamped", async () => {
+    await cacheFoods(4);
+    await Food.updateMany({}, { $set: { allergensMatchedAt: new Date() } });
+    const id = await peanutId();
+    await startRematch(id);
+    const original = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    let writes = 0;
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementation((async (ops: never, opts: never) => {
+      const out = await original(ops, opts);
+      // A USDA refresh of food 2 after each of the first two writes.
+      if (++writes <= 2)
+        await Food.updateOne(
+          { fdcId: 2 },
+          { $set: { fetchedAt: new Date(Date.now() + writes * 1000) } },
+        );
+      return out;
+    }) as never);
+    expect((await rematchAllergen(id, { batchSize: 10 })).done).toBe(true);
+    const stamps = (await Food.find().sort({ fdcId: 1 }).lean()).map(
+      (f) => f.allergensMatchedAt !== null,
+    );
+    expect(stamps).toEqual([true, false, true, true]);
+  });
+
+  // Value: protects=a re-match whose batch keeps colliding with a concurrent writer stops at its time
+  //   budget and reports done: false; fails_when=the duplicate-key retry skips the budget check again;
+  //   why_new=#37 review note (pre-existing); seam=none; no_claim=a real concurrent writer (the
+  //   duplicate key is injected)
+  it("stops at its time budget when a batch keeps hitting a duplicate key", async () => {
+    await cacheFoods(4);
+    const id = await peanutId();
+    await startRematch(id);
+    const dup = () => Object.assign(new Error("E11000 duplicate key"), { code: 11000 });
+    const bulk = vi
+      .spyOn(FoodAllergen, "bulkWrite")
+      .mockRejectedValueOnce(dup())
+      .mockRejectedValueOnce(dup())
+      .mockRejectedValueOnce(dup());
+    expect(await rematchAllergen(id, { batchSize: 10, budgetMs: 0 })).toEqual({
+      done: false,
+      processed: 0,
+      remaining: 4,
+    });
+    expect(bulk).toHaveBeenCalledTimes(1);
+    expect((await Allergen.findById(id).lean())?.rematchCursor).toBe(0);
+  });
+});
+
 describe("DELETE /api/allergens/:id", () => {
   it("removes the entry with its FoodAllergen and UserAllergen rows, and counts the Curator's edit", async () => {
     await cacheFoods(6);

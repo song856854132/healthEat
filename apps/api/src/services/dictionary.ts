@@ -332,10 +332,16 @@ type BatchFood = {
 };
 const BATCH_FIELDS = { fdcId: 1, description: 1, ingredientsText: 1, fetchedAt: 1 };
 
-/** The same USDA copies of the same foods (both lists in fdcId order). */
-const sameCopies = (a: BatchFood[], b: BatchFood[]) =>
-  a.length === b.length &&
-  a.every((f, i) => b[i]!.fdcId === f.fdcId && b[i]!.fetchedAt.getTime() === f.fetchedAt.getTime());
+/** A copy's fetch time; null for a stored food without a readable one, so it never throws. */
+const copyTime = (d: unknown) => (d instanceof Date ? d.getTime() : null);
+
+/** The fdcIds of `batch` whose USDA copy is not the one in `copies` (a newer copy, or none). */
+function movedFoods(batch: BatchFood[], copies: { fdcId: number; fetchedAt?: unknown }[]) {
+  const now = new Map(copies.map((c) => [c.fdcId, copyTime(c.fetchedAt)]));
+  return batch
+    .filter((f) => !now.has(f.fdcId) || now.get(f.fdcId) !== copyTime(f.fetchedAt))
+    .map((f) => f.fdcId);
+}
 
 /**
  * One ordered bulkWrite: delete this allergen's rows for the foods in `fdcIds`, then insert the matches of
@@ -389,9 +395,12 @@ export async function startRematch(allergenId: Types.ObjectId): Promise<void> {
  *
  * A batch's write can land late, after a newer edit's pass or a food's USDA refresh already rewrote those
  * foods, and replace their rows with matches from the old entry or the old ingredient text. So after the
- * write the batch reads the run counter and the foods' `fetchedAt` again; if either moved, it writes the
- * batch once more from the newer entry and copies. If they move again, the batch's foods are left
- * unstamped, so the next read of each matches it whole against the current dictionary.
+ * write the batch reads the run counter and the foods' `fetchedAt` again (only those two fields, so a
+ * batch where nothing moved reads little); if either moved, it writes the batch once more from the newer
+ * entry and copies. If they move again, the foods that may hold stale rows are left unstamped (the whole
+ * batch after a newer edit, only the refreshed foods otherwise), so the next read of each matches it
+ * whole against the current dictionary. A batch that keeps colliding with a concurrent writer stops at
+ * the time budget like any other.
  */
 export async function rematchAllergen(
   allergenId: Types.ObjectId,
@@ -425,24 +434,34 @@ export async function rematchAllergen(
           await writeBatch(toEntry(current), fdcIds, batch, now());
           const after = await Allergen.findById(allergenId).lean();
           if (!after) break; // deleted meanwhile: the next read of the entry sweeps its rows
-          const copies: BatchFood[] = await Food.find({ fdcId: { $in: fdcIds } }, BATCH_FIELDS)
-            .sort({ fdcId: 1 })
-            .lean();
-          if ((after.rematchRun ?? 0) === (current.rematchRun ?? 0) && sameCopies(batch, copies))
-            break;
+          const copies = await Food.find(
+            { fdcId: { $in: fdcIds } },
+            { fdcId: 1, fetchedAt: 1 },
+          ).lean();
+          const runMoved = (after.rematchRun ?? 0) !== (current.rematchRun ?? 0);
+          const moved = movedFoods(batch, copies);
+          if (!runMoved && moved.length === 0) break;
           if (attempt === MATCH_ATTEMPTS) {
             await Food.updateMany(
-              { fdcId: { $in: fdcIds } },
+              { fdcId: { $in: runMoved ? fdcIds : moved } },
               { $set: { allergensMatchedAt: null } },
             );
             break;
           }
-          current = after; // a newer edit or USDA copy landed meanwhile: write the batch from it
-          batch = copies;
+          // A newer edit or USDA copy landed meanwhile: write the batch again from it.
+          current = after;
+          batch = await Food.find({ fdcId: { $in: fdcIds } }, BATCH_FIELDS)
+            .sort({ fdcId: 1 })
+            .lean();
         }
       } catch (err) {
-        // Another request re-matched the same batch at the same time: re-read the cursor and go on.
+        // Another request re-matched the same batch at the same time: re-read the cursor and go on,
+        // unless the time budget is spent.
         if (!isDuplicate(err)) throw err;
+        if (Date.now() - started >= budgetMs) {
+          const remaining = await Food.countDocuments({ fdcId: { $gte: cursor } });
+          return { done: false, processed, remaining };
+        }
         continue;
       }
       processed += foods.length;
