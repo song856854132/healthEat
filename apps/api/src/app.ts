@@ -11,6 +11,7 @@ import { spikeRouter } from "./routes/spike.js";
 import { authRouter } from "./routes/auth.js";
 import { usersRouter } from "./routes/users.js";
 import { adminRouter } from "./routes/admin.js";
+import { curateRouter } from "./routes/curate.js";
 import { foodsRouter } from "./routes/foods.js";
 import { allergensRouter } from "./routes/allergens.js";
 import { logsRouter } from "./routes/logs.js";
@@ -42,6 +43,7 @@ const withSession = [requireDb, sessionMiddleware()];
 app.use("/api/auth", ...withSession, authRouter);
 app.use("/api/users", ...withSession, usersRouter);
 app.use("/api/admin", ...withSession, adminRouter);
+app.use("/api/curate", ...withSession, curateRouter);
 app.use("/api/logs", ...withSession, logsRouter);
 // Public, session-free: the USDA proxy only needs the database for its caches.
 // gstack-shortcut(dec-c0d8580f-f9cf-4938-a944-15a9d2ab1b5e): no abuse limit on these routes (a script can
