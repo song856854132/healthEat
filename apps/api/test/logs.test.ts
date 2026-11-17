@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { LogEntryCreated, LogEntryView, LogListResponse } from "@healtheat/shared";
 import app from "../src/app.js";
-import { Food, LogEntry, UserAllergen } from "../src/models/index.js";
-import { todayIn } from "../src/services/logs.js";
+import { Allergen, Food, LogEntry, User, UserAllergen } from "../src/models/index.js";
+import { listLogs, todayIn } from "../src/services/logs.js";
 
 // T6: me-scoped log routes with ownership guards, date rules, fetch-and-match and alerts (design doc
 // REST table, A2, R3-25 to R3-27), plus the member's allergen settings the alerts read.
@@ -141,6 +141,17 @@ describe("POST /api/users/me/logs", () => {
       .send({ fdcId: 2095236, grams: 30, meal: "lunch", date: today })
       .expect(201);
     expect(await LogEntry.countDocuments()).toBe(1);
+
+    // Value: protects=an unbounded GET /me/logs means today in the member's zone, not UTC;
+    //   fails_when=listLogs computes today with UTC or ignores MemberProfile.timezone;
+    //   why_new=the GET tests register UTC members only; seam=none (listLogs is the route's service);
+    //   no_claim=the HTTP route wiring of the default (covered by the UTC GET test); fixed clock
+    const user = await User.findOne({ username: "kiri" });
+    const lateUtc = new Date("2026-11-16T20:30:00Z"); // already 2026-11-17 on Kiritimati (UTC+14)
+    expect(await listLogs(user!._id, {}, lateUtc)).toMatchObject({
+      from: "2026-11-17",
+      to: "2026-11-17",
+    });
   });
 
   it("validates the body: impossible dates, grams out of range, unknown meals and extra fields are 400", async () => {
@@ -215,6 +226,12 @@ describe("GET /api/users/me/logs", () => {
     expect(todayOnly.body.entries).toHaveLength(2);
     const single = await alice.get(`/api/users/me/logs?from=${yesterday}`).expect(200);
     expect(single.body.entries).toHaveLength(1);
+    // Value: protects=a lone `to` bound also means that single day; fails_when=listLogs falls back to
+    //   today (or an open range) when only `to` is sent; why_new=only the lone `from` bound was tested;
+    //   seam=none; no_claim=none beyond protects
+    const toOnly = await alice.get(`/api/users/me/logs?to=${yesterday}`).expect(200);
+    expect(toOnly.body).toMatchObject({ from: yesterday, to: yesterday });
+    expect(toOnly.body.entries.map((e: { grams: number }) => e.grams)).toEqual([10]);
   });
 
   it("refuses an inverted or over-long range", async () => {
@@ -244,6 +261,22 @@ describe("PUT and DELETE /api/logs/:id (ownership, A2)", () => {
     expect((await LogEntry.findById(id).lean())?.grams).toBe(30);
   });
 
+  // Value: protects=D18, no role reads or edits a member's logs: an admin+curator gets 403 on someone
+  //   else's entry; fails_when=requireOwner (or the route) adds a staff bypass; why_new=the 403 test
+  //   above uses a plain member; seam=none; no_claim=the T7 grant flow (roles set directly in the DB)
+  it("answers 403 to a curator and admin too, whatever their active role (D18)", async () => {
+    const { id } = await aliceWithEntry();
+    const staff = await member("staff");
+    await User.updateOne(
+      { username: "staff" },
+      { $set: { roles: ["member", "curator", "admin"], activeRole: "admin" } },
+    );
+    expect((await User.findOne({ username: "staff" }).lean())?.roles).toContain("admin");
+    await staff.put(`/api/logs/${id}`).send({ grams: 1 }).expect(403);
+    await staff.delete(`/api/logs/${id}`).expect(403);
+    expect((await LogEntry.findById(id).lean())?.grams).toBe(30);
+  });
+
   it("answers 404 for an unknown or malformed id and 401 without a session", async () => {
     const { alice, id } = await aliceWithEntry();
     await alice.put("/api/logs/0123456789abcdef01234567").send({ grams: 1 }).expect(404);
@@ -266,6 +299,14 @@ describe("PUT and DELETE /api/logs/:id (ownership, A2)", () => {
         400,
       );
     expect(await LogEntry.findById(id).lean()).toMatchObject({ grams: 45, meal: "dinner", date });
+
+    // Value: protects=a partial edit changes only the field sent; fails_when=updateLog assigns an absent
+    //   field (grams becomes undefined, the save fails or clears it); why_new=every 200 edit above sent
+    //   both fields; seam=none; no_claim=none beyond protects
+    const mealOnly = await alice.put(`/api/logs/${id}`).send({ meal: "snack" }).expect(200);
+    expect(mealOnly.body).toMatchObject({ grams: 45, meal: "snack", date });
+    const gramsOnly = await alice.put(`/api/logs/${id}`).send({ grams: 12 }).expect(200);
+    expect(gramsOnly.body).toMatchObject({ grams: 12, meal: "snack", date });
   });
 
   it("deletes the caller's own entry", async () => {
@@ -321,6 +362,21 @@ describe("GET and PUT /api/users/me/allergens", () => {
       .send({ allergens: [{ key: "soy", mode: "avoid", weeklyThreshold: 2 }] })
       .expect(400);
     expect(await UserAllergen.countDocuments()).toBe(0);
+  });
+
+  // Value: protects=a setting whose allergen a Curator deleted is left out of the list, the rest still
+  //   shows; fails_when=listUserAllergens stops skipping orphan rows (500 or a null entry);
+  //   why_new=no test deletes a dictionary entry after a member chose it; seam=none;
+  //   no_claim=the Curator delete route itself (the Allergen row is removed directly)
+  it("hides a setting whose allergen was deleted from the dictionary", async () => {
+    const alice = await member("alice");
+    await alice
+      .put("/api/users/me/allergens")
+      .send({ allergens: [{ key: "soy" }, { key: "milk" }] })
+      .expect(200);
+    await Allergen.deleteOne({ key: "soy" });
+    const res = await alice.get("/api/users/me/allergens").expect(200);
+    expect(res.body.allergens.map((a: { key: string }) => a.key)).toEqual(["milk"]);
   });
 
   it("keeps one member's settings away from another", async () => {
