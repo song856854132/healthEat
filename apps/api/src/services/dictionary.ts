@@ -324,6 +324,51 @@ export type RematchResult = { done: boolean; processed: number; remaining: numbe
 
 const isDuplicate = (err: unknown) => (err as { code?: number }).code === 11000;
 
+type BatchFood = {
+  fdcId: number;
+  description: string;
+  ingredientsText?: string | null;
+  fetchedAt: Date;
+};
+const BATCH_FIELDS = { fdcId: 1, description: 1, ingredientsText: 1, fetchedAt: 1 };
+
+/** The same USDA copies of the same foods (both lists in fdcId order). */
+const sameCopies = (a: BatchFood[], b: BatchFood[]) =>
+  a.length === b.length &&
+  a.every((f, i) => b[i]!.fdcId === f.fdcId && b[i]!.fetchedAt.getTime() === f.fetchedAt.getTime());
+
+/**
+ * One ordered bulkWrite: delete this allergen's rows for the foods in `fdcIds`, then insert the matches of
+ * `foods` against `entry`. Only those foods: a food cached and matched by another request after the
+ * batch read keeps its row, which that request matched against the current dictionary.
+ */
+async function writeBatch(
+  entry: DictionaryEntry,
+  fdcIds: number[],
+  foods: BatchFood[],
+  matchedAt: Date,
+) {
+  await FoodAllergen.bulkWrite(
+    [
+      { deleteMany: { filter: { allergenId: entry.id, fdcId: { $in: fdcIds } } } },
+      ...foods.flatMap((food) =>
+        matchFood(food, [entry]).map((m) => ({
+          insertOne: {
+            document: {
+              fdcId: food.fdcId,
+              allergenId: entry.id,
+              matchKind: m.matchKind,
+              matchedSynonym: m.matchedSynonym,
+              matchedAt,
+            },
+          },
+        })),
+      ),
+    ],
+    { ordered: true },
+  );
+}
+
 /** Starts (or restarts) the re-match of one allergen over every cached food: cursor 0 (R3-4). */
 export async function startRematch(allergenId: Types.ObjectId): Promise<void> {
   const res = await Allergen.updateOne(
@@ -341,6 +386,12 @@ export async function startRematch(allergenId: Types.ObjectId): Promise<void> {
  * this batch read them, so an edit that restarted the re-match meanwhile is never overwritten (the counter
  * catches a restart during the first batch, when the cursor was already 0). A crash
  * between the write and the cursor update repeats that batch, which converges. Stops after `budgetMs`.
+ *
+ * A batch's write can land late, after a newer edit's pass or a food's USDA refresh already rewrote those
+ * foods, and replace their rows with matches from the old entry or the old ingredient text. So after the
+ * write the batch reads the run counter and the foods' `fetchedAt` again; if either moved, it writes the
+ * batch once more from the newer entry and copies. If they move again, the batch's foods are left
+ * unstamped, so the next read of each matches it whole against the current dictionary.
  */
 export async function rematchAllergen(
   allergenId: Types.ObjectId,
@@ -359,45 +410,36 @@ export async function rematchAllergen(
     const run = doc.rematchRun ?? 0;
     if (cursor === null || cursor === undefined) return { done: true, processed, remaining: 0 };
 
-    const foods = await Food.find(
-      { fdcId: { $gte: cursor } },
-      { fdcId: 1, description: 1, ingredientsText: 1 },
-    )
+    const foods: BatchFood[] = await Food.find({ fdcId: { $gte: cursor } }, BATCH_FIELDS)
       .sort({ fdcId: 1 })
       .limit(batchSize)
       .lean();
     const last = foods.at(-1)?.fdcId;
     const next = foods.length < batchSize || last === undefined ? null : last + 1;
     if (foods.length > 0) {
-      const entry = toEntry(doc);
-      const matchedAt = now();
-      const inserts = foods.flatMap((food) =>
-        matchFood(food, [entry]).map((m) => ({
-          insertOne: {
-            document: {
-              fdcId: food.fdcId,
-              allergenId: entry.id,
-              matchKind: m.matchKind,
-              matchedSynonym: m.matchedSynonym,
-              matchedAt,
-            },
-          },
-        })),
-      );
+      const fdcIds = foods.map((f) => f.fdcId);
       try {
-        await FoodAllergen.bulkWrite(
-          [
-            {
-              // Only the foods this batch read: a food cached and matched by another request after the
-              // read keeps its row, which that request matched against the current dictionary.
-              deleteMany: {
-                filter: { allergenId: entry.id, fdcId: { $in: foods.map((f) => f.fdcId) } },
-              },
-            },
-            ...inserts,
-          ],
-          { ordered: true },
-        );
+        let current = doc;
+        let batch = foods;
+        for (let attempt = 1; ; attempt++) {
+          await writeBatch(toEntry(current), fdcIds, batch, now());
+          const after = await Allergen.findById(allergenId).lean();
+          if (!after) break; // deleted meanwhile: the next read of the entry sweeps its rows
+          const copies: BatchFood[] = await Food.find({ fdcId: { $in: fdcIds } }, BATCH_FIELDS)
+            .sort({ fdcId: 1 })
+            .lean();
+          if ((after.rematchRun ?? 0) === (current.rematchRun ?? 0) && sameCopies(batch, copies))
+            break;
+          if (attempt === MATCH_ATTEMPTS) {
+            await Food.updateMany(
+              { fdcId: { $in: fdcIds } },
+              { $set: { allergensMatchedAt: null } },
+            );
+            break;
+          }
+          current = after; // a newer edit or USDA copy landed meanwhile: write the batch from it
+          batch = copies;
+        }
       } catch (err) {
         // Another request re-matched the same batch at the same time: re-read the cursor and go on.
         if (!isDuplicate(err)) throw err;
