@@ -5,8 +5,9 @@ import {
   type FoodAllergenMatch,
   type MatchKind,
 } from "@healtheat/shared";
-import type { Types } from "mongoose";
-import { Allergen, DictionarySeed, Food, FoodAllergen } from "../models/index.js";
+import { Types } from "mongoose";
+import { HttpError } from "../lib/http.js";
+import { Allergen, DictionarySeed, Food, FoodAllergen, UserAllergen } from "../models/index.js";
 
 // Allergen dictionary and matcher (design doc: Allergen matching, D12). The matcher is plain string
 // work so it can run over a whole batch of cached foods in one request (T5 re-match).
@@ -275,4 +276,116 @@ export async function allergensForFood(food: MatchableFood): Promise<FoodAllerge
         : [];
     })
     .sort(byName);
+}
+
+/** Foods per re-match batch: one bulkWrite each (design doc, Re-match on dictionary change; S4). */
+export const REMATCH_BATCH = 500;
+/** A re-match stops after this long and reports `done: false`; the caller continues it later. */
+export const REMATCH_BUDGET_MS = 60_000;
+
+export type RematchResult = { done: boolean; processed: number; remaining: number };
+
+const isDuplicate = (err: unknown) => (err as { code?: number }).code === 11000;
+
+/** Starts (or restarts) the re-match of one allergen over every cached food: cursor 0 (R3-4). */
+export async function startRematch(allergenId: Types.ObjectId): Promise<void> {
+  const res = await Allergen.updateOne(
+    { _id: allergenId },
+    { $set: { rematchCursor: 0 }, $inc: { rematchRun: 1 } },
+  );
+  if (res.matchedCount === 0) throw new HttpError(404, "allergen_not_found");
+}
+
+/**
+ * Re-matches one allergen over the cached foods, resuming from its `rematchCursor` (the next fdcId to
+ * process; null when there is nothing left). Each batch of foods, in fdcId order, is one ordered
+ * bulkWrite: delete this allergen's rows in the batch's fdcId range, then insert the new matches (D6, no
+ * transaction). The cursor then moves past the batch only if neither it nor the run counter changed since
+ * this batch read them, so an edit that restarted the re-match meanwhile is never overwritten (the counter
+ * catches a restart during the first batch, when the cursor was already 0). A crash
+ * between the write and the cursor update repeats that batch, which converges. Stops after `budgetMs`.
+ */
+export async function rematchAllergen(
+  allergenId: Types.ObjectId,
+  { batchSize = REMATCH_BATCH, budgetMs = REMATCH_BUDGET_MS, now = () => new Date() } = {},
+): Promise<RematchResult> {
+  const started = Date.now();
+  let processed = 0;
+  for (;;) {
+    const doc = await Allergen.findById(allergenId).lean();
+    if (!doc) throw new HttpError(404, "allergen_not_found");
+    const cursor = doc.rematchCursor;
+    const run = doc.rematchRun ?? 0;
+    if (cursor === null || cursor === undefined) return { done: true, processed, remaining: 0 };
+
+    const foods = await Food.find(
+      { fdcId: { $gte: cursor } },
+      { fdcId: 1, description: 1, ingredientsText: 1 },
+    )
+      .sort({ fdcId: 1 })
+      .limit(batchSize)
+      .lean();
+    const last = foods.at(-1)?.fdcId;
+    const next = foods.length < batchSize || last === undefined ? null : last + 1;
+    if (foods.length > 0) {
+      const entry = toEntry(doc);
+      const matchedAt = now();
+      const inserts = foods.flatMap((food) =>
+        matchFood(food, [entry]).map((m) => ({
+          insertOne: {
+            document: {
+              fdcId: food.fdcId,
+              allergenId: entry.id,
+              matchKind: m.matchKind,
+              matchedSynonym: m.matchedSynonym,
+              matchedAt,
+            },
+          },
+        })),
+      );
+      try {
+        await FoodAllergen.bulkWrite(
+          [
+            {
+              deleteMany: { filter: { allergenId: entry.id, fdcId: { $gte: cursor, $lte: last } } },
+            },
+            ...inserts,
+          ],
+          { ordered: true },
+        );
+      } catch (err) {
+        // Another request re-matched the same batch at the same time: re-read the cursor and go on.
+        if (!isDuplicate(err)) throw err;
+        continue;
+      }
+      processed += foods.length;
+    }
+    const moved = await Allergen.updateOne(
+      { _id: allergenId, rematchCursor: cursor, rematchRun: run },
+      { $set: { rematchCursor: next } },
+    );
+    // matchedCount 0: an edit restarted the re-match meanwhile, so the loop goes on from its cursor.
+    if (moved.matchedCount === 0) continue;
+    if (next === null) return { done: true, processed, remaining: 0 };
+    if (Date.now() - started >= budgetMs) {
+      const remaining = await Food.countDocuments({ fdcId: { $gte: next } });
+      return { done: false, processed, remaining };
+    }
+  }
+}
+
+/**
+ * DELETE /api/allergens/:id (R3-3): no matching pass. The allergen's FoodAllergen and UserAllergen rows
+ * go first, then the entry, then its FoodAllergen rows once more, for a food matched by a concurrent
+ * request while the entry still existed. Every step is rerunnable; a retry after a crash before the
+ * entry was deleted finds it and finishes.
+ */
+export async function deleteAllergen(id: string): Promise<void> {
+  if (!/^[a-f0-9]{24}$/i.test(id)) throw new HttpError(404, "allergen_not_found");
+  const allergenId = new Types.ObjectId(id);
+  if (!(await Allergen.exists({ _id: allergenId }))) throw new HttpError(404, "allergen_not_found");
+  await FoodAllergen.deleteMany({ allergenId });
+  await UserAllergen.deleteMany({ allergenId });
+  await Allergen.deleteOne({ _id: allergenId });
+  await FoodAllergen.deleteMany({ allergenId });
 }

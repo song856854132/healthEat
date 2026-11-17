@@ -6,18 +6,34 @@ import {
   LogListResponse,
   LogsQuery,
   MeResponse,
+  SESSION_COOKIE,
   UserAllergensInput,
   UserAllergensResponse,
 } from "@healtheat/shared";
 import { asyncHandler } from "../lib/http.js";
-import { currentUser, requireAuth, requireRole } from "../middleware/auth.js";
+import { currentUser, destroySession, requireAuth, requireRole } from "../middleware/auth.js";
+import { deleteAccount } from "../services/account.js";
 import * as auth from "../services/auth.js";
 import * as logs from "../services/logs.js";
 
 // /api/users/me/*: routes scoped to the caller (design doc REST table). There is no route that names
 // another member, so no account can address someone else's logs or allergen settings (A2, D18).
-// Profile edits and account deletion (T5) land here later.
+// Profile edits land here later.
 export const usersRouter = Router();
+
+// Deletes the caller's account and everything it owns (T5 cascade, D6), then ends this session. A crash
+// part way leaves the account flagged `deletionPending`: it can no longer log in, and rerunning the
+// cascade (Admin delete, T21) finishes it.
+usersRouter.delete(
+  "/me",
+  ...requireAuth,
+  asyncHandler(async (req, res) => {
+    await deleteAccount(currentUser(res)._id);
+    await destroySession(req);
+    res.clearCookie(SESSION_COOKIE, { path: "/" });
+    res.status(204).end();
+  }),
+);
 
 usersRouter.put(
   "/me/active-role",
