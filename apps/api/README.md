@@ -34,6 +34,7 @@ Failure modes, all JSON:
 | `404 {error: "log_not_found"}`              | `PUT/DELETE /api/logs/:id` for an id that names no entry (also a malformed id)                                                                                                                 |
 | `400 {error: "date_in_future"}`             | `POST /api/users/me/logs` with a `date` after today in the member's time zone; `details` names the latest allowed date                                                                         |
 | `400 {error: "unknown_allergen"}`           | `PUT /api/users/me/allergens` with keys the dictionary does not hold; `details.keys` lists them, nothing is written                                                                            |
+| `404 {error: "allergen_not_found"}`         | `DELETE /api/allergens/:id` for an id that names no entry (also a malformed id)                                                                                                                |
 | `403 {error: "account_suspended"}`          | `status` is not `active`: login refused, and an existing session is destroyed on its next request                                                                                              |
 | `403 {error: "account_deletion_pending"}`   | `deletionPending` is set (T5 cascade in progress); same handling as suspended                                                                                                                  |
 | `409 {error: "username_reserved"}`          | `POST /api/auth/register` with a username listed in `ADMIN_USERNAMES`: a listed name is never claimable through open registration; create the account before listing it                        |
@@ -72,6 +73,8 @@ responses are redacted on every deployment (`isDeployed()`), shown only on local
 | `DELETE /api/logs/:id`                 | none; owner                                                                                                     | `204`                                                                                                                                                                                                                                                                                                                                                                     |
 | `GET /api/users/me/allergens`          | none; member                                                                                                    | `200 UserAllergensResponse`: the caller's avoid and track settings by display name                                                                                                                                                                                                                                                                                        |
 | `PUT /api/users/me/allergens`          | `UserAllergensInput` (the complete list: `key`, `mode?`, `weeklyThreshold?` for track mode); member             | `200 UserAllergensResponse`; replaces the stored list. `mode` defaults from the allergen's tier: sensitivity tracks, allergy and both avoid. A `weeklyThreshold` on a setting whose mode is `avoid`, sent or taken from the tier, is `400 validation_error` (path `allergens.N.weeklyThreshold`); an unknown key is `400 unknown_allergen`; a refused list writes nothing |
+| `DELETE /api/users/me`                 | none; session                                                                                                   | `204`; deletes the account and everything it owns (T5 cascade below), ends every session of the account and clears the cookie                                                                                                                                                                                                                                             |
+| `DELETE /api/allergens/:id`            | none; curator                                                                                                   | `204`; removes the entry with its `FoodAllergen` and `UserAllergen` rows (no matching pass) and counts the edit on the `CuratorProfile`; a deleted seed entry stays deleted                                                                                                                                                                                               |
 
 Sessions: `express-session` + `connect-mongo`, collection `sessions` in the same database, 14-day TTL,
 rolling, written at most once a day per session (`touchAfter`). Cookie `he_sid`: `HttpOnly`, `SameSite=Lax`,
@@ -128,6 +131,20 @@ day in their `MemberProfile.timezone` (UTC when unset). An entry's date and food
 wrong food is deleted and logged again. Hard alerts compare the food's `allergens[]` (T11) with the
 member's avoid-mode settings; the exposure meter and daily totals come later with the summary service.
 
+Deletion and re-match (design doc D6, R3-3, R3-4; T5): no Mongo transactions, every step rerunnable.
+Account deletion (`services/account.ts`, shared by `DELETE /api/users/me` and the Admin delete of T21) sets
+`User.deletionPending` first, so login and every session of the account answer `403
+account_deletion_pending` from then on; then it deletes the account's `LogEntry`, `UserAllergen`, the three
+role profiles and its `sessions` documents, then the `User`. A crash part way leaves the account locked but
+present; rerunning the cascade finishes it. `DELETE /api/allergens/:id` deletes the allergen's
+`FoodAllergen` and `UserAllergen` rows, then the entry, then its `FoodAllergen` rows once more (a food
+matched meanwhile). After a dictionary edit, `startRematch` sets `Allergen.rematchCursor` to 0 (the next
+fdcId to process) and bumps `rematchRun`; `rematchAllergen` walks the cached foods in fdcId batches of 500,
+one ordered `bulkWrite` per batch (delete the allergen's rows in the batch's range, insert the new matches),
+and moves the cursor only if neither the cursor nor the run changed meanwhile. It stops after 60 seconds
+with `{done: false, processed, remaining}` and resumes from the cursor; null means done. The routes that
+call it (Curator POST/PUT and `/api/curate/allergens/:id/rematch`) come with T21.
+
 Privacy acknowledgment: the banner sets the readable cookie `he_privacy_ack` (1 year, `SameSite=Lax`).
 Register and login copy it to `User.privacyAckAt` when present, and set it when the account already has
 `privacyAckAt` (new device). `MeResponse.user.privacyAckAt` tells the web whether to show the banner.
@@ -164,7 +181,9 @@ src/models/           Mongoose models: User, MemberProfile, CuratorProfile, Admi
 src/services/auth.ts  register (user + member profile, rerunnable), login (constant-cost), me, setActiveRole
 src/services/throttle.ts  login throttle: reserveAttempt (one atomic upsert before the compare), clearFailures
 src/services/usda.ts  USDA FoodData Central proxy: searchFoods (SearchCache), getFood (Food cache-on-read), normalization
-src/services/dictionary.ts  allergen dictionary: seed on read (DictionarySeed marker), matchFood (normalizer + matcher), matchAndStore, allergensForFood
+src/services/dictionary.ts  allergen dictionary: seed on read (DictionarySeed marker), matchFood (normalizer + matcher), matchAndStore, allergensForFood,
+                      startRematch/rematchAllergen (cursor batches), deleteAllergen (row cascade)
+src/services/account.ts  deleteAccount: the rerunnable account deletion cascade (deletionPending first)
 src/services/logs.ts  day logs (todayIn, listLogs, createLog with fetch-and-match and alerts, updateLog) and allergen settings
 src/services/roles.ts setRoles (admin route: atomic conditional role write, lockout guards), applyAdminBootstrap (ADMIN_USERNAMES)
 src/routes/           one router per resource (health, spike, auth, users, admin, foods, allergens, logs); routers never touch fetch or process.env
