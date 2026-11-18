@@ -13,6 +13,7 @@ import { usersRouter } from "./routes/users.js";
 import { adminRouter } from "./routes/admin.js";
 import { curateRouter } from "./routes/curate.js";
 import { foodsRouter } from "./routes/foods.js";
+import { homeRouter } from "./routes/home.js";
 import { allergensRouter } from "./routes/allergens.js";
 import { logsRouter } from "./routes/logs.js";
 import { requireDb } from "./lib/db.js";
@@ -52,6 +53,8 @@ app.use("/api/logs", ...withSession, logsRouter);
 app.use("/api/foods", requireDb, foodsRouter);
 // Public read of the allergen dictionary; it lives in the database, so the database has to answer.
 app.use("/api/allergens", requireDb, allergensRouter);
+// The anonymous Home feed (T10): public, read from a snapshot rebuilt at most every 5 minutes.
+app.use("/api/home", requireDb, homeRouter);
 
 app.use(notFound);
 app.use(errorHandler);
