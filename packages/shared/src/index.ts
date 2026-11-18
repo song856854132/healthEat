@@ -41,3 +41,4 @@ export { ALLERGEN_SEED } from "./allergens.seed.js";
 
 export * from "./summary.js";
 export * from "./dri.js";
+export { GAP_FOODS, GAP_FOODS_RETRIEVED } from "./gapFoods.data.js";
