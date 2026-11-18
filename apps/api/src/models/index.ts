@@ -13,3 +13,4 @@ export { UserAllergen } from "./UserAllergen.js";
 export { PublicFeedSnapshot } from "./PublicFeedSnapshot.js";
 export { IngredientToken } from "./IngredientToken.js";
 export { IngredientTokenFood } from "./IngredientTokenFood.js";
+export { VisionDailyTotal } from "./VisionDailyTotal.js";

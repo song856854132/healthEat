@@ -4,11 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import {
   MAX_VISION_IMAGE_BYTES,
+  VISION_APP_DAILY_LIMIT,
   VISION_LIMIT_MESSAGE,
   VisionMealResponse,
 } from "@healtheat/shared";
 import app from "../src/app.js";
-import { MemberProfile, User } from "../src/models/index.js";
+import { MemberProfile, User, VisionDailyTotal } from "../src/models/index.js";
 import {
   VISION_MODEL,
   VISION_TIMEOUT_MS,
@@ -445,5 +446,56 @@ describe("vision review fixes (T13)", () => {
     expect((await agent.post("/api/vision/meal").send(PHOTO).expect(409)).body.error).toBe(
       "member_profile_missing",
     );
+  });
+});
+
+describe("app-wide photo ceiling (T13 fix round)", () => {
+  const appCount = async () => (await VisionDailyTotal.findById("2026-11-16").lean())?.count ?? 0;
+
+  // Value: protects=the whole app makes at most VISION_APP_DAILY_LIMIT photo calls per UTC day: at the
+  //   ceiling a member's photo is 503 vision_unavailable, never reaches Claude and is not counted against
+  //   the member; fails_when=the app-wide counter is skipped or read-then-written; why_new=review p2
+  //   (targeted, money; owner grant a-785ed1161a91); seam=setVisionClientForTests; no_claim=Anthropic's
+  //   own key spend limit
+  it("refuses photos once the app-wide daily ceiling is reached", async () => {
+    const { client } = fakeClient(ok([]));
+    const { agent, user } = await member("late");
+    await VisionDailyTotal.create({ _id: "2026-11-16", count: VISION_APP_DAILY_LIMIT });
+    const res = await agent.post("/api/vision/meal").send(PHOTO).expect(503);
+    expect(res.body.error).toBe("vision_unavailable");
+    expect(client.beta.messages.parse).not.toHaveBeenCalled();
+    expect(await usage(user._id)).toEqual({ count: 0 });
+    expect(await appCount()).toBe(VISION_APP_DAILY_LIMIT);
+  });
+
+  // Value: protects=every Claude call counts app-wide, failed and refunded ones included (they are
+  //   billed), while a photo the member's own limit stops never reached Claude and is given back;
+  //   fails_when=refunds also release the app-wide count, or a member 429 leaks an app-wide call;
+  //   why_new=review p2 fix; seam=setVisionClientForTests; no_claim=none
+  it("counts billed calls app-wide and releases only photos that never reached Claude", async () => {
+    const { agent } = await member("counter");
+    fakeClient(ok([]));
+    await agent.post("/api/vision/meal").send(PHOTO).expect(200);
+    fakeClient(() => {
+      throw new Anthropic.APIConnectionTimeoutError();
+    });
+    await agent.post("/api/vision/meal").send(PHOTO).expect(504); // refunded to the member, billed to the app
+    expect(await appCount()).toBe(2);
+    await MemberProfile.updateOne(
+      { userId: (await User.findOne({ username: "counter" }))!._id },
+      { $set: { "visionUsage.count": 20 } },
+    );
+    await agent.post("/api/vision/meal").send(PHOTO).expect(429);
+    expect(await appCount()).toBe(2);
+  });
+
+  // Value: protects=each call asks for at most 2000 output tokens, keeping the worst case per photo near
+  //   the cost model; fails_when=max_tokens drifts back up; why_new=review p2 (targeted, money);
+  //   seam=setVisionClientForTests; no_claim=what the model actually emits
+  it("caps output tokens per call", async () => {
+    const { calls } = fakeClient(ok([]));
+    const { agent } = await member("frugal");
+    await agent.post("/api/vision/meal").send(PHOTO).expect(200);
+    expect(calls[0]!.max_tokens).toBeLessThanOrEqual(2000);
   });
 });

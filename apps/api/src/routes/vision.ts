@@ -8,7 +8,12 @@ import {
 import { HttpError, asyncHandler } from "../lib/http.js";
 import { currentUser, requireAuth, requireRole } from "../middleware/auth.js";
 import { proposeItems, requireVisionClient } from "../services/vision.js";
-import { refundPhoto, reservePhoto } from "../services/visionUsage.js";
+import {
+  refundPhoto,
+  releaseAppCall,
+  reserveAppCall,
+  reservePhoto,
+} from "../services/visionUsage.js";
 
 export const visionRouter = Router();
 
@@ -32,7 +37,18 @@ visionRouter.post(
     }
     const client = requireVisionClient();
     const userId = currentUser(res)._id;
-    const reservation = await reservePhoto(userId);
+    // The app-wide ceiling first: every Claude call is billed, refunded member photos included, so it
+    // is only given back when the member's own limit stops the photo before any call.
+    const appDay = await reserveAppCall();
+    let reservation;
+    try {
+      reservation = await reservePhoto(userId);
+    } catch (err) {
+      await releaseAppCall(appDay).catch((releaseErr: unknown) =>
+        console.error("[vision] app-wide release failed:", releaseErr),
+      );
+      throw err;
+    }
     let items;
     try {
       items = await proposeItems(client, photo);

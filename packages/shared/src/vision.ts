@@ -10,9 +10,17 @@ export const VISION_DAILY_LIMIT = 20;
 /**
  * Failed calls refunded per member per day (amendment R3-29: failures do not use up a photo). Anthropic
  * still bills a refused, timed-out or unparseable call, so refunds stop here: from the 11th failure on,
- * a failed photo counts. A member's paid calls per day are therefore at most 20 + 10.
+ * a failed photo counts. A member's photo calls per day are therefore at most 20 + 10; a declined photo
+ * can also bill the server-side fallback model's run, so one call can cost two model runs.
  */
 export const VISION_DAILY_REFUNDS = 10;
+/**
+ * Photo calls the whole app makes per UTC day, across all members. Open registration multiplies the
+ * per-member caps, so this is the app's own spend ceiling: at roughly $0.10 worst case per call (input,
+ * max_tokens of output, and a fallback model's run when a photo is declined) it keeps a day under about
+ * $30. Reaching it answers 503 vision_unavailable until the UTC day turns.
+ */
+export const VISION_APP_DAILY_LIMIT = 300;
 /** Message the web shows on the 21st photo (design doc, REST table). */
 export const VISION_LIMIT_MESSAGE = "Photo limit reached for today (20). Text search is unlimited.";
 /**

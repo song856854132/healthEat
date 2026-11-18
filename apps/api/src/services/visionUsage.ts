@@ -1,7 +1,12 @@
-import { VISION_DAILY_LIMIT, VISION_DAILY_REFUNDS, VISION_LIMIT_MESSAGE } from "@healtheat/shared";
+import {
+  VISION_APP_DAILY_LIMIT,
+  VISION_DAILY_LIMIT,
+  VISION_DAILY_REFUNDS,
+  VISION_LIMIT_MESSAGE,
+} from "@healtheat/shared";
 import type { Types } from "mongoose";
 import { HttpError } from "../lib/http.js";
-import { MemberProfile } from "../models/index.js";
+import { MemberProfile, VisionDailyTotal } from "../models/index.js";
 import { memberToday } from "./logs.js";
 
 // The 20-photos-a-day counter (design doc, REST table: MemberProfile.visionUsage, reset when the date
@@ -78,4 +83,37 @@ export async function refundPhoto(
     { $inc: { "visionUsage.count": -1, "visionUsage.refunds": 1 } },
   );
   return res.modifiedCount === 1;
+}
+
+/**
+ * Take one of the app's photo calls for this UTC day, atomically, or throw 503 vision_unavailable at the
+ * app-wide ceiling. The filter only matches a day below the ceiling; at the ceiling the upsert tries to
+ * insert a second document for the day and fails on the duplicate _id, which reads as "full".
+ * Returns the UTC day taken, for releaseAppCall.
+ */
+export async function reserveAppCall(now = new Date()): Promise<string> {
+  const day = now.toISOString().slice(0, 10);
+  try {
+    await VisionDailyTotal.updateOne(
+      { _id: day, count: { $lt: VISION_APP_DAILY_LIMIT } },
+      { $inc: { count: 1 } },
+      { upsert: true },
+    );
+  } catch (err) {
+    if ((err as { code?: number }).code !== 11000) throw err;
+    throw new HttpError(
+      503,
+      "vision_unavailable",
+      "Photo logging has reached today's limit; try tomorrow",
+      {
+        expose: true,
+      },
+    );
+  }
+  return day;
+}
+
+/** Give back an app-wide call that never reached Claude (the member's own limit stopped it first). */
+export async function releaseAppCall(day: string): Promise<void> {
+  await VisionDailyTotal.updateOne({ _id: day, count: { $gt: 0 } }, { $inc: { count: -1 } });
 }

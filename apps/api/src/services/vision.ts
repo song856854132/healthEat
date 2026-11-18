@@ -67,7 +67,9 @@ export async function proposeItems(
   try {
     response = await client.beta.messages.parse({
       model: VISION_MODEL,
-      max_tokens: 4000,
+      // About 20 items fit in a few hundred tokens; the rest is room for low-effort thinking. A cut answer
+      // is a 502 and a refunded photo, never a partial list.
+      max_tokens: 2000,
       // A declined photo is retried server-side on the model Anthropic recommends for that refusal
       // category; the switch is logged below, never shown to the member.
       betas: ["server-side-fallback-2026-07-01"],
