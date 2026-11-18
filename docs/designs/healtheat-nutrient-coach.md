@@ -1350,7 +1350,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Architecture — A4, A5; Performance — P2; Code Quality — C5 (R3-19)
   - Files: apps/api/src/lib/db.ts, apps/api/src/lib/http.ts, apps/api/src/middleware/error.ts, model files
   - Verify: supertest with Mongo unreachable returns 503 within 5 s; `db.collection.getIndexes()` lists the P2 indexes
-- [ ] **T10 (P2, human: ~2 hrs / CC: ~15 min)** — apps/api — PublicFeedSnapshot with 5-minute refresh; opt-in profiles and empty state
+- [x] **T10 (P2, human: ~2 hrs / CC: ~15 min)** — apps/api — PublicFeedSnapshot with 5-minute refresh; opt-in profiles and empty state
   - Surfaced by: Performance — P1 (D14); Code Quality — C1 (D9)
   - Files: apps/api/src/models/PublicFeedSnapshot.ts, apps/api/src/routes/home.ts
   - Verify: unit test: second call within 5 min does not aggregate; only publicLogs members and publicListing curators listed
