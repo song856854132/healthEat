@@ -332,14 +332,17 @@ type BatchFood = {
 };
 const BATCH_FIELDS = { fdcId: 1, description: 1, ingredientsText: 1, fetchedAt: 1 };
 
-/** A copy's fetch time; null for a stored food without a readable one, so it never throws. */
-const copyTime = (d: unknown) => (d instanceof Date ? d.getTime() : null);
+/**
+ * Which USDA copy a food holds: its `fetchedAt` as JSON, so a Date compares by time and a malformed value
+ * (written past the schema) by its own content, never throwing and never equal to a different one.
+ */
+const copyKey = (d: unknown) => JSON.stringify(d ?? null);
 
 /** The fdcIds of `batch` whose USDA copy is not the one in `copies` (a newer copy, or none). */
 function movedFoods(batch: BatchFood[], copies: { fdcId: number; fetchedAt?: unknown }[]) {
-  const now = new Map(copies.map((c) => [c.fdcId, copyTime(c.fetchedAt)]));
+  const now = new Map(copies.map((c) => [c.fdcId, copyKey(c.fetchedAt)]));
   return batch
-    .filter((f) => !now.has(f.fdcId) || now.get(f.fdcId) !== copyTime(f.fetchedAt))
+    .filter((f) => !now.has(f.fdcId) || now.get(f.fdcId) !== copyKey(f.fetchedAt))
     .map((f) => f.fdcId);
 }
 
@@ -399,8 +402,8 @@ export async function startRematch(allergenId: Types.ObjectId): Promise<void> {
  * batch where nothing moved reads little); if either moved, it writes the batch once more from the newer
  * entry and copies. If they move again, the foods that may hold stale rows are left unstamped (the whole
  * batch after a newer edit, only the refreshed foods otherwise), so the next read of each matches it
- * whole against the current dictionary. A batch that keeps colliding with a concurrent writer stops at
- * the time budget like any other.
+ * whole against the current dictionary. A batch whose write stops at a concurrent writer's duplicate key
+ * leaves its foods unstamped, then repeats from the cursor, and stops at the time budget like any other.
  */
 export async function rematchAllergen(
   allergenId: Types.ObjectId,
@@ -458,6 +461,12 @@ export async function rematchAllergen(
         // Another request re-matched the same batch at the same time: re-read the cursor and go on,
         // unless the time budget is spent.
         if (!isDuplicate(err)) throw err;
+        // The ordered write stopped at a row another writer had just inserted: this batch's later inserts
+        // never ran, and that writer (another batch, or one food's matchAndStore) may cover only its own
+        // food. The batch cannot vouch for its foods' rows, and a repeat below can be skipped by another
+        // pass moving the cursor first, so its foods are left unstamped: the next read of each matches it
+        // whole. Collisions are rare, so the cost is a few extra matches.
+        await Food.updateMany({ fdcId: { $in: fdcIds } }, { $set: { allergensMatchedAt: null } });
         if (Date.now() - started >= budgetMs) {
           const remaining = await Food.countDocuments({ fdcId: { $gte: cursor } });
           return { done: false, processed, remaining };

@@ -417,17 +417,23 @@ describe("re-match batch check after its write (#37 review notes)", () => {
   // Value: protects=a stored food without a Date fetchedAt does not stop an allergen's re-match for
   //   good; fails_when=the post-write check calls getTime() on a missing fetchedAt again; why_new=#37
   //   review note; seam=none; no_claim=how such a document got stored (inserted past the schema)
+  // Extended by /ship coverage audit (#46).
+  // Value: protects=a food with no fetchedAt counts as unmoved, so the re-match leaves its stamp;
+  //   fails_when=a missing fetchedAt never equals itself and the food is unstamped on every re-match;
+  //   why_new=this test asserted only done and rows; seam=none; no_claim=how such a document got stored
   it("finishes the re-match when a stored food has no fetchedAt", async () => {
     await cacheFoods(4);
     await Food.collection.insertOne({
       fdcId: 5,
       description: "FOOD 5",
       ingredientsText: "PEANUTS",
+      allergensMatchedAt: new Date(),
     });
     const id = await peanutId();
     await startRematch(id);
     expect((await rematchAllergen(id, { batchSize: 10 })).done).toBe(true);
     expect(await peanutRows(id)).toEqual([3, 5]);
+    expect((await Food.findOne({ fdcId: 5 }).lean())?.allergensMatchedAt).toBeInstanceOf(Date);
   });
 
   // Value: protects=when only a food's USDA copy keeps moving, only that food is left unstamped;
@@ -509,6 +515,135 @@ describe("re-match batch check after its write (#37 review notes)", () => {
     });
     expect(bulk).toHaveBeenCalledTimes(1);
     expect((await Allergen.findById(id).lean())?.rematchCursor).toBe(0);
+  });
+});
+
+describe("re-match batch check after its write (#46 review notes)", () => {
+  // Value: protects=a refresh between two malformed (non-Date) fetchedAt values still counts as a new
+  //   copy, so the batch rewrites from it; fails_when=every non-Date fetchedAt compares equal again;
+  //   why_new=#46 review note; seam=none; no_claim=how such documents got stored (written past the schema)
+  // Extended by /ship coverage audit (#46).
+  // Value: protects=an unchanged malformed copy compares equal, so after the rewrite the food keeps its
+  //   stamp; fails_when=a malformed fetchedAt never equals itself (e.g. NaN key) and the food is left
+  //   unstamped; why_new=no test asserts a stable non-Date copy keeps its stamp; seam=none;
+  //   no_claim=how such documents got stored (written past the schema)
+  it("rewrites a food whose malformed fetchedAt changed between the batch read and its check", async () => {
+    await cacheFoods(2);
+    await Food.collection.insertOne({
+      fdcId: 3,
+      description: "FOOD 3",
+      ingredientsText: "SUGAR, PEANUTS",
+      fetchedAt: "copy-a",
+      allergensMatchedAt: new Date(),
+    });
+    const id = await peanutId();
+    await startRematch(id);
+    const original = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    let injected = false;
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementation((async (ops: never, opts: never) => {
+      const out = await original(ops, opts);
+      if (!injected) {
+        injected = true;
+        // A new, still malformed copy of food 3 without peanuts lands after the first write.
+        await Food.collection.updateOne(
+          { fdcId: 3 },
+          { $set: { ingredientsText: "SUGAR, SALT", fetchedAt: "copy-b" } },
+        );
+      }
+      return out;
+    }) as never);
+    expect((await rematchAllergen(id, { batchSize: 10 })).done).toBe(true);
+    expect(await peanutRows(id)).toEqual([]);
+    expect((await Food.findOne({ fdcId: 3 }).lean())?.allergensMatchedAt).toBeInstanceOf(Date);
+  });
+
+  // Value: protects=a batch whose ordered write stops at a duplicate key part way (its later inserts
+  //   never ran) leaves its foods unstamped, so no food stays stamped without this allergen's row;
+  //   fails_when=the duplicate branch returns or moves on without unstamping; why_new=#46 follow-up
+  //   review (the duplicate branch skipped the post-write check); seam=none; no_claim=a real collision
+  //   (the partial write is injected: delete ran, inserts did not)
+  it("leaves the batch's foods unstamped when its write stops part way at a duplicate key", async () => {
+    await cacheFoods(6);
+    const id = await peanutId();
+    await startRematch(id);
+    await rematchAllergen(id);
+    await Food.updateMany({}, { $set: { allergensMatchedAt: new Date() } });
+    expect(await peanutRows(id)).toEqual([3, 6]);
+    await startRematch(id);
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementationOnce((async () => {
+      // The ordered write's delete ran, then its first insert hit a row another writer had just added.
+      await FoodAllergen.deleteMany({ allergenId: id, fdcId: { $in: [1, 2, 3, 4, 5, 6] } });
+      throw Object.assign(new Error("E11000 duplicate key"), { code: 11000 });
+    }) as never);
+    expect((await rematchAllergen(id, { batchSize: 10, budgetMs: 0 })).done).toBe(false);
+    const stamps = (await Food.find().sort({ fdcId: 1 }).lean()).map(
+      (f) => f.allergensMatchedAt ?? null,
+    );
+    expect(stamps).toEqual([null, null, null, null, null, null]);
+  });
+
+  // Value: protects=a batch that hit a duplicate key leaves its foods unstamped even when it goes on to
+  //   repeat, since another pass can move the cursor before the repeat; fails_when=the duplicate branch
+  //   skips the unstamp when it expects to repeat; why_new=#46 follow-up review (pass 2); seam=none;
+  //   no_claim=a real collision or a racing pass (the duplicate key is injected once)
+  it("leaves the batch's foods unstamped after a duplicate key even when it repeats the batch", async () => {
+    await cacheFoods(4);
+    await Food.updateMany({}, { $set: { allergensMatchedAt: new Date() } });
+    const id = await peanutId();
+    await startRematch(id);
+    vi.spyOn(FoodAllergen, "bulkWrite").mockRejectedValueOnce(
+      Object.assign(new Error("E11000 duplicate key"), { code: 11000 }),
+    );
+    expect((await rematchAllergen(id, { batchSize: 10 })).done).toBe(true);
+    expect(await peanutRows(id)).toEqual([3]);
+    const stamps = (await Food.find().sort({ fdcId: 1 }).lean()).map(
+      (f) => f.allergensMatchedAt ?? null,
+    );
+    expect(stamps).toEqual([null, null, null, null]);
+  });
+
+  // Value: protects=a batch that stops at its budget on a duplicate key, after its first write went
+  //   stale, leaves the rows the surviving concurrent writer (a food's own match) wrote, and leaves
+  //   the batch's foods unstamped since it did not repeat;
+  //   fails_when=the early budget return starts deleting or rewriting rows, or matchAndStore stops
+  //   rewriting a food's rows; why_new=#46 review note; seam=none; no_claim=a real collision (the
+  //   duplicate key is injected after the concurrent match)
+  it("leaves a concurrent food match's rows when the batch stops at its budget on a duplicate key", async () => {
+    await cacheFoods(3);
+    const id = await peanutId();
+    await startRematch(id);
+    const original = FoodAllergen.bulkWrite.bind(FoodAllergen);
+    let calls = 0;
+    let inner = false;
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementation((async (ops: never, opts: never) => {
+      if (inner) return original(ops, opts);
+      calls++;
+      if (calls === 1) {
+        const out = await original(ops, opts); // the batch's first write: food 3 has peanuts
+        // USDA refreshes food 3 without peanuts and its own read matches the new copy.
+        const fresh = {
+          fdcId: 3,
+          description: "FOOD 3",
+          ingredientsText: "SUGAR, SALT",
+          fetchedAt: new Date(Date.now() + 60_000),
+          allergensMatchedAt: null,
+        };
+        await Food.updateOne({ fdcId: 3 }, { $set: fresh });
+        inner = true;
+        await matchAndStore(fresh);
+        inner = false;
+        return out;
+      }
+      throw Object.assign(new Error("E11000 duplicate key"), { code: 11000 }); // the batch's rewrite
+    }) as never);
+    const res = await rematchAllergen(id, { batchSize: 10, budgetMs: 0 });
+    expect(res.done).toBe(false);
+    expect(await peanutRows(id)).toEqual([]);
+    // The batch did not repeat, so it cannot vouch for its foods' rows: each is left for its next read.
+    const stamps = (await Food.find().sort({ fdcId: 1 }).lean()).map(
+      (f) => f.allergensMatchedAt ?? null,
+    );
+    expect(stamps).toEqual([null, null, null]);
   });
 });
 
