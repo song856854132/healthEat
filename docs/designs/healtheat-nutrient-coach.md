@@ -1421,7 +1421,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Files: apps/api/src/services/foodStats.ts, apps/api/src/routes/foods.ts, apps/api/src/models/LogEntry.ts, packages/shared/src/foods.ts
   - Verify: anonymous sees counts only; a suspended account's session sees the anonymous view
 
-_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision._
+_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23 and T24 are lane B GitHub issues with no entry here)._
 
 ## Implementation Tasks: order and dependencies
 
