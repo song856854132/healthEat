@@ -582,6 +582,26 @@ describe("re-match batch check after its write (#46 review notes)", () => {
     expect(stamps).toEqual([null, null, null, null, null, null]);
   });
 
+  // Value: protects=a batch that hit a duplicate key leaves its foods unstamped even when it goes on to
+  //   repeat, since another pass can move the cursor before the repeat; fails_when=the duplicate branch
+  //   skips the unstamp when it expects to repeat; why_new=#46 follow-up review (pass 2); seam=none;
+  //   no_claim=a real collision or a racing pass (the duplicate key is injected once)
+  it("leaves the batch's foods unstamped after a duplicate key even when it repeats the batch", async () => {
+    await cacheFoods(4);
+    await Food.updateMany({}, { $set: { allergensMatchedAt: new Date() } });
+    const id = await peanutId();
+    await startRematch(id);
+    vi.spyOn(FoodAllergen, "bulkWrite").mockRejectedValueOnce(
+      Object.assign(new Error("E11000 duplicate key"), { code: 11000 }),
+    );
+    expect((await rematchAllergen(id, { batchSize: 10 })).done).toBe(true);
+    expect(await peanutRows(id)).toEqual([3]);
+    const stamps = (await Food.find().sort({ fdcId: 1 }).lean()).map(
+      (f) => f.allergensMatchedAt ?? null,
+    );
+    expect(stamps).toEqual([null, null, null, null]);
+  });
+
   // Value: protects=a batch that stops at its budget on a duplicate key, after its first write went
   //   stale, leaves the rows the surviving concurrent writer (a food's own match) wrote, and leaves
   //   the batch's foods unstamped since it did not repeat;

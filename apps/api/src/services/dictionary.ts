@@ -402,8 +402,8 @@ export async function startRematch(allergenId: Types.ObjectId): Promise<void> {
  * batch where nothing moved reads little); if either moved, it writes the batch once more from the newer
  * entry and copies. If they move again, the foods that may hold stale rows are left unstamped (the whole
  * batch after a newer edit, only the refreshed foods otherwise), so the next read of each matches it
- * whole against the current dictionary. A batch that keeps colliding with a concurrent writer stops at
- * the time budget like any other.
+ * whole against the current dictionary. A batch whose write stops at a concurrent writer's duplicate key
+ * leaves its foods unstamped, then repeats from the cursor, and stops at the time budget like any other.
  */
 export async function rematchAllergen(
   allergenId: Types.ObjectId,
@@ -463,19 +463,10 @@ export async function rematchAllergen(
         if (!isDuplicate(err)) throw err;
         // The ordered write stopped at a row another writer had just inserted: this batch's later inserts
         // never ran, and that writer (another batch, or one food's matchAndStore) may cover only its own
-        // food. Unless this pass repeats the batch now (same run, cursor still on it, budget left), its
-        // foods are left unstamped, so the next read of each matches it whole.
-        const latest = await Allergen.findById(allergenId, {
-          rematchRun: 1,
-          rematchCursor: 1,
-        }).lean();
-        const repeats =
-          latest !== null &&
-          (latest.rematchRun ?? 0) === run &&
-          latest.rematchCursor === cursor &&
-          Date.now() - started < budgetMs;
-        if (!repeats)
-          await Food.updateMany({ fdcId: { $in: fdcIds } }, { $set: { allergensMatchedAt: null } });
+        // food. The batch cannot vouch for its foods' rows, and a repeat below can be skipped by another
+        // pass moving the cursor first, so its foods are left unstamped: the next read of each matches it
+        // whole. Collisions are rare, so the cost is a few extra matches.
+        await Food.updateMany({ fdcId: { $in: fdcIds } }, { $set: { allergensMatchedAt: null } });
         if (Date.now() - started >= budgetMs) {
           const remaining = await Food.countDocuments({ fdcId: { $gte: cursor } });
           return { done: false, processed, remaining };
