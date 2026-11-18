@@ -111,6 +111,10 @@ describe("role guards", () => {
         send: (a) => a.put("/api/users/me/allergens").send({ allergens: [] }),
       },
       { name: "GET /api/users/me/summary", send: (a) => a.get("/api/users/me/summary") },
+      {
+        name: "GET /api/users/me/gaps/:nutrientId/foods",
+        send: (a) => a.get("/api/users/me/gaps/1109/foods"),
+      },
     ];
     for (const call of calls) {
       const res = await call.send(agent);
