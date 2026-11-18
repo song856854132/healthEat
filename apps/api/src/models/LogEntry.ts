@@ -18,6 +18,8 @@ const LogEntrySchema = new Schema({
 // A member's day logs (the logs route, summaries) and every member's week (the public Home feed, T10).
 LogEntrySchema.index({ userId: 1, date: 1 });
 LogEntrySchema.index({ date: 1 });
+// One food's week of logs (the Details page local data, T28; eng review D6).
+LogEntrySchema.index({ fdcId: 1, date: 1 });
 
 export type LogEntryAttrs = InferSchemaType<typeof LogEntrySchema>;
 export type LogEntryDoc = HydratedDocument<LogEntryAttrs>;
