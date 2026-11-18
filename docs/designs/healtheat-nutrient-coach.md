@@ -76,7 +76,7 @@ healthEat/
     web/            Next.js 16 (App Router), React 19, Tailwind + shadcn/ui, Recharts
     api/            Express 5.3, Mongoose 9, express-session + connect-mongo, zod
   packages/
-    shared/         TS types, zod schemas, allergen dictionary seed (TS module since T11), DRI tables (TS module since T25)
+    shared/         TS types, zod schemas, allergen dictionary seed (TS module since T11), DRI tables (TS module since T25), close-the-gap food list (generated TS module since T26)
   docs/
     designs/        this doc's repo copy, wireframe
   package.json      npm workspaces: ["apps/*", "packages/*"]
@@ -149,7 +149,7 @@ UML "Design" wiki page lists at minimum: User, MemberProfile, CuratorProfile, Ad
 | `POST /api/users/me/logs`, `PUT /api/logs/:id`, `DELETE /api/logs/:id` | Log CRUD. `POST` accepts an optional `date` (YYYY-MM-DD; must not be after today in the member's timezone, else 400) so `/log/[date]` and the photo confirm step can backfill a past day; when omitted, `date` defaults to today computed server-side. The calorie meter and hard-alert path always use today. | session (member) |
 | `POST /api/vision/meal` | Photo to `{items:[{query, grams, confidence}]}` via Claude; nothing saved | session (member); 20 per member per day, counted in `MemberProfile.visionUsage` with an atomic `findOneAndUpdate` (reset when `date` changes); the 21st call returns 429 and the UI shows "Photo limit reached for today (20). Text search is unlimited." |
 | `GET /api/users/me/summary?weekEnding=` | 7-day coverage bands, exposure meter, today's meter, alerts | session (member), self only |
-| `GET /api/users/me/gaps/:nutrientId/foods` | "Close the gap" ranking filtered by avoid list | session |
+| `GET /api/users/me/gaps/:nutrientId/foods` | "Close the gap" ranking filtered by avoid list | session (member) |
 | `GET /api/allergens`, `POST /api/allergens`, `PUT /api/allergens/:id`, `DELETE /api/allergens/:id` | Dictionary CRUD; a write re-matches cached Foods synchronously in the same request (see Allergen matching) and increments `CuratorProfile.editsCount` | public read, curator write |
 | `POST /api/curate/allergens/:id/rematch` | Continue an unfinished re-match from `rematchCursor`; returns `{done, processed, remaining}` | curator |
 | `GET /api/curate/unmatched?status=&page=`, `PUT /api/curate/unmatched/:token` (phase 3) | Unmatched ingredient queue; `PUT` body `{action: "map", allergenId}` appends the token to that Allergen's synonyms and re-matches, or `{action: "ignore"}` | curator |
@@ -1410,9 +1410,9 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: eng review 2026-11-18 (REST table row with no task; decisions D4, D7, D9, D11)
   - Files: apps/api/src/services/summary.ts, apps/api/src/services/dictionary.ts, packages/shared/src/summary.ts, packages/shared/data/dri.json
   - Verify: unit tests cover every branch of summary.ts, including the vitamin E demo check (41% to 90% with 28 g sunflower seeds); supertest: 401 anonymous, own data only
-- [ ] **T26 (#49, P1, human: ~1 day / CC: ~40 min)** — apps/api + packages/shared — Close the gap: `GET /api/users/me/gaps/:nutrientId/foods`; about 60 whole foods shipped as `packages/shared/data/gap-foods.json` (generated once from USDA, no runtime USDA call); candidates are those plus cached Foundation, SR Legacy and Survey foods above 20 kcal per 100 g; avoid-mode allergens filtered by matching seed foods in memory and cached foods through `allergensForFoods`
+- [ ] **T26 (#49, P1, human: ~1 day / CC: ~40 min)** — apps/api + packages/shared — Close the gap: `GET /api/users/me/gaps/:nutrientId/foods`; about 60 whole foods shipped as `packages/shared/src/gapFoods.data.ts` (generated once from USDA, no runtime USDA call); candidates are those plus cached Foundation, SR Legacy and Survey foods above 20 kcal per 100 g; avoid-mode allergens filtered by matching seed foods in memory and cached foods through `allergensForFoods`
   - Surfaced by: eng review 2026-11-18 (D3, D8, D12)
-  - Files: packages/shared/data/gap-foods.json, scripts/gap-foods/generate.ts, apps/api/src/services/summary.ts
+  - Files: packages/shared/src/gapFoods.data.ts, scripts/gap-foods/generate.mts, apps/api/src/services/gaps.ts
   - Verify: a member avoiding peanuts never gets "Peanuts, raw"; an unstamped cached food with an avoided allergen is excluded
 - [ ] **T27 (#50, P1, human: ~4 hrs / CC: ~25 min)** — apps/api + packages/shared — Account and profiles: `PUT /api/users/me` (email; username refused with 400), `PUT /api/users/me/profiles/member` (body metrics, activity, calorie band, timezone, privacy opt-ins, phone; required fields cannot be unset), `GET /api/users/:username` (public fields; sensitive fields only for self)
   - Surfaced by: eng review 2026-11-18 (REST table rows with no task; first in order, D10)

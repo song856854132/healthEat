@@ -32,6 +32,7 @@ Failure modes, all JSON:
 | `503 {error: "usda_unconfigured"}`          | a deployment without `USDA_API_KEY` received a food request                                                                                                                                                                   |
 | `404 {error: "food_not_found"}`             | `GET /api/foods/:fdcId` for an id USDA does not know and that was never stored                                                                                                                                                |
 | `404 {error: "log_not_found"}`              | `PUT/DELETE /api/logs/:id` for an id that names no entry (also a malformed id)                                                                                                                                                |
+| `404 {error: "nutrient_not_tracked"}`       | `GET /api/users/me/gaps/:nutrientId/foods` for an id that is not one of the tracked nutrients (also a malformed id)                                                                                                           |
 | `400 {error: "date_in_future"}`             | `POST /api/users/me/logs` with a `date` after today in the member's time zone; `details` names the latest allowed date                                                                                                        |
 | `400 {error: "unknown_allergen"}`           | `PUT /api/users/me/allergens` with keys the dictionary does not hold; `details.keys` lists them, nothing is written                                                                                                           |
 | `404 {error: "allergen_not_found"}`         | `PUT` or `DELETE /api/allergens/:id` or `POST /api/curate/allergens/:id/rematch` for an id that names no entry (also a malformed id)                                                                                          |
@@ -238,6 +239,7 @@ src/services/admin.ts listUsers, userDetail, setStatus (suspend ends sessions; l
 src/services/profiles.ts  getProfile/updateProfile for the member, Curator and Admin role profiles; updateAccount (email); publicProfile
 src/services/logs.ts  day logs (todayIn, listLogs, createLog with fetch-and-match and alerts, updateLog) and allergen settings
 src/services/summary.ts  weekly summary: bands, calorie meter, exposure meter and alerts (pure functions plus summaryFor)
+src/services/gaps.ts  close the gap: rankGapFoods (amount per kcal, kcal floor, top 6) and gapFoodsFor (GAP_FOODS seed plus cached whole foods, minus avoided allergens)
 src/services/roles.ts setRoles (admin route: atomic conditional role write, lockout guards), usableAdminCount (shared with self-delete), applyAdminBootstrap (ADMIN_USERNAMES)
 src/routes/           one router per resource (health, spike, auth, users, admin, curate, foods, allergens, logs); routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test
