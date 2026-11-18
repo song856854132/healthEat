@@ -73,7 +73,8 @@ export async function getProfile(
   kind: EditableProfileKind,
 ): Promise<RoleProfileView> {
   requireHeld(user, kind);
-  if (kind === "member") return memberView(await MemberProfile.findOne({ userId: user._id }).lean());
+  if (kind === "member")
+    return memberView(await MemberProfile.findOne({ userId: user._id }).lean());
   if (kind === "curator") {
     const p = await CuratorProfile.findOne({ userId: user._id }).lean();
     return {
@@ -119,7 +120,11 @@ export async function updateProfile(
  * unique index's duplicate key error, answered 409 conflict by the error middleware.
  */
 export async function updateAccount(user: UserDoc, input: AccountUpdateInput): Promise<void> {
-  await User.updateOne({ _id: user._id }, { $set: { email: input.email } }, { runValidators: true });
+  await User.updateOne(
+    { _id: user._id },
+    { $set: { email: input.email } },
+    { runValidators: true },
+  );
 }
 
 /**
@@ -156,4 +161,3 @@ export async function publicProfile(
     private: self ? { email: user.email, member: memberView(member) } : null,
   };
 }
-

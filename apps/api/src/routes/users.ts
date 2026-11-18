@@ -157,4 +157,3 @@ usersRouter.get(
     res.json(PublicProfileView.parse(await profiles.publicProfile(username, viewerId)));
   }),
 );
-

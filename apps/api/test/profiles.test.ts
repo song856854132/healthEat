@@ -72,7 +72,7 @@ describe("GET and PUT /api/users/me/profiles/member", () => {
         calorieBand: { low: 1800, high: 2200 },
         timezone: "asia/taipei",
         publicLogs: true,
-        phone: "+886 912 345 678",
+        phone: "+1 555 0100",
       })
       .expect(200);
     expect(res.body).toMatchObject({
@@ -81,7 +81,7 @@ describe("GET and PUT /api/users/me/profiles/member", () => {
       calorieBand: { low: 1800, high: 2200 },
       timezone: "Asia/Taipei",
       publicLogs: true,
-      phone: "+886 912 345 678",
+      phone: "+1 555 0100",
     });
     const cleared = await agent
       .put("/api/users/me/profiles/member")
@@ -117,7 +117,7 @@ describe("GET /api/users/:username", () => {
     const { agent: lee, user: leeUser } = await make("lee");
     await mia
       .put("/api/users/me/profiles/member")
-      .send({ heightCm: 165, phone: "0912345678" })
+      .send({ heightCm: 165, phone: "555-0199" })
       .expect(200);
 
     const anon = await request(app).get("/api/users/MIA").expect(200);
@@ -135,11 +135,11 @@ describe("GET /api/users/:username", () => {
     expect(self.body.self).toBe(true);
     expect(self.body.private).toMatchObject({
       email: "mia@example.com",
-      member: { heightCm: 165, phone: "0912345678" },
+      member: { heightCm: 165, phone: "555-0199" },
     });
 
     await mia.put("/api/users/me/profiles/member").send({ showPhoneOnProfile: true }).expect(200);
-    expect((await request(app).get("/api/users/mia").expect(200)).body.phone).toBe("0912345678");
+    expect((await request(app).get("/api/users/mia").expect(200)).body.phone).toBe("555-0199");
 
     await User.updateOne({ _id: leeUser._id }, { $set: { roles: ["member", "curator"] } });
     await CuratorProfile.create({
