@@ -12,6 +12,7 @@ import { AdminProfile, CuratorProfile, MemberProfile, User } from "../models/ind
 import type { UserDoc } from "../models/User.js";
 import { deleteAccount, deleteSessions } from "./account.js";
 import { usableAdminCount } from "./roles.js";
+import { expirePublicFeed } from "./home.js";
 
 // Account management for Admins (design doc REST table, D18). An Admin sees account fields and which
 // role profiles exist, never logs, allergen settings or the dictionary. Every change an Admin makes
@@ -113,6 +114,7 @@ export async function setStatus(
       throw new HttpError(409, "last_admin");
     }
     await deleteSessions(target._id);
+    await expirePublicFeed(); // a suspended account leaves the anonymous Home at once
   } else {
     await User.updateOne({ _id: target._id }, { $set: { status } });
   }

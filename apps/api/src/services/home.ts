@@ -1,4 +1,4 @@
-import { PUBLIC_FEED_MAX_AGE_MS, type PublicHomeResponse } from "@healtheat/shared";
+import { PUBLIC_FEED_MAX_AGE_MS, PublicHomeResponse } from "@healtheat/shared";
 import {
   Allergen,
   CuratorProfile,
@@ -109,18 +109,40 @@ export async function buildFeed(now: Date): Promise<PublicHomeResponse> {
   };
 }
 
-/** The feed, rebuilt at most every PUBLIC_FEED_MAX_AGE_MS. */
+/**
+ * The feed, rebuilt at most every PUBLIC_FEED_MAX_AGE_MS. A stale snapshot is rebuilt by the one request
+ * whose claim moves builtAt; the others serve the stale copy. The rebuild writes only while its claim
+ * still holds, so a slow rebuild never replaces a newer one, and a failed rebuild puts builtAt back so
+ * the next request tries again instead of serving the old feed as fresh. A stored payload that does not
+ * match this deploy's feed shape counts as missing.
+ */
 export async function publicFeed(now = new Date()): Promise<PublicHomeResponse> {
   const snap = await PublicFeedSnapshot.findById(KEY).lean();
-  if (snap?.payload && now.getTime() - snap.builtAt.getTime() < PUBLIC_FEED_MAX_AGE_MS)
-    return snap.payload as PublicHomeResponse;
-  if (snap?.payload) {
-    // Claim the rebuild: only the request whose update matches the old builtAt aggregates.
+  const stored = snap ? PublicHomeResponse.safeParse(snap.payload) : null;
+  const cached = stored?.success ? stored.data : null;
+  if (snap && cached && now.getTime() - snap.builtAt.getTime() < PUBLIC_FEED_MAX_AGE_MS)
+    return cached;
+  if (snap) {
     const claim = await PublicFeedSnapshot.updateOne(
       { _id: KEY, builtAt: snap.builtAt },
       { $set: { builtAt: now } },
     );
-    if (claim.modifiedCount === 0) return snap.payload as PublicHomeResponse;
+    if (claim.modifiedCount === 1) {
+      try {
+        const payload = await buildFeed(now);
+        await PublicFeedSnapshot.updateOne({ _id: KEY, builtAt: now }, { $set: { payload } });
+        return payload;
+      } catch (err) {
+        await PublicFeedSnapshot.updateOne(
+          { _id: KEY, builtAt: now },
+          { $set: { builtAt: snap.builtAt } },
+        ).catch(() => undefined);
+        if (cached) return cached;
+        throw err;
+      }
+    }
+    if (cached) return cached;
+    return buildFeed(now); // another request is rebuilding and nothing usable is stored yet
   }
   const payload = await buildFeed(now);
   await PublicFeedSnapshot.updateOne(
@@ -132,4 +154,12 @@ export async function publicFeed(now = new Date()): Promise<PublicHomeResponse> 
     if ((err as { code?: number }).code !== 11000) throw err;
   });
   return payload;
+}
+
+/**
+ * Marks the feed stale so the next request rebuilds it (T10): called when an account is deleted or
+ * suspended, so its username leaves the anonymous Home at once rather than after up to 5 minutes.
+ */
+export async function expirePublicFeed(): Promise<void> {
+  await PublicFeedSnapshot.updateOne({ _id: KEY }, { $set: { builtAt: new Date(0) } });
 }
