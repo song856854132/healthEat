@@ -42,4 +42,5 @@ export * from "./home.js";
 
 export * from "./summary.js";
 export * from "./dri.js";
+export * from "./curate.js";
 export { GAP_FOODS, GAP_FOODS_RETRIEVED } from "./gapFoods.data.js";

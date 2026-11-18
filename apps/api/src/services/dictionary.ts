@@ -9,7 +9,15 @@ import {
 } from "@healtheat/shared";
 import { Types } from "mongoose";
 import { HttpError } from "../lib/http.js";
-import { Allergen, DictionarySeed, Food, FoodAllergen, UserAllergen } from "../models/index.js";
+import {
+  Allergen,
+  DictionarySeed,
+  Food,
+  FoodAllergen,
+  IngredientToken,
+  IngredientTokenFood,
+  UserAllergen,
+} from "../models/index.js";
 
 // Allergen dictionary and matcher (design doc: Allergen matching, D12). The matcher is plain string
 // work so it can run over a whole batch of cached foods in one request (T5 re-match).
@@ -111,6 +119,87 @@ export function matchFood(
     if (hit) out.push(hit);
   }
   return out;
+}
+
+/** Shortest and longest ingredient phrase the unmatched queue keeps. */
+const TOKEN_MIN = 3;
+const TOKEN_MAX = 80;
+
+/**
+ * The ingredient phrases of a food that match no synonym of any dictionary entry (T22): the normalised
+ * segments `ingredientSegments` gives, so a phrase mapped from the queue matches as a synonym.
+ */
+export function unmatchedTokens(
+  ingredientsText: string | null | undefined,
+  dictionary: DictionaryEntry[],
+): string[] {
+  if (!ingredientsText) return [];
+  const compiled = dictionary.map(compile);
+  const out = new Set<string>();
+  for (const seg of ingredientSegments(ingredientsText)) {
+    if (seg.length < TOKEN_MIN || seg.length > TOKEN_MAX) continue;
+    const hit = compiled.some((c) => firstMatch(mask(` ${seg} `, c.excludes), c.synonyms));
+    if (!hit) out.add(seg);
+  }
+  return [...out];
+}
+
+/**
+ * Records a food's unmatched phrases (T22, eng review D2): one unordered insert of (token, food) pairs,
+ * duplicates skipped by the unique index, then one bulkWrite that counts only the pairs actually new, so
+ * re-matching or refreshing the same food never raises a count.
+ */
+export async function recordUnmatchedTokens(fdcId: number, tokens: string[]): Promise<void> {
+  if (tokens.length === 0) return;
+  // The distinct-food count rests on the unique indexes: make sure they exist before the first write,
+  // as a fresh database builds them in the background (the same guard as auth.ts).
+  await tokenIndexes();
+  const docs = tokens.map((token) => ({ token, fdcId }));
+  let inserted: string[];
+  try {
+    await IngredientTokenFood.collection.insertMany(docs, { ordered: false });
+    inserted = tokens;
+  } catch (err) {
+    const ids = (err as { result?: { insertedIds?: Record<number, unknown> } }).result?.insertedIds;
+    if ((err as { code?: number }).code !== 11000 || !ids) throw err;
+    inserted = Object.keys(ids).map((i) => tokens[Number(i)]!);
+  }
+  if (inserted.length === 0) return;
+  try {
+    await IngredientToken.bulkWrite(
+      inserted.map((token) => ({
+        updateOne: {
+          filter: { token },
+          update: {
+            $inc: { count: 1 },
+            $push: { sampleFdcIds: { $each: [fdcId], $slice: 5 } },
+            $setOnInsert: { status: "new" },
+          },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  } catch (err) {
+    // Those pairs are in but their counts are not: take them back so the next match counts them. An
+    // unordered bulk write names its failed operations; the others did count and keep their pairs.
+    const failed = (err as { writeErrors?: { index: number }[] }).writeErrors;
+    const lost = failed ? failed.map((w) => inserted[w.index]!) : inserted;
+    await IngredientTokenFood.deleteMany({ fdcId, token: { $in: lost } }).catch(() => undefined);
+    throw err;
+  }
+}
+
+let tokenIndexesReady: Promise<unknown> | null = null;
+function tokenIndexes(): Promise<unknown> {
+  tokenIndexesReady ??= Promise.all([
+    IngredientTokenFood.createIndexes(),
+    IngredientToken.createIndexes(),
+  ]).catch((err: unknown) => {
+    tokenIndexesReady = null;
+    throw err;
+  });
+  return tokenIndexesReady;
 }
 
 const byName = (a: { displayName: string }, b: { displayName: string }) =>
@@ -282,6 +371,20 @@ export async function matchAndStore(
         { fdcId: food.fdcId, fetchedAt: food.fetchedAt },
         { $set: { allergensMatchedAt: now } },
       );
+      // The unmatched-ingredient queue (T22) runs after the stamp and on its own: a failure here is
+      // logged and never changes the food's matches, rows or stamp (eng review D5).
+      try {
+        await recordUnmatchedTokens(
+          food.fdcId,
+          unmatchedTokens(food.ingredientsText, docs.map(toEntry)),
+        );
+      } catch (tokenErr) {
+        console.error(
+          "[dictionary] recording unmatched ingredients for %d failed:",
+          food.fdcId,
+          tokenErr instanceof Error ? tokenErr.message : tokenErr,
+        );
+      }
       break;
     } catch (err) {
       // A concurrent match of the same food inserted the same rows first (duplicate key): it stamps them.
@@ -604,6 +707,52 @@ export async function updateAllergen(
     { runValidators: true },
   );
   if (res.matchedCount === 0) throw new HttpError(404, "allergen_not_found");
+  return rematchAfterWrite(allergenId, opts);
+}
+
+/** Most synonyms an allergen holds (the shared AllergenEntry limit). */
+const MAX_SYNONYMS = 200;
+
+/**
+ * Adds one synonym to an allergen in a single atomic update (T22 queue "map"): nothing read earlier is
+ * written back, so a concurrent map or Curator edit of the same allergen is never undone. Refuses with
+ * 409 synonyms_full when the allergen already holds the shared maximum and lacks this phrase. Runs the
+ * allergen's re-match like any Curator edit.
+ */
+export async function addSynonym(
+  id: string,
+  synonym: string,
+  curatorId: Types.ObjectId,
+  opts?: Parameters<typeof rematchAllergen>[1],
+): Promise<AllergenWrite> {
+  const allergenId = objectId(id);
+  const current = await Allergen.findById(allergenId, { excludePhrases: 1 }).lean();
+  if (!current) throw new HttpError(404, "allergen_not_found");
+  // A phrase the allergen's exclude list hides could never match: refuse rather than mark it mapped.
+  const norm = normalize(synonym);
+  if (
+    !mask(
+      ` ${norm} `,
+      phrases(current.excludePhrases ?? []).map((p) => p.norm),
+    ).includes(` ${norm} `)
+  )
+    throw new HttpError(409, "token_excluded", "the allergen's exclude phrases hide this phrase");
+  const res = await Allergen.updateOne(
+    {
+      _id: allergenId,
+      $or: [{ synonyms: synonym }, { [`synonyms.${MAX_SYNONYMS - 1}`]: { $exists: false } }],
+    },
+    {
+      $addToSet: { synonyms: synonym },
+      $set: { source: "curator", updatedBy: curatorId, updatedAt: new Date(), rematchCursor: 0 },
+      $inc: { rematchRun: 1 },
+    },
+  );
+  if (res.matchedCount === 0) {
+    if (!(await Allergen.exists({ _id: allergenId })))
+      throw new HttpError(404, "allergen_not_found");
+    throw new HttpError(409, "synonyms_full", `an allergen holds at most ${MAX_SYNONYMS} synonyms`);
+  }
   return rematchAfterWrite(allergenId, opts);
 }
 
