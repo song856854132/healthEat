@@ -141,7 +141,16 @@ creating and allergen settings live under `/api/users/me/*`, so no route names a
 `forbidden` for another account's entry, whatever roles the caller holds. `date` is the member's calendar
 day in their `MemberProfile.timezone` (UTC when unset). An entry's date and food are fixed once logged; a
 wrong food is deleted and logged again. Hard alerts compare the food's `allergens[]` (T11) with the
-member's avoid-mode settings; the exposure meter and daily totals come later with the summary service.
+member's avoid-mode settings.
+
+Summary (design doc, Core algorithms; T25): `GET /api/users/me/summary` (`services/summary.ts`) computes
+the week on read from the member's `LogEntry` rows, with no stored totals. Bands average over logged days
+only, and a food that does not report a nutrient counts against that band's `dataCoverage` (below 50% the
+band is `insufficient`). Targets come from `packages/shared/src/dri.ts` (provenance in
+`packages/shared/data/PROVENANCE.md`). The calorie meter and the alerts always use today in the member's
+time zone, also when `weekEnding` names a past week; an alert is listed once per avoided allergen and food,
+however often the food was logged today. Allergens come from `allergensForFoods`, one batched read for
+the week's matched foods; foods not matched yet are matched five at a time.
 
 Deletion and re-match (design doc D6, R3-3, R3-4; T5): no Mongo transactions, every step rerunnable.
 Account deletion (`services/account.ts`, shared by `DELETE /api/users/me` and the Admin delete of T21) sets
@@ -217,12 +226,13 @@ src/models/           Mongoose models: User, MemberProfile, CuratorProfile, Admi
 src/services/auth.ts  register (user + member profile, rerunnable), login (constant-cost), me, setActiveRole
 src/services/throttle.ts  login throttle: reserveAttempt (one atomic upsert before the compare), clearFailures
 src/services/usda.ts  USDA FoodData Central proxy: searchFoods (SearchCache), getFood (Food cache-on-read), normalization
-src/services/dictionary.ts  allergen dictionary: seed on read (DictionarySeed marker), matchFood (normalizer + matcher), matchAndStore, allergensForFood,
+src/services/dictionary.ts  allergen dictionary: seed on read (DictionarySeed marker), matchFood (normalizer + matcher), matchAndStore, allergensForFood(s),
                       startRematch/rematchAllergen (cursor batches), createAllergen/updateAllergen/continueRematch, deleteAllergen (row cascade)
 src/services/account.ts  deleteAccount: the rerunnable account deletion cascade (deletionPending first); deleteSessions
 src/services/admin.ts listUsers, userDetail, setStatus (suspend ends sessions; lockout guards), deleteUser (T5 cascade)
 src/services/profiles.ts  getProfile/updateProfile for the Curator and Admin role profiles
 src/services/logs.ts  day logs (todayIn, listLogs, createLog with fetch-and-match and alerts, updateLog) and allergen settings
+src/services/summary.ts  weekly summary: bands, calorie meter, exposure meter and alerts (pure functions plus summaryFor)
 src/services/roles.ts setRoles (admin route: atomic conditional role write, lockout guards), usableAdminCount (shared with self-delete), applyAdminBootstrap (ADMIN_USERNAMES)
 src/routes/           one router per resource (health, spike, auth, users, admin, curate, foods, allergens, logs); routers never touch fetch or process.env
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test
