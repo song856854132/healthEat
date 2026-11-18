@@ -4,7 +4,7 @@ A weekly nutrient-and-sensitivity coach. Calorie trackers stop at calories; heal
 when your week is running low on a nutrient, which real foods close the gap, and tracks your
 exposure to the ingredients your body reacts to. Kambaz open-ended final project, graduate tier.
 
-- Design and plan: [`docs/designs/healtheat-nutrient-coach.md`](docs/designs/healtheat-nutrient-coach.md) (approved; tasks T1 to T22 at the end)
+- Design and plan: [`docs/designs/healtheat-nutrient-coach.md`](docs/designs/healtheat-nutrient-coach.md) (approved; tasks T1 to T22 and T25 to T28 at the end)
 - How the team works: [`docs/team-workflow.md`](docs/team-workflow.md)
 - New teammate: [`docs/ONBOARDING.md`](docs/ONBOARDING.md)
 - Backlog beyond the plan: [`TODOS.md`](TODOS.md)
