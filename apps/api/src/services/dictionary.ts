@@ -400,22 +400,49 @@ export async function matchAndStore(
   return matches.map(view).sort(byName);
 }
 
+/** Unstamped foods matched at once by `allergensForFoods`. */
+const MATCH_CONCURRENCY = 5;
+
 /** A food's detected allergens: its stored rows, or a fresh match when it has none yet. */
 export async function allergensForFood(food: MatchableFood): Promise<FoodAllergenMatch[]> {
-  if (!food.allergensMatchedAt) return matchAndStore(food);
-  const rows = await FoodAllergen.find({ fdcId: food.fdcId }).lean();
-  if (rows.length === 0) return [];
-  const entries = await Allergen.find({ _id: { $in: rows.map((r) => r.allergenId) } }).lean();
+  return (await allergensForFoods([food])).get(food.fdcId) ?? [];
+}
+
+/**
+ * Detected allergens of many foods at once (T25, eng review D7): one FoodAllergen read and one Allergen
+ * read for every stamped food, and a fresh `matchAndStore` for each food not stamped yet. Each list is
+ * ordered by display name. An allergen deleted since the match (its rows go with it in T5) is not shown.
+ */
+export async function allergensForFoods(
+  foods: MatchableFood[],
+): Promise<Map<number, FoodAllergenMatch[]>> {
+  const out = new Map<number, FoodAllergenMatch[]>();
+  const stamped = foods.filter((f) => f.allergensMatchedAt);
+  // Unstamped foods (cached from search, or unstamped by a re-match) are matched a few at a time, so a
+  // week of them costs a few rounds of matchAndStore rather than one after another.
+  const unstamped = foods.filter((f) => !f.allergensMatchedAt);
+  for (let i = 0; i < unstamped.length; i += MATCH_CONCURRENCY) {
+    const batch = unstamped.slice(i, i + MATCH_CONCURRENCY);
+    const matched = await Promise.all(batch.map((food) => matchAndStore(food)));
+    batch.forEach((food, j) => out.set(food.fdcId, matched[j]!));
+  }
+  if (stamped.length === 0) return out;
+  const rows = await FoodAllergen.find({ fdcId: { $in: stamped.map((f) => f.fdcId) } }).lean();
+  const ids = [...new Set(rows.map((r) => String(r.allergenId)))];
+  const entries = ids.length > 0 ? await Allergen.find({ _id: { $in: ids } }).lean() : [];
   const byId = new Map(entries.map((e) => [String(e._id), toEntry(e)]));
-  return rows
-    .flatMap((r) => {
-      const entry = byId.get(String(r.allergenId));
-      // An allergen deleted since the match (its rows go with it in T5) is simply not shown.
-      return entry
-        ? [view({ entry, matchKind: r.matchKind as MatchKind, matchedSynonym: r.matchedSynonym })]
-        : [];
-    })
-    .sort(byName);
+  for (const food of stamped) out.set(food.fdcId, []);
+  for (const r of rows) {
+    const entry = byId.get(String(r.allergenId));
+    if (!entry) continue;
+    out
+      .get(r.fdcId)
+      ?.push(
+        view({ entry, matchKind: r.matchKind as MatchKind, matchedSynonym: r.matchedSynonym }),
+      );
+  }
+  for (const list of out.values()) list.sort(byName);
+  return out;
 }
 
 /** Foods per re-match batch: one bulkWrite each (design doc, Re-match on dictionary change; S4). */
