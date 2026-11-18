@@ -15,6 +15,8 @@ import {
   RoleProfileView,
   USERNAME_PATTERN,
   SESSION_COOKIE,
+  SummaryQuery,
+  SummaryResponse,
   UserAllergensInput,
   UserAllergensResponse,
 } from "@healtheat/shared";
@@ -24,6 +26,7 @@ import { deleteAccount } from "../services/account.js";
 import * as auth from "../services/auth.js";
 import * as logs from "../services/logs.js";
 import * as profiles from "../services/profiles.js";
+import { summaryFor } from "../services/summary.js";
 
 // /api/users/me/*: routes scoped to the caller (design doc REST table). The only route that names another
 // account is the public profile (GET /:username, public fields only), so no account can address someone
@@ -142,6 +145,16 @@ usersRouter.put(
     const input = UserAllergensInput.parse(req.body);
     const allergens = await logs.setUserAllergens(currentUser(res)._id, input);
     res.json(UserAllergensResponse.parse({ allergens }));
+  }),
+);
+
+// The member's week (T25): coverage bands, today's calorie meter, exposure meter and today's alerts.
+usersRouter.get(
+  "/me/summary",
+  ...member,
+  asyncHandler(async (req, res) => {
+    const { weekEnding } = SummaryQuery.parse(req.query);
+    res.json(SummaryResponse.parse(await summaryFor(currentUser(res)._id, weekEnding)));
   }),
 );
 
