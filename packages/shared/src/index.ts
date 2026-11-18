@@ -38,3 +38,6 @@ export * from "./foods.js";
 export * from "./logs.js";
 export * from "./admin.js";
 export { ALLERGEN_SEED } from "./allergens.seed.js";
+
+export * from "./summary.js";
+export * from "./dri.js";

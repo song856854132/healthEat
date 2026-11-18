@@ -344,7 +344,7 @@ describe("GET and PUT /api/users/me/profiles/:kind", () => {
     });
     await agent.get("/api/users/me/profiles/curator").expect(403);
     await agent.put("/api/users/me/profiles/curator").send({ bio: "x" }).expect(403);
-    await agent.get("/api/users/me/profiles/member").expect(400);
+    await agent.get("/api/users/me/profiles/member").expect(200); // every account holds member (T27)
     await agent.get("/api/users/me/profiles/coach").expect(400);
     await request(app).get("/api/users/me/profiles/admin").expect(401);
   });
