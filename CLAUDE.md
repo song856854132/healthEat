@@ -18,6 +18,8 @@ Use /browse for all web browsing (Aside first, the bundled gstack browser as fal
   section before coding. Team process: `docs/team-workflow.md`.
 - One plan task per PR; the PR body names the T-number. Branch `tNN-short-name`, worktree per task.
 - Before pushing run `/verify` (or `npm run typecheck && npm run lint && npm run format && npm test`).
+  CI runs the tests as `npx vitest run --coverage`, which also fails when `apps/api/src/services/summary.ts`
+  or `dictionary.ts` fall below their coverage floors in `vitest.config.ts`; run it after changing either.
   Open PRs with `/ship`. CI deploys previews, staging and production; never deploy from a laptop.
 - Never commit secrets or connection strings. Staging env lives in `~/.env.staging` on the VM.
 - API env contract: `apps/api/README.md`. `MONGODB_DB` is required on every Vercel deployment; a

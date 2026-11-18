@@ -228,6 +228,8 @@ adds `sessionMiddleware()` on its own route, so search never touches the session
 set -a; . ~/.env.staging; set +a      # on the VM; locally use .env.example values
 npm run dev -w @healtheat/api         # http://localhost:4000/api/health
 npx vitest run --project api          # tests start an in-memory MongoDB per worker
+npx vitest run --coverage             # from the repo root, as CI runs it: both projects plus the coverage floors
+                                      # for services/summary.ts and services/dictionary.ts (root vitest.config.ts)
 ```
 
 The first test run downloads a MongoDB binary (about 100 MB, cached in `~/.cache/mongodb-binaries`).
