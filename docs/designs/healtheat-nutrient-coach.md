@@ -1375,7 +1375,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
 - [ ] **T15 (P2, human: ~2 days / CC: ~1 hr)** — apps/api + packages/shared — Unit tests: coverage7d (|L| = 7, 4, 0; boundaries; sodium CDRR), daily confidence, matcher (parens, description), exposure, gap ranking filter, zod schemas
   - Surfaced by: Test review — coverage diagram gaps (code paths)
   - Files: apps/api/src/services/*.test.ts, packages/shared/src/*.test.ts
-  - Verify: `vitest run --coverage` shows 100% branches for summary.ts and dictionary.ts
+  - Verify: `vitest run --coverage` shows 100% branches for summary.ts and dictionary.ts (amended 2026-11-18, eng review of the lane A finish plan, D13: summary.ts at 100% branches, dictionary.ts at its measured branch baseline, 94%, in the root vitest.config.ts)
 - [ ] **T16 (P2, human: ~2 days / CC: ~1 hr)** — apps/api — API tests: role guards, ownership, throttle, username immutability, USDA fixture, vision mock, delete cascade
   - Surfaced by: Test review — coverage diagram gaps (routes)
   - Files: apps/api/test/*.test.ts

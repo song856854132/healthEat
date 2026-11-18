@@ -110,7 +110,9 @@ that URI as a production secret (never paste it, never commit it).
 .github/workflows/
   ci.yml        on: pull_request, push to main
                 one job "typecheck, lint, unit and API tests": npm ci, build shared, typecheck, lint,
-                format check, vitest (shared + api projects; supertest, mongodb-memory-server since T9a)
+                format check, vitest (shared + api projects; supertest, mongodb-memory-server since T9a),
+                run as `npx vitest run --coverage` since T15: per-file coverage floors for summary.ts and
+                dictionary.ts in the root vitest.config.ts fail the job
   preview.yml   on: pull_request
                 jobs: vercel deploy api (API project's preview env: MONGODB_URI, MONGODB_DB=healtheat_preview, SESSION_SECRET)
                       -> vercel deploy web --env API_ORIGIN=<api preview url>
