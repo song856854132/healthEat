@@ -38,6 +38,36 @@ describe("unmatched tokens", () => {
       unmatchedTokens("SUGAR, EMULSIFIER (SOY LECITHIN), XANTHAN GUM, AB", dictionary).sort(),
     ).toEqual(["emulsifier", "sugar", "xanthan gum"]);
     expect(unmatchedTokens(null, dictionary)).toEqual([]);
+    // Value: protects=queue phrases are what matchFood leaves unmatched: an exclude phrase hides its
+    //   allergen word, a repeated phrase is one token, a phrase over 80 characters is dropped;
+    //   fails_when=unmatchedTokens skips mask(), loses the Set or the upper bound; why_new=only the
+    //   lower bound and a plain synonym hit were checked; seam=none; no_claim=none beyond protects
+    expect(
+      unmatchedTokens(`CRAB APPLE, SUGAR, SUGAR, ${"MALTODEXTRIN ".repeat(7)}, CRAB`, dictionary),
+    ).toEqual(["crab apple", "sugar"]);
+  });
+
+  // Value: protects=a refreshed food that gains one phrase raises only that phrase's count, and a
+  //   token keeps at most five sample foods; fails_when=a partly duplicate insert counts every pair or
+  //   none, or the $slice is dropped; why_new=only an all-duplicate re-match was tested; seam=none;
+  //   no_claim=insertedIds semantics of other driver versions (mongodb 7 on mongodb-memory-server)
+  it("counts only the phrase a refreshed food gains, and keeps five sample foods", async () => {
+    await loadDictionary();
+    for (let id = 20; id < 26; id++) await matchAndStore(await cache(id, "XANTHAN GUM"));
+    await matchAndStore(await cache(26, "XANTHAN GUM"));
+    const refreshed = { ...(await Food.findOne({ fdcId: 26 }).lean())!, fetchedAt: new Date() };
+    await Food.updateOne(
+      { fdcId: 26 },
+      { $set: { ingredientsText: "XANTHAN GUM, CAROB", fetchedAt: refreshed.fetchedAt } },
+    );
+    await matchAndStore({ ...refreshed, ingredientsText: "XANTHAN GUM, CAROB" });
+    const xanthan = (await IngredientToken.findOne({ token: "xanthan gum" }).lean())!;
+    expect(xanthan.count).toBe(7);
+    expect(xanthan.sampleFdcIds).toEqual([20, 21, 22, 23, 24]);
+    expect(await IngredientToken.findOne({ token: "carob" }).lean()).toMatchObject({
+      count: 1,
+      sampleFdcIds: [26],
+    });
   });
 
   // Value: protects=a token counts distinct foods: two foods give 2, matching or refreshing the same food
@@ -145,6 +175,75 @@ describe("/api/curate/unmatched", () => {
       .send({ action: "map", allergenId: "0".repeat(24) })
       .expect(404);
     await agent.put("/api/curate/unmatched/xanthan%20gum").send({ action: "delete" }).expect(400);
+  });
+
+  // Value: protects=the queue pages 20 at a time with the full total, and a page below 1 is a 400;
+  //   fails_when=skip ignores the page, total counts the page only, or page=0 reaches Mongo;
+  //   why_new=only page 1 with three tokens was listed; seam=none; no_claim=none beyond protects
+  it("pages the queue twenty at a time and rejects page 0", async () => {
+    await IngredientToken.insertMany(
+      Array.from({ length: 21 }, (_, i) => ({ token: `phrase ${100 + i}`, count: 100 - i })),
+    );
+    const { agent } = await curator("cleo");
+    const first = UnmatchedListResponse.parse(
+      (await agent.get("/api/curate/unmatched").expect(200)).body,
+    );
+    expect(first.tokens).toHaveLength(20);
+    expect(first.total).toBe(21);
+    const second = UnmatchedListResponse.parse(
+      (await agent.get("/api/curate/unmatched?page=2").expect(200)).body,
+    );
+    expect(second).toMatchObject({ page: 2, total: 21 });
+    expect(second.tokens.map((t) => t.token)).toEqual(["phrase 120"]);
+    await agent.get("/api/curate/unmatched?page=0").expect(400);
+  });
+
+  // Value: protects=the URL token is normalised before lookup, and mapping a phrase the allergen
+  //   already lists does not add it twice; fails_when=actOnToken drops normalize() or the
+  //   already-listed check; why_new=the map test used a lowercase token once; seam=none;
+  //   no_claim=none beyond protects
+  it("maps a token given in any case once, however often it is mapped", async () => {
+    await loadDictionary();
+    await matchAndStore(await cache(30, "CAROB"));
+    const { agent, user } = await curator("cleo");
+    const soy = (await Allergen.findOne({ key: "soy" }).lean())!;
+    for (const path of ["/api/curate/unmatched/Carob", "/api/curate/unmatched/CAROB"])
+      await agent
+        .put(path)
+        .send({ action: "map", allergenId: String(soy._id) })
+        .expect(200);
+    const synonyms = (await Allergen.findById(soy._id).lean())!.synonyms;
+    expect(synonyms.filter((s) => s === "carob")).toHaveLength(1);
+    expect((await CuratorProfile.findOne({ userId: user._id }).lean())?.editsCount).toBe(2);
+  });
+
+  // Value: protects=a map whose re-match runs out of time answers 202 with the foods left, and the
+  //   token is still marked mapped; fails_when=the route hardcodes 200 or tests write instead of
+  //   write.rematch.done; why_new=the map test's re-match always finished; seam=none;
+  //   no_claim=real 60 s timing (Date.now mocked, as in curate.test.ts)
+  it("answers 202 when the map's re-match runs out of time", async () => {
+    await loadDictionary();
+    await Food.insertMany(
+      Array.from({ length: 501 }, (_, i) => ({
+        fdcId: 1000 + i,
+        description: `F${i}`,
+        dataType: "Branded",
+        ingredientsText: "CAROB",
+        fetchedAt: new Date(),
+      })),
+    );
+    await IngredientToken.create({ token: "carob", count: 501 });
+    const soy = (await Allergen.findOne({ key: "soy" }).lean())!;
+    const { agent } = await curator("cleo");
+    let t = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => (t += 61_000));
+    const res = await agent
+      .put("/api/curate/unmatched/carob")
+      .send({ action: "map", allergenId: String(soy._id) })
+      .expect(202);
+    vi.restoreAllMocks();
+    expect(res.body.write.rematch).toEqual({ done: false, processed: 500, remaining: 1 });
+    expect(res.body.token).toMatchObject({ token: "carob", status: "mapped" });
   });
 
   it("is 401 anonymous and 403 for a member", async () => {
