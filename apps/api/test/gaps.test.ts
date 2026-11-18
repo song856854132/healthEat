@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { GapFoodsResponse, TRACKED_NUTRIENTS } from "@healtheat/shared";
+import type { Types } from "mongoose";
 import app from "../src/app.js";
 import { Allergen, Food, User, UserAllergen } from "../src/models/index.js";
 import { loadDictionary } from "../src/services/dictionary.js";
@@ -61,7 +62,7 @@ describe("GET /api/users/me/gaps/:nutrientId/foods", () => {
       .expect(201);
     return { agent, user: (await User.findOne({ username }))! };
   }
-  const avoid = async (userId: unknown, key: string) => {
+  const avoid = async (userId: Types.ObjectId, key: string) => {
     const a = (await Allergen.findOne({ key }).lean())!;
     await UserAllergen.create({ userId, allergenId: a._id, mode: "avoid" });
   };
