@@ -211,11 +211,18 @@ export async function summaryFor(
   if (end > today) throw new HttpError(400, "date_in_future", "weekEnding is after today");
   const dates = weekDates(end);
 
+  const fields = { date: 1, fdcId: 1, grams: 1, source: 1 };
   const entries = (await LogEntry.find(
     { userId, date: { $gte: dates[0], $lte: dates[6] } },
-    { date: 1, fdcId: 1, grams: 1, source: 1 },
+    fields,
   ).lean()) as SummaryEntry[];
-  const ids = [...new Set(entries.map((e) => e.fdcId))];
+  // The calorie meter and the hard alerts always use today (design doc, Core algorithms), whatever
+  // week is shown: a past week reads today's entries on their own.
+  const todays =
+    end === today
+      ? entries.filter((e) => e.date === today)
+      : ((await LogEntry.find({ userId, date: today }, fields).lean()) as SummaryEntry[]);
+  const ids = [...new Set([...entries, ...todays].map((e) => e.fdcId))];
   const foods = ids.length
     ? await Food.find(
         { fdcId: { $in: ids } },
@@ -235,7 +242,6 @@ export async function summaryFor(
 
   const targets = targetsFor(profile, today);
   const band = calorieBandFor(profile, today);
-  const todays = end === today ? entries.filter((e) => e.date === today) : [];
 
   const settings = await UserAllergen.find({ userId })
     .populate<{ allergenId: { key: string; displayName: string; tier: string } | null }>(
@@ -268,14 +274,15 @@ export async function summaryFor(
   const avoided = new Set(
     settings.filter((s) => s.mode === "avoid" && s.allergenId).map((s) => s.allergenId!.key),
   );
-  const alerts = todays.flatMap((e) =>
-    (allergensOf.get(e.fdcId) ?? [])
+  // One alert per avoided allergen and food, however many times the food was logged today.
+  const alerts = [...new Set(todays.map((e) => e.fdcId))].flatMap((fdcId) =>
+    (allergensOf.get(fdcId) ?? [])
       .filter((m) => avoided.has(m.key))
       .map((m) => ({
         key: m.key,
         displayName: m.displayName,
-        fdcId: e.fdcId,
-        description: descriptionOf.get(e.fdcId) ?? null,
+        fdcId,
+        description: descriptionOf.get(fdcId) ?? null,
         matchKind: m.matchKind,
       })),
   );

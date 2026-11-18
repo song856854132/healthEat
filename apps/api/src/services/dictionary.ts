@@ -297,6 +297,9 @@ export async function matchAndStore(
   return matches.map(view).sort(byName);
 }
 
+/** Unstamped foods matched at once by `allergensForFoods`. */
+const MATCH_CONCURRENCY = 5;
+
 /** A food's detected allergens: its stored rows, or a fresh match when it has none yet. */
 export async function allergensForFood(food: MatchableFood): Promise<FoodAllergenMatch[]> {
   return (await allergensForFoods([food])).get(food.fdcId) ?? [];
@@ -312,8 +315,14 @@ export async function allergensForFoods(
 ): Promise<Map<number, FoodAllergenMatch[]>> {
   const out = new Map<number, FoodAllergenMatch[]>();
   const stamped = foods.filter((f) => f.allergensMatchedAt);
-  for (const food of foods)
-    if (!food.allergensMatchedAt) out.set(food.fdcId, await matchAndStore(food));
+  // Unstamped foods (cached from search, or unstamped by a re-match) are matched a few at a time, so a
+  // week of them costs a few rounds of matchAndStore rather than one after another.
+  const unstamped = foods.filter((f) => !f.allergensMatchedAt);
+  for (let i = 0; i < unstamped.length; i += MATCH_CONCURRENCY) {
+    const batch = unstamped.slice(i, i + MATCH_CONCURRENCY);
+    const matched = await Promise.all(batch.map((food) => matchAndStore(food)));
+    batch.forEach((food, j) => out.set(food.fdcId, matched[j]!));
+  }
   if (stamped.length === 0) return out;
   const rows = await FoodAllergen.find({ fdcId: { $in: stamped.map((f) => f.fdcId) } }).lean();
   const ids = [...new Set(rows.map((r) => String(r.allergenId)))];

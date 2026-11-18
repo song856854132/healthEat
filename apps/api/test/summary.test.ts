@@ -425,6 +425,13 @@ describe("GET /api/users/me/summary", () => {
         matchKind: "ingredient",
       },
     ]);
+    // A week that ends before today still carries today's hard alert (eng review: alerts always use
+    // today), while its bands and exposure cover only that week.
+    const earlier = SummaryResponse.parse(
+      (await agent.get("/api/users/me/summary?weekEnding=2026-11-12").expect(200)).body,
+    );
+    expect(earlier.alerts).toEqual(body.alerts);
+    expect(earlier.loggedDays).toBe(1);
     const calcium = body.bands.find((b) => b.key === "calcium")!;
     expect(calcium.dataCoverage).toBeCloseTo(400 / 500, 5);
     expect(calcium.intakePerDay).toBeCloseTo(480 / 4, 5);
@@ -454,12 +461,20 @@ describe("GET /api/users/me/summary", () => {
       basis: "computed",
     });
 
-    // A past week has no today's meter input and no alerts.
+    // A past week still carries today's meter and today's alerts (they always use today).
     const past = SummaryResponse.parse(
       (await agent.get("/api/users/me/summary?weekEnding=2026-11-14").expect(200)).body,
     );
-    expect(past.alerts).toEqual([]);
-    expect(past.calorieMeter?.kcal).toBe(0);
+    expect(past.weekEnding).toBe("2026-11-14");
+    expect(past.calorieMeter?.kcal).toBe(personal.calorieMeter?.kcal);
+    expect(past.alerts).toEqual(personal.alerts);
+
+    // The same food logged twice today is one alert, not two.
+    await log(user._id, TODAY, 10, 20);
+    const twice = SummaryResponse.parse(
+      (await agent.get("/api/users/me/summary").expect(200)).body,
+    );
+    expect(twice.alerts).toHaveLength(1);
   });
 
   it("is 401 anonymous, 400 for a malformed or future week, and empty with no logs", async () => {
