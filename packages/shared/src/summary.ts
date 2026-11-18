@@ -167,3 +167,28 @@ export const SummaryResponse = z.object({
   alerts: z.array(SummaryAlert),
 });
 export type SummaryResponse = z.infer<typeof SummaryResponse>;
+
+/** Close the gap (T26): candidates under this many kcal per 100 g are skipped (eng review D12). */
+export const GAP_KCAL_FLOOR = 20;
+/** How many foods close the gap suggests. */
+export const GAP_RESULTS = 6;
+
+export const GapFood = z.object({
+  fdcId: z.number().int(),
+  description: z.string(),
+  /** "seed": the project's whole-food list; "cache": a whole food someone has opened. */
+  source: z.enum(["seed", "cache"]),
+  amountPer100g: z.number(),
+  kcalPer100g: z.number(),
+  /** A realistic portion: the food's first serving size, else 100 g. */
+  portionGrams: z.number(),
+  amountPerPortion: z.number(),
+});
+export type GapFood = z.infer<typeof GapFood>;
+
+/** Response of GET /api/users/me/gaps/:nutrientId/foods: the best sources per kcal, minus avoided allergens. */
+export const GapFoodsResponse = z.object({
+  nutrient: z.object({ id: z.number().int(), key: z.string(), name: z.string(), unit: z.string() }),
+  foods: z.array(GapFood).max(GAP_RESULTS),
+});
+export type GapFoodsResponse = z.infer<typeof GapFoodsResponse>;

@@ -15,6 +15,7 @@ import {
   RoleProfileView,
   USERNAME_PATTERN,
   SESSION_COOKIE,
+  GapFoodsResponse,
   SummaryQuery,
   SummaryResponse,
   UserAllergensInput,
@@ -26,6 +27,7 @@ import { deleteAccount } from "../services/account.js";
 import * as auth from "../services/auth.js";
 import * as logs from "../services/logs.js";
 import * as profiles from "../services/profiles.js";
+import { gapFoodsFor } from "../services/gaps.js";
 import { summaryFor } from "../services/summary.js";
 
 // /api/users/me/*: routes scoped to the caller (design doc REST table). The only route that names another
@@ -155,6 +157,17 @@ usersRouter.get(
   asyncHandler(async (req, res) => {
     const { weekEnding } = SummaryQuery.parse(req.query);
     res.json(SummaryResponse.parse(await summaryFor(currentUser(res)._id, weekEnding)));
+  }),
+);
+
+// Close the gap (T26): the best whole-food sources of one tracked nutrient, minus avoided allergens.
+usersRouter.get(
+  "/me/gaps/:nutrientId/foods",
+  ...member,
+  asyncHandler(async (req, res) => {
+    const nutrientId = Number(req.params.nutrientId);
+    if (!Number.isInteger(nutrientId)) throw new HttpError(404, "nutrient_not_tracked");
+    res.json(GapFoodsResponse.parse(await gapFoodsFor(currentUser(res)._id, nutrientId)));
   }),
 );
 
