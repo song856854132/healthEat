@@ -69,7 +69,7 @@ describe("GET /api/foods/:fdcId localStats", () => {
     //   ending today; fails_when=the oldest date is dropped or a future-dated log is counted;
     //   why_new=only the day before the window was checked; seam=none; no_claim=non-UTC member timezones
     await log(lee._id, "2026-11-10", 10); // oldest day of the window: counted
-    await log(miaUser._id, "2026-11-17", 70); // tomorrow in UTC: not counted
+    await log(miaUser._id, "2026-11-18", 70); // two days ahead of UTC: no member can be there yet
     await log(lee._id, "2026-11-16", 99, 12345); // another food
 
     const anon = FoodDetailsResponse.parse(
@@ -160,6 +160,19 @@ describe("GET /api/foods/:fdcId localStats", () => {
     await User.deleteOne({ _id: viewer._id });
     const gone = FoodDetailsResponse.parse((await agent.get(`/api/foods/${FDC}`).expect(200)).body);
     expect(gone.localStats).toMatchObject({ publicLoggers: null, myGrams7d: null });
+  });
+
+  // Value: protects=a member east of UTC who logs just after local midnight (a date that is still
+  //   tomorrow in UTC) sees that entry in their own grams and in the counts (review p1); fails_when=the
+  //   window is the 7 UTC dates only; why_new=review fix; seam=none; no_claim=members west of UTC
+  it("counts an entry dated a UTC+8 member's local today, still tomorrow in UTC", async () => {
+    vi.setSystemTime(new Date("2026-11-16T18:30:00Z")); // 02:30 on 2026-11-17 in Taipei
+    const { agent, user } = await member("tai");
+    await MemberProfile.updateOne({ userId: user._id }, { $set: { timezone: "Asia/Taipei" } });
+    await log(user._id, "2026-11-17", 40);
+    await log(user._id, "2026-11-10", 15); // 8 days before Taipei's today: outside tai's own week
+    const body = FoodDetailsResponse.parse((await agent.get(`/api/foods/${FDC}`).expect(200)).body);
+    expect(body.localStats).toMatchObject({ logCount7d: 2, memberCount7d: 1, myGrams7d: 40 });
   });
 
   it("has the {fdcId, date} index", async () => {
