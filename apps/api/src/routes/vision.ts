@@ -37,9 +37,11 @@ visionRouter.post(
     try {
       items = await proposeItems(client, photo);
     } catch (err) {
-      await refundPhoto(userId, reservation).catch((refundErr: unknown) =>
-        console.error("[vision] refund failed:", refundErr),
-      );
+      const refunded = await refundPhoto(userId, reservation).catch((refundErr: unknown) => {
+        console.error("[vision] refund failed:", refundErr);
+        return true;
+      });
+      if (!refunded) console.warn("[vision] daily refunds used up: the failed photo counts");
       throw err;
     }
     res.json(

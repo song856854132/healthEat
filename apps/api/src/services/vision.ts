@@ -99,6 +99,14 @@ export async function proposeItems(
         expose: true,
       });
     }
+    // The SDK parses the structured output inside parse(): a refusal that came back with text, or an
+    // answer cut off at max_tokens, throws its base AnthropicError rather than returning.
+    if (err instanceof Anthropic.AnthropicError) {
+      console.error(`[vision] unusable answer: ${err.message}`);
+      throw new HttpError(502, "vision_failed", "The photo could not be analysed; try again", {
+        expose: true,
+      });
+    }
     throw err;
   }
 

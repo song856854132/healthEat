@@ -64,8 +64,10 @@ async function member(username: string, timezone = "UTC") {
   const user = (await User.findOne({ username }))!;
   return { agent, user };
 }
-const usage = async (userId: Types.ObjectId) =>
-  (await MemberProfile.findOne({ userId }, { visionUsage: 1 }).lean())?.visionUsage ?? null;
+const usage = async (userId: Types.ObjectId) => {
+  const u = (await MemberProfile.findOne({ userId }, { visionUsage: 1 }).lean())?.visionUsage;
+  return u ? { ...(u.date ? { date: u.date } : {}), count: u.count } : null;
+};
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
@@ -382,5 +384,66 @@ describe("refundPhoto", () => {
     );
     await refundPhoto(user._id, { date: "2026-11-17", count: 1 });
     expect(await usage(user._id)).toEqual({ date: "2026-11-17", count: 0 });
+  });
+});
+
+describe("vision review fixes (T13)", () => {
+  // Value: protects=an answer the SDK cannot parse (a refusal that came back with text, or output cut
+  //   at max_tokens; parse() throws AnthropicError) is a 502 with a "try again" message and is refunded,
+  //   not a 500; fails_when=only APIError is mapped; why_new=review p1 (red-team, adversarial);
+  //   seam=setVisionClientForTests; no_claim=the SDK's own parser
+  it("answers 502 and refunds when the SDK cannot parse the answer", async () => {
+    fakeClient(() => {
+      throw new Anthropic.AnthropicError("Failed to parse structured output");
+    });
+    const { agent, user } = await member("garbled");
+    const res = await agent.post("/api/vision/meal").send(PHOTO).expect(502);
+    expect(res.body).toMatchObject({ error: "vision_failed" });
+    expect(typeof res.body.details).toBe("string");
+    expect(await usage(user._id)).toEqual({ date: "2026-11-16", count: 0 });
+  });
+
+  // Value: protects=editing the time zone cannot reset the day's 20 photos: a zone that moves "today"
+  //   back keeps the count, and moving forward again finds the same full day; fails_when=the counter
+  //   resets on any different date (unbounded paid calls per member); why_new=review p1 (targeted,
+  //   money); seam=none; no_claim=a zone change that really moves the date forward (one extra day)
+  it("does not reset the day's photos when the time zone moves the date back", async () => {
+    fakeClient(ok([]));
+    const { agent, user } = await member("zoner", "Pacific/Kiritimati"); // UTC+14: 2026-11-17
+    for (let i = 0; i < 20; i++) await agent.post("/api/vision/meal").send(PHOTO).expect(200);
+    await MemberProfile.updateOne({ userId: user._id }, { $set: { timezone: "Etc/GMT+12" } }); // 2026-11-16
+    await agent.post("/api/vision/meal").send(PHOTO).expect(429);
+    await MemberProfile.updateOne(
+      { userId: user._id },
+      { $set: { timezone: "Pacific/Kiritimati" } },
+    );
+    await agent.post("/api/vision/meal").send(PHOTO).expect(429);
+    expect(await usage(user._id)).toEqual({ date: "2026-11-17", count: 20 });
+  });
+
+  // Value: protects=failed calls are refunded only 10 times a day (Anthropic bills them): the 11th failure
+  //   counts, so a member's paid calls per day stay bounded; fails_when=every failure is refunded;
+  //   why_new=review p1 (targeted, money); seam=setVisionClientForTests; no_claim=Anthropic's billing
+  it("stops refunding after 10 failed calls a day", async () => {
+    fakeClient(() => {
+      throw new Anthropic.APIConnectionTimeoutError();
+    });
+    const { agent, user } = await member("unlucky");
+    for (let i = 0; i < 10; i++) await agent.post("/api/vision/meal").send(PHOTO).expect(504);
+    expect(await usage(user._id)).toEqual({ date: "2026-11-16", count: 0 });
+    await agent.post("/api/vision/meal").send(PHOTO).expect(504);
+    expect(await usage(user._id)).toEqual({ date: "2026-11-16", count: 1 });
+  });
+
+  // Value: protects=a member whose profile document is missing is told so (409), not "photo limit
+  //   reached" with 0 used; fails_when=a missing profile reads as a full day; why_new=review p1
+  //   (red-team); seam=none; no_claim=how the profile went missing
+  it("tells a member without a profile document so, not that the day is full", async () => {
+    fakeClient(ok([]));
+    const { agent, user } = await member("ghost");
+    await MemberProfile.deleteOne({ userId: user._id });
+    expect((await agent.post("/api/vision/meal").send(PHOTO).expect(409)).body.error).toBe(
+      "member_profile_missing",
+    );
   });
 });

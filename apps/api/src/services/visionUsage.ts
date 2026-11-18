@@ -1,4 +1,4 @@
-import { VISION_DAILY_LIMIT, VISION_LIMIT_MESSAGE } from "@healtheat/shared";
+import { VISION_DAILY_LIMIT, VISION_DAILY_REFUNDS, VISION_LIMIT_MESSAGE } from "@healtheat/shared";
 import type { Types } from "mongoose";
 import { HttpError } from "../lib/http.js";
 import { MemberProfile } from "../models/index.js";
@@ -6,42 +6,76 @@ import { memberToday } from "./logs.js";
 
 // The 20-photos-a-day counter (design doc, REST table: MemberProfile.visionUsage, reset when the date
 // changes; T13). "Today" is the member's local date, like every other today in the app. A photo is
-// reserved before the Claude call and refunded if the call fails, so failures and timeouts are free.
+// reserved before the Claude call and refunded if the call fails, up to VISION_DAILY_REFUNDS a day.
+//
+// The stored day only moves forward. A member can edit their time zone, which can move "today" a day
+// back or ahead; a counter that reset on any different date would let a member switch zones back and
+// forth for a fresh 20 each time. Here an earlier date keeps today's count, so a zone change gains at
+// most the one day it really moves ahead.
 
 export type Reservation = { date: string; count: number };
 
 /**
  * Count one photo for today, atomically, or throw 429 `vision_limit` at the limit. Two writes cover the
- * two shapes: today's counter below the limit is incremented in place; a counter from another day (or
- * none) is replaced by today's first photo. Losing that replace race to a concurrent request falls back
- * to the increment, so concurrent first photos of the day count once each.
+ * two shapes: the stored day's counter below the limit is incremented in place; a counter from an
+ * earlier day (or none) is replaced by today's first photo. Losing that replace race to a concurrent
+ * request falls back to the increment, so concurrent first photos of the day count once each.
  */
 export async function reservePhoto(userId: Types.ObjectId, now = new Date()): Promise<Reservation> {
-  const date = await memberToday(userId, now);
+  const today = await memberToday(userId, now);
   const increment = () =>
     MemberProfile.findOneAndUpdate(
-      { userId, "visionUsage.date": date, "visionUsage.count": { $lt: VISION_DAILY_LIMIT } },
+      {
+        userId,
+        "visionUsage.date": { $gte: today },
+        "visionUsage.count": { $lt: VISION_DAILY_LIMIT },
+      },
       { $inc: { "visionUsage.count": 1 } },
-      { new: true, projection: { visionUsage: 1 } },
+      { returnDocument: "after", projection: { visionUsage: 1 } },
     ).lean();
   const firstToday = () =>
     MemberProfile.findOneAndUpdate(
-      { userId, "visionUsage.date": { $ne: date } },
-      { $set: { visionUsage: { date, count: 1 } } },
-      { new: true, projection: { visionUsage: 1 } },
+      {
+        userId,
+        $or: [{ "visionUsage.date": { $exists: false } }, { "visionUsage.date": { $lt: today } }],
+      },
+      { $set: { visionUsage: { date: today, count: 1, refunds: 0 } } },
+      { returnDocument: "after", projection: { visionUsage: 1 } },
     ).lean();
 
   const doc = (await increment()) ?? (await firstToday()) ?? (await increment());
-  if (!doc?.visionUsage) {
+  if (!doc?.visionUsage?.date) {
+    // Register always creates the profile; a member without one is a data problem, not a full day.
+    if (!(await MemberProfile.exists({ userId }))) {
+      throw new HttpError(409, "member_profile_missing", "Open your profile once, then try again", {
+        expose: true,
+      });
+    }
     throw new HttpError(429, "vision_limit", VISION_LIMIT_MESSAGE, { expose: true });
   }
-  return { date, count: doc.visionUsage.count ?? 0 };
+  return { date: doc.visionUsage.date, count: doc.visionUsage.count ?? 0 };
 }
 
-/** Give back a reserved photo after a failed call. A day that has since rolled over is left alone. */
-export async function refundPhoto(userId: Types.ObjectId, reservation: Reservation): Promise<void> {
-  await MemberProfile.updateOne(
-    { userId, "visionUsage.date": reservation.date, "visionUsage.count": { $gt: 0 } },
-    { $inc: { "visionUsage.count": -1 } },
+/**
+ * Give back a reserved photo after a failed call, unless today's refunds are used up (then the failed
+ * call counts, since Anthropic billed it). A day that has since rolled over is left alone. Returns
+ * whether the photo was given back.
+ */
+export async function refundPhoto(
+  userId: Types.ObjectId,
+  reservation: Reservation,
+): Promise<boolean> {
+  const res = await MemberProfile.updateOne(
+    {
+      userId,
+      "visionUsage.date": reservation.date,
+      "visionUsage.count": { $gt: 0 },
+      $or: [
+        { "visionUsage.refunds": { $exists: false } },
+        { "visionUsage.refunds": { $lt: VISION_DAILY_REFUNDS } },
+      ],
+    },
+    { $inc: { "visionUsage.count": -1, "visionUsage.refunds": 1 } },
   );
+  return res.modifiedCount === 1;
 }

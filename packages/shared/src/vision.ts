@@ -7,6 +7,12 @@ import { MAX_LOG_GRAMS } from "./logs.js";
 
 /** Photos a member may analyse per local day; the 21st call is 429 `vision_limit`. */
 export const VISION_DAILY_LIMIT = 20;
+/**
+ * Failed calls refunded per member per day (amendment R3-29: failures do not use up a photo). Anthropic
+ * still bills a refused, timed-out or unparseable call, so refunds stop here: from the 11th failure on,
+ * a failed photo counts. A member's paid calls per day are therefore at most 20 + 10.
+ */
+export const VISION_DAILY_REFUNDS = 10;
 /** Message the web shows on the 21st photo (design doc, REST table). */
 export const VISION_LIMIT_MESSAGE = "Photo limit reached for today (20). Text search is unlimited.";
 /**
