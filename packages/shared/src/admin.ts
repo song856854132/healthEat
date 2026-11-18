@@ -184,8 +184,8 @@ export type AccountUpdateInput = z.infer<typeof AccountUpdateInput>;
 
 /**
  * Response of GET /api/users/:username (T27; design doc REST table "public profile, sensitive fields
- * stripped unless self"). Admin profiles are never public. `private` is present only when the caller
- * is that account.
+ * stripped unless self"). Admin profiles are never public, and `roles` omits `admin` for everyone
+ * except the account itself. `private` is present only when the caller is that account.
  */
 export const PublicProfileView = z.object({
   username: z.string(),
