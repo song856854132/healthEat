@@ -50,4 +50,16 @@
 **Priority:** P1
 **Depends on:** nothing
 
+### Unmatched queue: retire tokens a later dictionary edit makes matchable
+
+**What:** When a Curator edit (not a queue "map") adds a synonym that now matches a pending unmatched-ingredient token, mark the token mapped or hide it from the queue.
+
+**Why:** Otherwise those tokens stay pending in `/curate/unmatched` with stale counts (eng review 2026-11-18, outside voice OV6).
+
+**Context:** T22 records tokens in `matchAndStore`; the allergen re-match (`rematchAllergen`) has its own path. A check per dictionary edit over pending tokens, or a filter at queue read time, would do.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** T22
+
 ## Completed
