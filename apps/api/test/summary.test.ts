@@ -1,3 +1,4 @@
+import type { Types } from "mongoose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { SummaryResponse, TRACKED_NUTRIENTS, driRow, referenceRow } from "@healtheat/shared";
@@ -324,7 +325,7 @@ describe("GET /api/users/me/summary", () => {
       { userId: user._id, allergenId: peanut._id, mode: "avoid" },
       { userId: user._id, allergenId: milk._id, mode: "track", weeklyThreshold: 1 },
     ]);
-    const log = (userId: unknown, date: string, fdcId: number, grams: number) =>
+    const log = (userId: Types.ObjectId, date: string, fdcId: number, grams: number) =>
       LogEntry.create({
         userId,
         date,
