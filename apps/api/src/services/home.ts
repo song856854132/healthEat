@@ -77,8 +77,10 @@ export async function buildFeed(now: Date): Promise<PublicHomeResponse> {
   ]);
   const memberIds = new Set(members.map((m) => String(m.userId)));
   const curatorIds = new Set(curators.map((c) => String(c.userId)));
+  // Eligibility is in the query, so the 6-row cap counts only accounts that earn a badge: a member who
+  // opted into public logs, or a listed account that still holds the curator role.
   const users = await User.find({
-    _id: { $in: [...new Set([...memberIds, ...curatorIds])] },
+    $or: [{ _id: { $in: [...memberIds] } }, { _id: { $in: [...curatorIds] }, roles: "curator" }],
     status: "active",
     deletionPending: { $ne: true },
   })
@@ -103,7 +105,7 @@ export async function buildFeed(now: Date): Promise<PublicHomeResponse> {
       count: t.count,
     })),
     allergens,
-    profiles: profiles.filter((p) => p.badges.length > 0),
+    profiles,
   };
 }
 
