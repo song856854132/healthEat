@@ -8,8 +8,8 @@ import {
 } from "@healtheat/shared";
 import type { Types } from "mongoose";
 import { HttpError } from "../lib/http.js";
-import { Allergen, IngredientToken } from "../models/index.js";
-import { normalize, updateAllergen } from "./dictionary.js";
+import { IngredientToken } from "../models/index.js";
+import { addSynonym, normalize } from "./dictionary.js";
 
 // The Curator's unmatched-ingredient queue (T22; design doc REST table, phase 3).
 
@@ -43,9 +43,10 @@ export async function listUnmatched(query: UnmatchedQuery): Promise<UnmatchedLis
 }
 
 /**
- * PUT /api/curate/unmatched/:token. `map` appends the phrase to the allergen's synonyms through the
- * ordinary Curator edit (so the allergen's re-match runs and the edit counts), then marks the token
- * mapped; `ignore` only marks it. Returns the allergen write for a map (its re-match may be unfinished).
+ * PUT /api/curate/unmatched/:token. `map` adds the phrase to the allergen's synonyms in one atomic
+ * update (a concurrent edit of the allergen is never undone; 409 synonyms_full at the limit), runs the
+ * allergen's re-match and marks the token mapped; `ignore` only marks it, and is refused (409
+ * token_mapped) for a phrase already mapped. Returns the allergen write for a map (its re-match may be unfinished).
  */
 export async function actOnToken(
   rawToken: string,
@@ -55,23 +56,11 @@ export async function actOnToken(
   const token = normalize(rawToken);
   const stored = await IngredientToken.findOne({ token }).lean();
   if (!stored) throw new HttpError(404, "token_not_found");
+  if (input.action === "ignore" && stored.status === "mapped")
+    // The phrase is already in the dictionary: ignoring it here would misreport what the dictionary holds.
+    throw new HttpError(409, "token_mapped", "this phrase is already mapped to an allergen");
   let write: AllergenWriteResponse | null = null;
-  if (input.action === "map") {
-    const allergen = await Allergen.findById(input.allergenId).lean();
-    if (!allergen) throw new HttpError(404, "allergen_not_found");
-    const synonyms = allergen.synonyms ?? [];
-    write = await updateAllergen(
-      input.allergenId,
-      {
-        displayName: allergen.displayName,
-        tier: allergen.tier as never,
-        synonyms: synonyms.some((s) => normalize(s) === token) ? synonyms : [...synonyms, token],
-        descriptionKeywords: allergen.descriptionKeywords ?? [],
-        excludePhrases: allergen.excludePhrases ?? [],
-      },
-      curatorId,
-    );
-  }
+  if (input.action === "map") write = await addSynonym(input.allergenId, token, curatorId);
   const updated = await IngredientToken.findOneAndUpdate(
     { token },
     {

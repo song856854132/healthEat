@@ -12,7 +12,7 @@ const IngredientTokenSchema = new Schema({
   reviewedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
   reviewedAt: { type: Date, default: null },
 });
-// The queue: one status, most frequent first (design doc P2 index).
-IngredientTokenSchema.index({ status: 1, count: -1 });
+// The queue: one status, most frequent first, ties by phrase (design doc P2 index; the sort uses it).
+IngredientTokenSchema.index({ status: 1, count: -1, token: 1 });
 
 export const IngredientToken = model("IngredientToken", IngredientTokenSchema);

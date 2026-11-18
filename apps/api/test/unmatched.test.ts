@@ -100,6 +100,21 @@ describe("unmatched tokens", () => {
     expect(await FoodAllergen.countDocuments({ fdcId: 3 })).toBe(1);
     expect((await Food.findOne({ fdcId: 3 }).lean())?.allergensMatchedAt).toBeInstanceOf(Date);
   });
+
+  // Value: protects=a count write that fails after its (token, food) pairs went in does not leave the
+  //   count low for good: the pairs are taken back and the next match counts them (review p1);
+  //   fails_when=the pairs stay and later matches skip them as duplicates; why_new=review fix;
+  //   seam=none; no_claim=a process killed between the two writes
+  it("counts the food on the next match when a count write failed", async () => {
+    await loadDictionary();
+    const food = await cache(4, "XANTHAN GUM");
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(IngredientToken, "bulkWrite").mockRejectedValueOnce(new Error("disk full"));
+    await matchAndStore(food);
+    expect(await IngredientTokenFood.countDocuments({ fdcId: 4 })).toBe(0);
+    await matchAndStore(food);
+    expect((await IngredientToken.findOne({ token: "xanthan gum" }).lean())?.count).toBe(1);
+  });
 });
 
 describe("/api/curate/unmatched", () => {
@@ -260,5 +275,78 @@ describe("/api/curate/unmatched", () => {
       .expect(201);
     await member.get("/api/curate/unmatched").expect(403);
     await member.put("/api/curate/unmatched/sugar").send({ action: "ignore" }).expect(403);
+  });
+
+  // Value: protects=two maps to one allergen at once both land, and a full allergen refuses a map
+  //   before writing, so the public dictionary list keeps parsing (review p1, blocking); fails_when=the
+  //   map writes back a list read earlier, or skips the 200-synonym limit; why_new=review fix;
+  //   seam=none; no_claim=a concurrent PUT /api/allergens edit (same atomic update)
+  it("keeps both of two concurrent maps and refuses a map to a full allergen", async () => {
+    await loadDictionary();
+    for (const [id, text] of [
+      [20, "CAROB"],
+      [21, "TAPIOCA PEARLS"],
+    ] as const)
+      await matchAndStore(await cache(id, text));
+    const { agent } = await curator("cleo");
+    const soy = (await Allergen.findOne({ key: "soy" }).lean())!;
+    await Promise.all([
+      agent.put("/api/curate/unmatched/carob").send({ action: "map", allergenId: String(soy._id) }),
+      agent
+        .put("/api/curate/unmatched/tapioca%20pearls")
+        .send({ action: "map", allergenId: String(soy._id) }),
+    ]);
+    const synonyms = (await Allergen.findById(soy._id).lean())!.synonyms;
+    expect(synonyms).toEqual(expect.arrayContaining(["carob", "tapioca pearls"]));
+
+    const milk = (await Allergen.findOne({ key: "milk" }).lean())!;
+    await Allergen.updateOne(
+      { _id: milk._id },
+      { $set: { synonyms: Array.from({ length: 200 }, (_, i) => `milk word ${i}`) } },
+    );
+    await IngredientToken.create({ token: "whey crisp", count: 1 });
+    const full = await agent
+      .put("/api/curate/unmatched/whey%20crisp")
+      .send({ action: "map", allergenId: String(milk._id) })
+      .expect(409);
+    expect(full.body.error).toBe("synonyms_full");
+    expect((await Allergen.findById(milk._id).lean())!.synonyms).toHaveLength(200);
+    await request(app).get("/api/allergens").expect(200);
+
+    // A phrase the allergen's exclude list hides would never match: refused, token stays new.
+    const excludes = (await Allergen.findById(milk._id).lean())!.excludePhrases ?? [];
+    expect(excludes.length).toBeGreaterThan(0);
+    await IngredientToken.create({ token: excludes[0], count: 1 });
+    const hidden = await agent
+      .put(`/api/curate/unmatched/${encodeURIComponent(excludes[0]!)}`)
+      .send({ action: "map", allergenId: String(milk._id) })
+      .expect(409);
+    expect(hidden.body.error).toBe("token_excluded");
+  });
+
+  // Value: protects=a mapped phrase cannot be relabelled ignored while it stays in the dictionary, and
+  //   an ignored phrase can still be mapped (review p1 state matrix); fails_when=ignore has no status
+  //   guard; why_new=review fix; seam=none; no_claim=none
+  it("refuses to ignore a mapped phrase and maps an ignored one", async () => {
+    await loadDictionary();
+    await matchAndStore(await cache(30, "CAROB, SUGAR"));
+    const { agent } = await curator("cleo");
+    const soy = (await Allergen.findOne({ key: "soy" }).lean())!;
+    await agent
+      .put("/api/curate/unmatched/carob")
+      .send({ action: "map", allergenId: String(soy._id) })
+      .expect(200);
+    const refused = await agent
+      .put("/api/curate/unmatched/carob")
+      .send({ action: "ignore" })
+      .expect(409);
+    expect(refused.body.error).toBe("token_mapped");
+    await agent.put("/api/curate/unmatched/sugar").send({ action: "ignore" }).expect(200);
+    await agent.put("/api/curate/unmatched/sugar").send({ action: "ignore" }).expect(200);
+    const mapped = await agent
+      .put("/api/curate/unmatched/sugar")
+      .send({ action: "map", allergenId: String(soy._id) })
+      .expect(200);
+    expect(mapped.body.token.status).toBe("mapped");
   });
 });
