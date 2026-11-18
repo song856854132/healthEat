@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { APP_NAME } from "@healtheat/shared";
 import { Spike } from "./spike";
 
@@ -12,6 +13,9 @@ export default function Home() {
       </p>
       <p>Coming soon. The pipeline is live; the product is not yet.</p>
       <Spike />
+      <p>
+        <Link href="/about">About</Link> · <Link href="/privacy">Privacy policy</Link>
+      </p>
     </main>
   );
 }
