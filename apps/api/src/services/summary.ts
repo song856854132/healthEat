@@ -253,12 +253,12 @@ export async function summaryFor(
     .filter((s) => s.mode === "track" && s.allergenId)
     .map((s) => {
       const a = s.allergenId!;
-      const hits = entries.filter((e) =>
-        (allergensOf.get(e.fdcId) ?? []).some((m) => m.key === a.key),
-      );
-      const kinds = hits.map(
-        (e) => (allergensOf.get(e.fdcId) ?? []).find((m) => m.key === a.key)!.matchKind,
-      );
+      const matched = entries.flatMap((e) => {
+        const m = (allergensOf.get(e.fdcId) ?? []).find((x) => x.key === a.key);
+        return m ? [{ entry: e, kind: m.matchKind }] : [];
+      });
+      const hits = matched.map((h) => h.entry);
+      const kinds = matched.map((h) => h.kind);
       const threshold = s.weeklyThreshold ?? null;
       return {
         key: a.key,

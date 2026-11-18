@@ -542,4 +542,53 @@ describe("GET /api/users/me/summary", () => {
     expect(body.alerts).toEqual([]);
     expect(body.days[6]).toEqual({ date: TODAY, logged: true, confidence: 0 });
   });
+
+  // Generated for T15 (100% branches on summary.ts, eng review D13).
+  // Value: protects=a log whose food has left the cache, or whose stored copy has no description or
+  //   nutrients, still answers 200: the day counts as logged, it adds no nutrients and no exposure, and
+  //   a stored avoid match still raises today's alert with a null description; fails_when=a missing
+  //   food or field throws and the whole summary 500s, or a stored match is dropped; why_new=no test
+  //   logged a food without a complete cached copy; seam=none; no_claim=how a copy loses its fields
+  it("summarises logs whose food is gone from the cache or stored without fields", async () => {
+    await loadDictionary();
+    const milk = (await Allergen.findOne({ key: "milk" }).lean())!;
+    const peanut = (await Allergen.findOne({ key: "peanuts" }).lean())!;
+    // A stamped copy written without description or nutrients (insertOne skips the schema).
+    await Food.collection.insertOne({
+      fdcId: 31,
+      dataType: "Foundation",
+      fetchedAt: new Date(),
+      allergensMatchedAt: new Date(),
+    });
+    await FoodAllergen.create({
+      fdcId: 31,
+      allergenId: peanut._id,
+      matchKind: "ingredient",
+      matchedSynonym: "peanut",
+      matchedAt: new Date(),
+    });
+    const { agent, user } = await member("gone");
+    await UserAllergen.create([
+      { userId: user._id, allergenId: milk._id, mode: "track" },
+      { userId: user._id, allergenId: peanut._id, mode: "avoid" },
+    ]);
+    const entry = (fdcId: number) => ({
+      userId: user._id,
+      date: TODAY,
+      meal: "lunch" as const,
+      fdcId,
+      grams: 100,
+      source: "search" as const,
+      confidence: 1,
+    });
+    await LogEntry.create([entry(30), entry(31)]); // 30 has no cached copy at all
+    const body = SummaryResponse.parse((await agent.get("/api/users/me/summary").expect(200)).body);
+    expect(body.days[6]).toMatchObject({ date: TODAY, logged: true });
+    expect(body.exposure).toEqual([
+      expect.objectContaining({ key: "milk", hits: 0, estimate: false }),
+    ]);
+    expect(body.alerts).toEqual([
+      expect.objectContaining({ key: "peanuts", fdcId: 31, description: null }),
+    ]);
+  });
 });
