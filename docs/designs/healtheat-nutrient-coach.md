@@ -1404,6 +1404,23 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Files: apps/api/src/models/IngredientToken.ts, apps/api/src/services/dictionary.ts, apps/web/app/curate/unmatched/page.tsx
   - Verify: unit test: caching a food with "soy lecithin" (matched) and "xanthan gum" (unmatched) creates one token; mapping it appends the synonym and FoodAllergen rows appear
 
+- [ ] **T25 (#48, P1, human: ~2 days / CC: ~1.5 hr)** — apps/api + packages/shared — Weekly summary: `GET /api/users/me/summary?weekEnding=` with 7-day coverage bands, today's calorie meter, exposure meter and today's alerts; DRI table with an adult reference row (targets for members without sex or age, `targetBasis: "reference"`); `TRACKED_NUTRIENTS` with canonical ids and unit conversions; a nutrient a food does not report is unknown, not zero (`dataCoverage`, "not enough data" below 50%); `calorieMeter: null` with `profile_incomplete` when the band cannot be set or computed; allergens through a batched `allergensForFoods`
+  - Surfaced by: eng review 2026-11-18 (REST table row with no task; decisions D4, D7, D9, D11)
+  - Files: apps/api/src/services/summary.ts, apps/api/src/services/dictionary.ts, packages/shared/src/summary.ts, packages/shared/data/dri.json
+  - Verify: unit tests cover every branch of summary.ts, including the vitamin E demo check (41% to 90% with 28 g sunflower seeds); supertest: 401 anonymous, own data only
+- [ ] **T26 (#49, P1, human: ~1 day / CC: ~40 min)** — apps/api + packages/shared — Close the gap: `GET /api/users/me/gaps/:nutrientId/foods`; about 60 whole foods shipped as `packages/shared/data/gap-foods.json` (generated once from USDA, no runtime USDA call); candidates are those plus cached Foundation, SR Legacy and Survey foods above 20 kcal per 100 g; avoid-mode allergens filtered by matching seed foods in memory and cached foods through `allergensForFoods`
+  - Surfaced by: eng review 2026-11-18 (D3, D8, D12)
+  - Files: packages/shared/data/gap-foods.json, scripts/gap-foods/generate.ts, apps/api/src/services/summary.ts
+  - Verify: a member avoiding peanuts never gets "Peanuts, raw"; an unstamped cached food with an avoided allergen is excluded
+- [ ] **T27 (#50, P1, human: ~4 hrs / CC: ~25 min)** — apps/api + packages/shared — Account and profiles: `PUT /api/users/me` (email; username refused with 400), `PUT /api/users/me/profiles/member` (body metrics, activity, calorie band, timezone, privacy opt-ins, phone; required fields cannot be unset), `GET /api/users/:username` (public fields; sensitive fields only for self)
+  - Surfaced by: eng review 2026-11-18 (REST table rows with no task; first in order, D10)
+  - Files: apps/api/src/routes/users.ts, apps/api/src/services/profiles.ts, packages/shared/src/admin.ts
+  - Verify: supertest: username change 400; another user's profile hides sensitive fields; suspended or deleting accounts 404
+- [ ] **T28 (#39, P2, human: ~3 hrs / CC: ~20 min)** — apps/api + packages/shared — `localStats` on `GET /api/foods/:fdcId` (week log count and members for everyone; opted-in usernames and the caller's own 7-day grams when signed in), session read on that route only, `LogEntry {fdcId, date}` index
+  - Surfaced by: issue #39; eng review 2026-11-18 (D6)
+  - Files: apps/api/src/services/foodStats.ts, apps/api/src/routes/foods.ts, apps/api/src/models/LogEntry.ts, packages/shared/src/foods.ts
+  - Verify: anonymous sees counts only; a suspended account's session sees the anonymous view
+
 _No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision._
 
 ## Implementation Tasks: order and dependencies
@@ -1421,6 +1438,8 @@ Lane A (owner: `apps/api`, `packages/shared`), in order:
 8. **T21** Curator and Admin surfaces (after T7, T9, T11; the web pages half belongs to lane B once the API half is merged).
 9. **T10** public Home feed snapshot (after T6).
 10. **T13** vision route hardening (phase 2, after T6).
+
+Update 2026-11-18 (eng review of the lane A finish plan): the remaining lane A order is **T27** (account and profiles), **T25** (summary), **T26** (close the gap), **T10**, **T28**, **T22** (API half), **T15/T16** close-out, **T13** (API half), **T18**. T27 goes first so members can set the body details the summary uses. The web halves of T13 and T22 stay with lane B.
 
 Lane B (teammate: `apps/web`), in order:
 1. **T12, web-only part**: privacy banner and acknowledgment cookie, `/privacy`, `/about`, footer, nav shell. No API needed. First task.
