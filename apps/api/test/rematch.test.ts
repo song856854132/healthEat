@@ -417,17 +417,23 @@ describe("re-match batch check after its write (#37 review notes)", () => {
   // Value: protects=a stored food without a Date fetchedAt does not stop an allergen's re-match for
   //   good; fails_when=the post-write check calls getTime() on a missing fetchedAt again; why_new=#37
   //   review note; seam=none; no_claim=how such a document got stored (inserted past the schema)
+  // Extended by /ship coverage audit (#46).
+  // Value: protects=a food with no fetchedAt counts as unmoved, so the re-match leaves its stamp;
+  //   fails_when=a missing fetchedAt never equals itself and the food is unstamped on every re-match;
+  //   why_new=this test asserted only done and rows; seam=none; no_claim=how such a document got stored
   it("finishes the re-match when a stored food has no fetchedAt", async () => {
     await cacheFoods(4);
     await Food.collection.insertOne({
       fdcId: 5,
       description: "FOOD 5",
       ingredientsText: "PEANUTS",
+      allergensMatchedAt: new Date(),
     });
     const id = await peanutId();
     await startRematch(id);
     expect((await rematchAllergen(id, { batchSize: 10 })).done).toBe(true);
     expect(await peanutRows(id)).toEqual([3, 5]);
+    expect((await Food.findOne({ fdcId: 5 }).lean())?.allergensMatchedAt).toBeInstanceOf(Date);
   });
 
   // Value: protects=when only a food's USDA copy keeps moving, only that food is left unstamped;
@@ -516,6 +522,11 @@ describe("re-match batch check after its write (#46 review notes)", () => {
   // Value: protects=a refresh between two malformed (non-Date) fetchedAt values still counts as a new
   //   copy, so the batch rewrites from it; fails_when=every non-Date fetchedAt compares equal again;
   //   why_new=#46 review note; seam=none; no_claim=how such documents got stored (written past the schema)
+  // Extended by /ship coverage audit (#46).
+  // Value: protects=an unchanged malformed copy compares equal, so after the rewrite the food keeps its
+  //   stamp; fails_when=a malformed fetchedAt never equals itself (e.g. NaN key) and the food is left
+  //   unstamped; why_new=no test asserts a stable non-Date copy keeps its stamp; seam=none;
+  //   no_claim=how such documents got stored (written past the schema)
   it("rewrites a food whose malformed fetchedAt changed between the batch read and its check", async () => {
     await cacheFoods(2);
     await Food.collection.insertOne({
@@ -523,6 +534,7 @@ describe("re-match batch check after its write (#46 review notes)", () => {
       description: "FOOD 3",
       ingredientsText: "SUGAR, PEANUTS",
       fetchedAt: "copy-a",
+      allergensMatchedAt: new Date(),
     });
     const id = await peanutId();
     await startRematch(id);
@@ -542,6 +554,7 @@ describe("re-match batch check after its write (#46 review notes)", () => {
     }) as never);
     expect((await rematchAllergen(id, { batchSize: 10 })).done).toBe(true);
     expect(await peanutRows(id)).toEqual([]);
+    expect((await Food.findOne({ fdcId: 3 }).lean())?.allergensMatchedAt).toBeInstanceOf(Date);
   });
 
   // Value: protects=a batch that stops at its budget on a duplicate key, after its first write went
