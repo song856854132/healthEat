@@ -38,7 +38,7 @@ export function todayIn(timeZone: string, now = new Date()): string {
   }
 }
 
-async function memberToday(userId: Types.ObjectId, now: Date): Promise<string> {
+export async function memberToday(userId: Types.ObjectId, now: Date): Promise<string> {
   const profile = await MemberProfile.findOne({ userId }, { timezone: 1 }).lean();
   return todayIn(profile?.timezone ?? "UTC", now);
 }
