@@ -45,10 +45,9 @@ describe("summary pure functions", () => {
   //   (D9); fails_when=an unspecified sex or missing birth year throws or picks a random row;
   //   why_new=new contract; seam=none; no_claim=clinical accuracy of the DRI values
   it("picks the personal DRI row from sex and age, else the reference row", () => {
-    expect(targetsFor({ sex: "female", birthYear: 1990 }, TODAY)).toMatchObject({
-      basis: "personal",
-      key: "female-31-50",
-    });
+    const personal = targetsFor({ sex: "female", birthYear: 1990 }, TODAY);
+    expect(personal.basis).toBe("personal");
+    expect(personal.key).toBe("female-31-50");
     expect(targetsFor({ sex: "male", birthYear: 2010 }, TODAY).key).toBe("male-14-18");
     expect(targetsFor({ sex: "male", birthYear: 1950 }, TODAY).key).toBe("male-71+");
     const ref = targetsFor({ sex: "unspecified", birthYear: 1990 }, TODAY);
