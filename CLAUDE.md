@@ -14,7 +14,7 @@ Use /browse for all web browsing (Aside first, the bundled gstack browser as fal
 ## How we work here
 
 - The plan is the spec: `docs/designs/healtheat-nutrient-coach.md` (Recommended Approach,
-  Working plan amendments, Implementation Tasks T1-T22) and `TODOS.md`. Read the task's
+  Working plan amendments, Implementation Tasks T1-T22 and T25-T28) and `TODOS.md`. Read the task's
   section before coding. Team process: `docs/team-workflow.md`.
 - One plan task per PR; the PR body names the T-number. Branch `tNN-short-name`, worktree per task.
 - Before pushing run `/verify` (or `npm run typecheck && npm run lint && npm run format && npm test`).

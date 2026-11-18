@@ -73,7 +73,7 @@ git config --global user.email "shankul890@gmail.com"
 
 ## 3. Work on a task
 
-Tasks are GitHub Issues `T3` to `T22`, each labelled `lane:a` (API and `packages/shared`,
+Tasks are GitHub Issues `T3` to `T28`, each labelled `lane:a` (API and `packages/shared`,
 owner), `lane:b` (web, you) or `lane:c` (tooling). Dependencies and a suggested order are in
 the design doc under "Implementation Tasks: order and dependencies". Your first task is the
 web-only part of **T12**: the privacy banner with its acknowledgment cookie, `/privacy`,
