@@ -117,6 +117,49 @@ export async function buildFeed(now: Date): Promise<PublicHomeResponse> {
  * match this deploy's feed shape counts as missing.
  */
 export async function publicFeed(now = new Date()): Promise<PublicHomeResponse> {
+  const feed = await snapshotFeed(now);
+  return { ...feed, profiles: await stillListed(feed.profiles) };
+}
+
+/**
+ * The listed profiles that still qualify right now: the snapshot is up to 5 minutes old, and a member
+ * who opts out, a curator who leaves the listing or loses the role, and an account suspended or deleted
+ * since must leave the anonymous Home at once. At most 6 usernames, so three small reads.
+ */
+async function stillListed(
+  profiles: PublicHomeResponse["profiles"],
+): Promise<PublicHomeResponse["profiles"]> {
+  if (profiles.length === 0) return profiles;
+  const users = await User.find(
+    {
+      username: { $in: profiles.map((p) => p.username) },
+      status: "active",
+      deletionPending: { $ne: true },
+    },
+    { username: 1, roles: 1 },
+  ).lean();
+  const ids = users.map((u) => u._id);
+  const [members, curators] = await Promise.all([
+    MemberProfile.find({ userId: { $in: ids }, publicLogs: true }, { userId: 1 }).lean(),
+    CuratorProfile.find({ userId: { $in: ids }, publicListing: true }, { userId: 1 }).lean(),
+  ]);
+  const memberIds = new Set(members.map((m) => String(m.userId)));
+  const curatorIds = new Set(curators.map((c) => String(c.userId)));
+  const live = new Map(
+    users.map((u) => {
+      const id = String(u._id);
+      const badges: ("member" | "curator")[] = [];
+      if (memberIds.has(id)) badges.push("member");
+      if (curatorIds.has(id) && u.roles.includes("curator")) badges.push("curator");
+      return [u.username, badges] as const;
+    }),
+  );
+  return profiles
+    .map((p) => ({ ...p, badges: live.get(p.username) ?? [] }))
+    .filter((p) => p.badges.length > 0);
+}
+
+async function snapshotFeed(now: Date): Promise<PublicHomeResponse> {
   const snap = await PublicFeedSnapshot.findById(KEY).lean();
   const stored = snap ? PublicHomeResponse.safeParse(snap.payload) : null;
   const cached = stored?.success ? stored.data : null;
@@ -154,12 +197,4 @@ export async function publicFeed(now = new Date()): Promise<PublicHomeResponse> 
     if ((err as { code?: number }).code !== 11000) throw err;
   });
   return payload;
-}
-
-/**
- * Marks the feed stale so the next request rebuilds it (T10): called when an account is deleted or
- * suspended, so its username leaves the anonymous Home at once rather than after up to 5 minutes.
- */
-export async function expirePublicFeed(): Promise<void> {
-  await PublicFeedSnapshot.updateOne({ _id: KEY }, { $set: { builtAt: new Date(0) } });
 }

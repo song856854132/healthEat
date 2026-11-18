@@ -9,7 +9,6 @@ import {
   User,
   UserAllergen,
 } from "../models/index.js";
-import { expirePublicFeed } from "./home.js";
 
 // Account deletion (design doc D6, Working plan amendments: multi-document writes). One cascade for
 // self-delete (DELETE /api/users/me) and Admin delete (T21). No transaction on the M0 tier: the flag
@@ -58,7 +57,6 @@ export async function deleteAccount(
   await AdminProfile.deleteMany({ userId });
   await deleteSessions(userId);
   await User.deleteOne({ _id: userId });
-  await expirePublicFeed(); // the username leaves the anonymous Home now, not at the next rebuild
   // A log or setting write that passed requireAuth before the flag can land after its deleteMany;
   // once the User is gone nothing could rerun the cascade, so sweep once more.
   await sweepMemberData();
