@@ -32,7 +32,8 @@ export function canonicalTimeZone(tz: string): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: tz }).resolvedOptions().timeZone;
 }
 
-const TimeZone = z
+/** An IANA time zone, canonicalised (register and the member profile edit share it). */
+export const TimeZone = z
   .string()
   .trim()
   .min(1, "timezone is required")
