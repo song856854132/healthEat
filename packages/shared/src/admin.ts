@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TimeZone } from "./auth.js";
 import { AccountStatus, Role } from "./roles.js";
 
 // Account management for Admins (design doc REST table, D18): Admin manages accounts only and never
@@ -52,8 +53,8 @@ export type AdminUserDetail = z.infer<typeof AdminUserDetail>;
 export const StatusUpdateInput = z.object({ status: AccountStatus });
 export type StatusUpdateInput = z.infer<typeof StatusUpdateInput>;
 
-/** Role profiles a caller can read and edit through /api/users/me/profiles/:kind. */
-export const EDITABLE_PROFILE_KINDS = ["curator", "admin"] as const;
+/** Role profiles a caller can read and edit through /api/users/me/profiles/:kind (member since T27). */
+export const EDITABLE_PROFILE_KINDS = ["member", "curator", "admin"] as const;
 export const EditableProfileKind = z.enum(EDITABLE_PROFILE_KINDS);
 export type EditableProfileKind = z.infer<typeof EditableProfileKind>;
 
@@ -102,6 +103,103 @@ export const AdminProfileView = z.object({
 });
 export type AdminProfileView = z.infer<typeof AdminProfileView>;
 
+export const SEXES = ["female", "male", "unspecified"] as const;
+export const ACTIVITY_LEVELS = ["sedentary", "light", "moderate", "active", "very_active"] as const;
+
+/** A daily calorie band in kcal; `low` is never above `high`. */
+export const CalorieBand = z
+  .object({ low: z.number().int().min(0).max(10000), high: z.number().int().min(0).max(10000) })
+  .strict()
+  .refine((b) => b.low <= b.high, "calorieBand.low must not be above calorieBand.high");
+export type CalorieBand = z.infer<typeof CalorieBand>;
+
+const currentYear = () => new Date().getUTCFullYear();
+
+/**
+ * Body of PUT /api/users/me/profiles/member (T27). Absent fields stay as they are; null (or "" for the
+ * phone) clears an optional field. `sex`, `activityLevel` and `timezone` have defaults the rest of the
+ * API relies on, so they can be changed but never cleared. `driSetKey` is derived from sex and age by
+ * the summary (T25), never set here.
+ */
+export const MemberProfileInput = z
+  .object({
+    sex: z.enum(SEXES).optional(),
+    birthYear: z
+      .number()
+      .int()
+      .min(1900)
+      .refine((y) => y <= currentYear(), "birthYear is in the future")
+      .nullable()
+      .optional(),
+    heightCm: z.number().min(50).max(272).nullable().optional(),
+    weightKg: z.number().min(20).max(500).nullable().optional(),
+    activityLevel: z.enum(ACTIVITY_LEVELS).optional(),
+    calorieBand: CalorieBand.nullable().optional(),
+    timezone: TimeZone.optional(),
+    publicLogs: z.boolean().optional(),
+    showPhoneOnProfile: z.boolean().optional(),
+    phone: z
+      .string()
+      .trim()
+      .max(32)
+      .regex(/^$|^\+?[0-9 ()-]{3,32}$/, "digits, spaces, (), - and a leading +")
+      .nullable()
+      .optional(),
+  })
+  .strict();
+export type MemberProfileInput = z.infer<typeof MemberProfileInput>;
+
+/** A MemberProfile as its owner reads it. `visionUsage` is server-written and not shown. */
+export const MemberProfileView = z.object({
+  kind: z.literal("member"),
+  sex: z.enum(SEXES),
+  birthYear: z.number().int().nullable(),
+  heightCm: z.number().nullable(),
+  weightKg: z.number().nullable(),
+  activityLevel: z.enum(ACTIVITY_LEVELS),
+  calorieBand: z.object({ low: z.number(), high: z.number() }).nullable(),
+  timezone: z.string(),
+  publicLogs: z.boolean(),
+  showPhoneOnProfile: z.boolean(),
+  phone: z.string().nullable(),
+});
+export type MemberProfileView = z.infer<typeof MemberProfileView>;
+
 /** Response of GET and PUT /api/users/me/profiles/:kind. */
-export const RoleProfileView = z.discriminatedUnion("kind", [CuratorProfileView, AdminProfileView]);
+export const RoleProfileView = z.discriminatedUnion("kind", [
+  MemberProfileView,
+  CuratorProfileView,
+  AdminProfileView,
+]);
 export type RoleProfileView = z.infer<typeof RoleProfileView>;
+
+/**
+ * Body of PUT /api/users/me (T27): the account fields a member may change. The username is immutable
+ * (the route answers 400 username_immutable when one is sent); the timezone lives on the member profile.
+ */
+export const AccountUpdateInput = z
+  .object({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)) })
+  .strict();
+export type AccountUpdateInput = z.infer<typeof AccountUpdateInput>;
+
+/**
+ * Response of GET /api/users/:username (T27; design doc REST table "public profile, sensitive fields
+ * stripped unless self"). Admin profiles are never public. `private` is present only when the caller
+ * is that account.
+ */
+export const PublicProfileView = z.object({
+  username: z.string(),
+  roles: z.array(z.string()),
+  memberSince: z.string().datetime(),
+  curator: z
+    .object({
+      credentials: z.string().nullable(),
+      bio: z.string().nullable(),
+      specialties: z.array(z.string()),
+    })
+    .nullable(),
+  phone: z.string().nullable(),
+  self: z.boolean(),
+  private: z.object({ email: z.string(), member: MemberProfileView }).nullable(),
+});
+export type PublicProfileView = z.infer<typeof PublicProfileView>;
