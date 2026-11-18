@@ -9,7 +9,15 @@ import {
 } from "@healtheat/shared";
 import { Types } from "mongoose";
 import { HttpError } from "../lib/http.js";
-import { Allergen, DictionarySeed, Food, FoodAllergen, UserAllergen } from "../models/index.js";
+import {
+  Allergen,
+  DictionarySeed,
+  Food,
+  FoodAllergen,
+  IngredientToken,
+  IngredientTokenFood,
+  UserAllergen,
+} from "../models/index.js";
 
 // Allergen dictionary and matcher (design doc: Allergen matching, D12). The matcher is plain string
 // work so it can run over a whole batch of cached foods in one request (T5 re-match).
@@ -111,6 +119,63 @@ export function matchFood(
     if (hit) out.push(hit);
   }
   return out;
+}
+
+/** Shortest and longest ingredient phrase the unmatched queue keeps. */
+const TOKEN_MIN = 3;
+const TOKEN_MAX = 80;
+
+/**
+ * The ingredient phrases of a food that match no synonym of any dictionary entry (T22): the normalised
+ * segments `ingredientSegments` gives, so a phrase mapped from the queue matches as a synonym.
+ */
+export function unmatchedTokens(
+  ingredientsText: string | null | undefined,
+  dictionary: DictionaryEntry[],
+): string[] {
+  if (!ingredientsText) return [];
+  const compiled = dictionary.map(compile);
+  const out = new Set<string>();
+  for (const seg of ingredientSegments(ingredientsText)) {
+    if (seg.length < TOKEN_MIN || seg.length > TOKEN_MAX) continue;
+    const hit = compiled.some((c) => firstMatch(mask(` ${seg} `, c.excludes), c.synonyms));
+    if (!hit) out.add(seg);
+  }
+  return [...out];
+}
+
+/**
+ * Records a food's unmatched phrases (T22, eng review D2): one unordered insert of (token, food) pairs,
+ * duplicates skipped by the unique index, then one bulkWrite that counts only the pairs actually new, so
+ * re-matching or refreshing the same food never raises a count.
+ */
+export async function recordUnmatchedTokens(fdcId: number, tokens: string[]): Promise<void> {
+  if (tokens.length === 0) return;
+  const docs = tokens.map((token) => ({ token, fdcId }));
+  let inserted: string[];
+  try {
+    await IngredientTokenFood.collection.insertMany(docs, { ordered: false });
+    inserted = tokens;
+  } catch (err) {
+    const ids = (err as { result?: { insertedIds?: Record<number, unknown> } }).result?.insertedIds;
+    if ((err as { code?: number }).code !== 11000 || !ids) throw err;
+    inserted = Object.keys(ids).map((i) => tokens[Number(i)]!);
+  }
+  if (inserted.length === 0) return;
+  await IngredientToken.bulkWrite(
+    inserted.map((token) => ({
+      updateOne: {
+        filter: { token },
+        update: {
+          $inc: { count: 1 },
+          $push: { sampleFdcIds: { $each: [fdcId], $slice: 5 } },
+          $setOnInsert: { status: "new" },
+        },
+        upsert: true,
+      },
+    })),
+    { ordered: false },
+  );
 }
 
 const byName = (a: { displayName: string }, b: { displayName: string }) =>
@@ -282,6 +347,20 @@ export async function matchAndStore(
         { fdcId: food.fdcId, fetchedAt: food.fetchedAt },
         { $set: { allergensMatchedAt: now } },
       );
+      // The unmatched-ingredient queue (T22) runs after the stamp and on its own: a failure here is
+      // logged and never changes the food's matches, rows or stamp (eng review D5).
+      try {
+        await recordUnmatchedTokens(
+          food.fdcId,
+          unmatchedTokens(food.ingredientsText, docs.map(toEntry)),
+        );
+      } catch (tokenErr) {
+        console.error(
+          "[dictionary] recording unmatched ingredients for %d failed:",
+          food.fdcId,
+          tokenErr instanceof Error ? tokenErr.message : tokenErr,
+        );
+      }
       break;
     } catch (err) {
       // A concurrent match of the same food inserted the same rows first (duplicate key): it stamps them.

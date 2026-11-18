@@ -10,3 +10,5 @@ export { FoodAllergen } from "./FoodAllergen.js";
 export { DictionarySeed } from "./DictionarySeed.js";
 export { LogEntry } from "./LogEntry.js";
 export { UserAllergen } from "./UserAllergen.js";
+export { IngredientToken } from "./IngredientToken.js";
+export { IngredientTokenFood } from "./IngredientTokenFood.js";
