@@ -611,7 +611,11 @@ describe("GET /api/users/me/summary", () => {
       nutrients: [],
     });
     await Food.create([stamped(40, "CUSTARD"), stamped(41, "LATTE")]);
-    const row = (fdcId: number, allergenId: Types.ObjectId, matchKind: string) => ({
+    const row = (
+      fdcId: number,
+      allergenId: Types.ObjectId,
+      matchKind: "description" | "ingredient",
+    ) => ({
       fdcId,
       allergenId,
       matchKind,
