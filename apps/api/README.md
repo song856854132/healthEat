@@ -105,7 +105,9 @@ one shared Vercel hop, which makes the key effectively per username: anyone can 
 logins for up to 15 minutes. A client that calls the public API origin directly is keyed by its own IP,
 so an attacker who rotates IPs gets 10 guesses per address.
 
-USDA proxy (design doc D5, S7): `/api/foods/*` needs the database (for its caches) but no session.
+USDA proxy (design doc D5, S7): `/api/foods/*` needs the database (for its caches and, on details, the
+local data) but no session. Search never reads one; `GET /api/foods/:fdcId` reads it when the caller
+sends one, to add the signed-in parts of `localStats` (T28).
 A search page is stored in `searchcaches` (`SearchCache {key, payload, createdAt}`, key = lowercased
 query, data type and page) and served without calling USDA for one hour; a TTL index deletes it after 24
 hours. Opened foods are stored in `foods` (`Food`, unique `fdcId`) and re-fetched after 30 days; they are
@@ -133,7 +135,8 @@ T11, a failed write, or a dictionary that kept changing during the match) is mat
 A dictionary edit reaches already matched foods only through the re-match pass (T5).
 
 Log routes (design doc A2, R3-25 to R3-27; T6): `logentries` (`LogEntry {userId, date, meal, fdcId, grams,
-source, confidence, photoBatchId, createdAt}`, indexes `{userId, date}` and `{date}`) and `userallergens`
+source, confidence, photoBatchId, createdAt}`, indexes `{userId, date}`, `{date}` and `{fdcId, date}`,
+the last for a food's local data, T28) and `userallergens`
 (`UserAllergen {userId, allergenId, mode, weeklyThreshold}`, unique per member and allergen). Listing,
 creating and allergen settings live under `/api/users/me/*`, so no route names another member; `PUT/DELETE
 /api/logs/:id` pass `requireOwner`, which answers 404 `log_not_found` for an id that names no entry and 403
@@ -186,7 +189,8 @@ Register and login copy it to `User.privacyAckAt` when present, and set it when 
 
 Session-backed routers are mounted as `requireDb, sessionMiddleware(), router`: a database that does not
 answer gives `503 database_unavailable` before the session store is touched. `/api/health` and the spike
-routes never open a session.
+routes never open a session. `/api/foods` is mounted as `requireDb, router`; only `GET /api/foods/:fdcId`
+adds `sessionMiddleware()` on its own route, so search never touches the session store.
 
 ## Run and test
 
