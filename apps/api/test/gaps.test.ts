@@ -225,6 +225,44 @@ describe("GET /api/users/me/gaps/:nutrientId/foods", () => {
     ]);
   });
 
+  // Value: protects=an avoider never gets a food that either its cached copy or its seed entry flags: a
+  //   cached copy matched on its ingredients does not let the seed row back in, and a stale "safe" cached
+  //   copy does not override the seed match (review p1, QA probe); fails_when=dedup uses only the safe
+  //   cached ids or the seed verdict is ignored for cached copies; why_new=review fix; seam=none;
+  //   no_claim=dictionary recall on descriptions
+  it("drops a food that either its cached copy or its seed entry flags", async () => {
+    await loadDictionary();
+    const sunflower = 170562; // seed "Seeds, sunflower seed kernels, dried"
+    const almonds = 170567; // seed "Nuts, almonds"
+    await Food.create([
+      {
+        fdcId: sunflower,
+        description: "Seeds, sunflower seed kernels, dried",
+        dataType: "SR Legacy",
+        ingredientsText: "SUNFLOWER SEEDS, PEANUTS",
+        fetchedAt: new Date(),
+        nutrients: [kcal(584), vitE(500)].map((n) => ({ ...n, name: "x", unit: "MG" })),
+      },
+      {
+        // Stamped with no rows, as if matched before a dictionary edit.
+        fdcId: almonds,
+        description: "Nuts, almonds",
+        dataType: "SR Legacy",
+        fetchedAt: new Date(),
+        allergensMatchedAt: new Date(),
+        nutrients: [kcal(579), vitE(400)].map((n) => ({ ...n, name: "x", unit: "MG" })),
+      },
+    ]);
+    const { agent, user } = await member("careful");
+    await avoid(user._id, "peanuts");
+    await avoid(user._id, "tree-nuts");
+    const ids = GapFoodsResponse.parse(
+      (await agent.get(`/api/users/me/gaps/${VITAMIN_E}/foods`).expect(200)).body,
+    ).foods.map((f) => f.fdcId);
+    expect(ids).not.toContain(sunflower);
+    expect(ids).not.toContain(almonds);
+  });
+
   it("is 401 anonymous and 404 for an untracked or malformed nutrient id", async () => {
     await request(app).get(`/api/users/me/gaps/${VITAMIN_E}/foods`).expect(401);
     const { agent } = await member("mia");

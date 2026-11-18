@@ -69,11 +69,15 @@ export async function gapFoodsFor(
   const avoidIds = new Set(avoid.map((a) => String(a.allergenId)));
   const dictionary = (await loadDictionary()).filter((e) => avoidIds.has(String(e.id)));
 
-  // Seed foods are never in Food, so they have no stored matches: match them here (D8).
-  const seed: Candidate[] = GAP_FOODS.filter(
-    (f) =>
-      matchFood({ description: f.description, ingredientsText: null }, dictionary).length === 0,
-  ).map((f) => ({ ...f, source: "seed" as const, servingGrams: null }));
+  // Seed foods are never in Food, so they have no stored matches: match them here (D8). A food flagged
+  // here stays out even when a cached copy of it looks safe (that copy's rows may predate a dictionary edit).
+  const seedFlagged = new Set<number>();
+  const seed: Candidate[] = GAP_FOODS.filter((f) => {
+    const hit =
+      matchFood({ description: f.description, ingredientsText: null }, dictionary).length > 0;
+    if (hit) seedFlagged.add(f.fdcId);
+    return !hit;
+  }).map((f) => ({ ...f, source: "seed" as const, servingGrams: null }));
 
   // Cached whole foods that report the nutrient, read with only the nutrients the ranking needs (D12).
   const ids = [tracked, ENERGY].flatMap((t) => [t.id, ...t.alternates.map((a) => a.id)]);
@@ -106,7 +110,9 @@ export async function gapFoodsFor(
   const avoidKeys = new Set(dictionary.map((e) => e.key));
   const safeCached: Candidate[] = cached
     .filter(
-      (f) => !(allergensOf.get(f.fdcId) ?? []).some((m: { key: string }) => avoidKeys.has(m.key)),
+      (f) =>
+        !seedFlagged.has(f.fdcId) &&
+        !(allergensOf.get(f.fdcId) ?? []).some((m: { key: string }) => avoidKeys.has(m.key)),
     )
     .map((f) => ({
       fdcId: f.fdcId,
@@ -116,7 +122,8 @@ export async function gapFoodsFor(
       servingGrams: f.servingSizes?.[0]?.grams ?? null,
     }));
 
-  const cachedIds = new Set(safeCached.map((c) => c.fdcId));
+  // Every cached copy decides for its fdcId, kept or excluded: an excluded copy never lets its seed row back.
+  const cachedIds = new Set(cached.map((c) => c.fdcId));
   const candidates = [...safeCached, ...seed.filter((s) => !cachedIds.has(s.fdcId))];
   return {
     nutrient: { id: tracked.id, key: tracked.key, name: tracked.name, unit: tracked.unit },
