@@ -53,6 +53,8 @@ describe("summary pure functions", () => {
     const ref = targetsFor({ sex: "unspecified", birthYear: 1990 }, TODAY);
     expect(ref).toMatchObject({ basis: "reference", key: "reference-adult" });
     expect(targetsFor(null, TODAY).basis).toBe("reference");
+    // Coverage audit pass 2: a known sex without a birth year is still the reference row, not a NaN age band.
+    expect(targetsFor({ sex: "female", birthYear: null }, TODAY).key).toBe("reference-adult");
     // The reference row never understates a need and never overstates a safe ceiling.
     const r = referenceRow();
     expect(r.iron).toEqual({ target: 18, upper: 45 });
@@ -87,6 +89,19 @@ describe("summary pure functions", () => {
       ).toBeNull();
     expect(calorieBandFor(null, TODAY)).toBeNull();
     expect(calorieBandFor({ ...full, activityLevel: "odd" }, TODAY)?.basis).toBe("computed");
+    // Coverage audit pass 2. Value: protects=a half-set band (low only) is not used, and a missing
+    //   activity level means "light" (x1.375); fails_when=a band with high null is returned as "set" or a
+    //   missing level drops to sedentary/NaN; why_new=rows above always set both ends and a level;
+    //   seam=none; no_claim=none beyond protects
+    // BMR 1290.25 x 1.375 = 1774.09; low 1596.7 -> 1600, high 1951.5 -> 1950.
+    const light = { low: 1600, high: 1950, basis: "computed" };
+    expect(calorieBandFor({ ...full, activityLevel: null }, TODAY)).toEqual(light);
+    expect(
+      calorieBandFor(
+        { ...full, activityLevel: null, calorieBand: { low: 1800, high: null } },
+        TODAY,
+      ),
+    ).toEqual(light);
   });
 
   it("puts today's kcal under, on or over the band", () => {
@@ -190,6 +205,39 @@ describe("summary pure functions", () => {
     ).find((b) => b.key === "vitaminC")!;
     expect(half.dataCoverage).toBe(0.5);
     expect(half.status).not.toBe("insufficient");
+
+    // Coverage audit pass 2. Value: protects=a logged food with no stored nutrients counts as unknown, a
+    //   week of 0 g entries is "insufficient" (not 0/0), and a nutrient the DRI row lacks never divides by a
+    //   0 target; fails_when=the ?? fallbacks or the target <= 0 guard are dropped (NaN/Infinity coverage);
+    //   why_new=rows above always have a food row, grams and a full DRI row; seam=none; no_claim=none
+    const missingFood = computeBands(
+      [
+        { date: TODAY, fdcId: 1, grams: 40, source: "search" },
+        { date: TODAY, fdcId: 99, grams: 60, source: "search" },
+      ],
+      nutrients,
+      row,
+    ).find((b) => b.key === "vitaminC")!;
+    expect(missingFood).toMatchObject({ status: "insufficient", dataCoverage: 0.4 });
+    const zeroGrams = computeBands(
+      [{ date: TODAY, fdcId: 1, grams: 0, source: "photo" }],
+      nutrients,
+      row,
+    );
+    expect(zeroGrams.every((b) => b.status === "insufficient" && b.dataCoverage === 0)).toBe(true);
+    const noVitC = { ...row };
+    delete noVitC.vitaminC;
+    const noTarget = computeBands(
+      [{ date: TODAY, fdcId: 1, grams: 100, source: "search" }],
+      nutrients,
+      noVitC,
+    ).find((b) => b.key === "vitaminC")!;
+    expect(noTarget).toMatchObject({
+      target: 0,
+      upper: null,
+      coverage: null,
+      status: "insufficient",
+    });
   });
 
   it("reports day dots with the searched share of each day's grams", () => {
@@ -214,6 +262,10 @@ describe("summary pure functions", () => {
     ]);
     const entries = [1, 2, 3].map((fdcId) => ({ date: TODAY, fdcId, grams: 50, source: "search" }));
     expect(kcalOf(entries, nutrients)).toBe(150);
+    // Coverage audit pass 2: an entry whose food row is missing adds nothing instead of throwing.
+    expect(
+      kcalOf([...entries, { date: TODAY, fdcId: 99, grams: 50, source: "search" }], nutrients),
+    ).toBe(150);
   });
 });
 
@@ -423,5 +475,56 @@ describe("GET /api/users/me/summary", () => {
     expect(empty.loggedDays).toBe(0);
     expect(empty.bands.every((b) => b.status === "empty")).toBe(true);
     expect(empty.exposure).toEqual([]);
+  });
+
+  // Attribution: added by the /ship test coverage audit (T25), pass 2.
+  // Value: protects=exposure marks description-only hits as an estimate, a null threshold is never "over",
+  //   a setting whose allergen was deleted is skipped, and a member with no profile row gets UTC + reference;
+  //   fails_when=estimate is always false, null > n reads as over, a deleted allergen throws (500) or shows;
+  //   why_new=the route test above has only ingredient hits, a set threshold and a profile; seam=none;
+  //   no_claim=description keyword quality (seed dictionary on mongodb-memory-server)
+  it("marks description-only exposure as an estimate and skips settings for a deleted allergen", async () => {
+    await loadDictionary();
+    const milk = (await Allergen.findOne({ key: "milk" }).lean())!;
+    const peanut = (await Allergen.findOne({ key: "peanuts" }).lean())!;
+    await Food.create({
+      fdcId: 20,
+      description: "Milk, whole",
+      dataType: "Foundation",
+      fetchedAt: new Date(),
+      nutrients: [{ nutrientId: 1008, name: "Energy", unit: "KCAL", amountPer100g: 60 }],
+    });
+    const { agent, user } = await member("nia");
+    await UserAllergen.create([
+      { userId: user._id, allergenId: milk._id, mode: "track" },
+      { userId: user._id, allergenId: peanut._id, mode: "avoid" },
+    ]);
+    await Allergen.deleteOne({ _id: peanut._id });
+    await MemberProfile.deleteOne({ userId: user._id });
+    await LogEntry.create({
+      userId: user._id,
+      date: TODAY,
+      meal: "breakfast",
+      fdcId: 20,
+      grams: 250,
+      source: "photo",
+      confidence: 0.6,
+    });
+    const body = SummaryResponse.parse((await agent.get("/api/users/me/summary").expect(200)).body);
+    expect(body).toMatchObject({ today: TODAY, targetBasis: "reference", calorieMeter: null });
+    expect(body.exposure).toEqual([
+      {
+        key: "milk",
+        displayName: milk.displayName,
+        tier: milk.tier,
+        hits: 1,
+        weight: 2.5,
+        weeklyThreshold: null,
+        overThreshold: false,
+        estimate: true,
+      },
+    ]);
+    expect(body.alerts).toEqual([]);
+    expect(body.days[6]).toEqual({ date: TODAY, logged: true, confidence: 0 });
   });
 });
