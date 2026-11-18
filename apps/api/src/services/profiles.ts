@@ -131,7 +131,7 @@ export async function updateAccount(user: UserDoc, input: AccountUpdateInput): P
  * GET /api/users/:username (T27; design doc REST table): public fields for anyone; the email and the
  * member profile only for the account itself (`viewerId`). Suspended accounts and accounts being deleted
  * are 404, so a public profile never outlives its account. The phone shows only with
- * `showPhoneOnProfile`; the Admin profile is never public.
+ * `showPhoneOnProfile`; the Admin profile, and the admin role itself, are never public.
  */
 export async function publicProfile(
   username: string,
@@ -147,7 +147,9 @@ export async function publicProfile(
   ]);
   return {
     username: user.username,
-    roles: [...user.roles],
+    // Which accounts hold admin is not public: listing them would hand out targets for password
+    // guessing. The account itself still sees every role it holds.
+    roles: self ? [...user.roles] : user.roles.filter((r) => r !== "admin"),
     memberSince: (user.createdAt as Date).toISOString(),
     curator: user.roles.includes("curator")
       ? {

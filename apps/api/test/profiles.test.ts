@@ -189,6 +189,17 @@ describe("GET /api/users/:username", () => {
       specialties: ["dairy"],
     });
 
+    // Value: protects=the admin role is never listed on a public profile except to the account itself;
+    //   fails_when=roles is returned unfiltered; why_new=pre-landing review (targeted, adversarial, red
+    //   team); seam=none; no_claim=other ways to learn an admin's username
+    await User.updateOne({ _id: leeUser._id }, { $set: { roles: ["member", "curator", "admin"] } });
+    expect((await request(app).get("/api/users/lee").expect(200)).body.roles).toEqual([
+      "member",
+      "curator",
+    ]);
+    expect((await mia.get("/api/users/lee").expect(200)).body.roles).not.toContain("admin");
+    expect((await lee.get("/api/users/lee").expect(200)).body.roles).toContain("admin");
+
     await User.updateOne({ _id: leeUser._id }, { $set: { status: "suspended" } });
     await request(app).get("/api/users/lee").expect(404);
     await User.updateOne(
