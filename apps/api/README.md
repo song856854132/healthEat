@@ -168,8 +168,9 @@ next read matches it. A batch likewise reads `rematchRun` and its foods' `fetche
 if a newer edit's re-match or a USDA refresh of one of its foods landed meanwhile, it writes the batch once
 more from the newer entry and copies; if they move again, the foods that may hold stale rows (the whole batch
 after a newer edit, only the refreshed foods otherwise) are left unstamped and the next read of each matches
-it against the current dictionary. A batch that keeps hitting a concurrent writer's duplicate key stops at
-the 60-second budget like any other.
+it against the current dictionary. A batch whose write stops at a concurrent writer's duplicate key repeats
+itself while its run and budget last; otherwise it leaves its foods unstamped, and it stops at the 60-second
+budget like any other.
 
 Curator and Admin (T21, D18): `POST /api/allergens` and `PUT /api/allergens/:id` start the re-match in the
 same write (the new entry is inserted with cursor 0; an edit sets it to 0 and bumps `rematchRun` in its

@@ -557,8 +557,34 @@ describe("re-match batch check after its write (#46 review notes)", () => {
     expect((await Food.findOne({ fdcId: 3 }).lean())?.allergensMatchedAt).toBeInstanceOf(Date);
   });
 
+  // Value: protects=a batch whose ordered write stops at a duplicate key part way (its later inserts
+  //   never ran) leaves its foods unstamped, so no food stays stamped without this allergen's row;
+  //   fails_when=the duplicate branch returns or moves on without unstamping; why_new=#46 follow-up
+  //   review (the duplicate branch skipped the post-write check); seam=none; no_claim=a real collision
+  //   (the partial write is injected: delete ran, inserts did not)
+  it("leaves the batch's foods unstamped when its write stops part way at a duplicate key", async () => {
+    await cacheFoods(6);
+    const id = await peanutId();
+    await startRematch(id);
+    await rematchAllergen(id);
+    await Food.updateMany({}, { $set: { allergensMatchedAt: new Date() } });
+    expect(await peanutRows(id)).toEqual([3, 6]);
+    await startRematch(id);
+    vi.spyOn(FoodAllergen, "bulkWrite").mockImplementationOnce((async () => {
+      // The ordered write's delete ran, then its first insert hit a row another writer had just added.
+      await FoodAllergen.deleteMany({ allergenId: id, fdcId: { $in: [1, 2, 3, 4, 5, 6] } });
+      throw Object.assign(new Error("E11000 duplicate key"), { code: 11000 });
+    }) as never);
+    expect((await rematchAllergen(id, { batchSize: 10, budgetMs: 0 })).done).toBe(false);
+    const stamps = (await Food.find().sort({ fdcId: 1 }).lean()).map(
+      (f) => f.allergensMatchedAt ?? null,
+    );
+    expect(stamps).toEqual([null, null, null, null, null, null]);
+  });
+
   // Value: protects=a batch that stops at its budget on a duplicate key, after its first write went
-  //   stale, leaves the rows the surviving concurrent writer (a food's own match) wrote and checked;
+  //   stale, leaves the rows the surviving concurrent writer (a food's own match) wrote, and leaves
+  //   the batch's foods unstamped since it did not repeat;
   //   fails_when=the early budget return starts deleting or rewriting rows, or matchAndStore stops
   //   rewriting a food's rows; why_new=#46 review note; seam=none; no_claim=a real collision (the
   //   duplicate key is injected after the concurrent match)
@@ -593,7 +619,11 @@ describe("re-match batch check after its write (#46 review notes)", () => {
     const res = await rematchAllergen(id, { batchSize: 10, budgetMs: 0 });
     expect(res.done).toBe(false);
     expect(await peanutRows(id)).toEqual([]);
-    expect((await Food.findOne({ fdcId: 3 }).lean())?.allergensMatchedAt).toBeInstanceOf(Date);
+    // The batch did not repeat, so it cannot vouch for its foods' rows: each is left for its next read.
+    const stamps = (await Food.find().sort({ fdcId: 1 }).lean()).map(
+      (f) => f.allergensMatchedAt ?? null,
+    );
+    expect(stamps).toEqual([null, null, null]);
   });
 });
 

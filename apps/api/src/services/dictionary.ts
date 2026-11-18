@@ -461,9 +461,21 @@ export async function rematchAllergen(
         // Another request re-matched the same batch at the same time: re-read the cursor and go on,
         // unless the time budget is spent.
         if (!isDuplicate(err)) throw err;
-        // Stopping here skips this batch's own check, and that is safe: the cursor stays on the batch, so
-        // a continue repeats it, and the writer that inserted the duplicate already deleted this batch's
-        // rows for those foods and runs its own check after its write (a re-match batch or matchAndStore).
+        // The ordered write stopped at a row another writer had just inserted: this batch's later inserts
+        // never ran, and that writer (another batch, or one food's matchAndStore) may cover only its own
+        // food. Unless this pass repeats the batch now (same run, cursor still on it, budget left), its
+        // foods are left unstamped, so the next read of each matches it whole.
+        const latest = await Allergen.findById(allergenId, {
+          rematchRun: 1,
+          rematchCursor: 1,
+        }).lean();
+        const repeats =
+          latest !== null &&
+          (latest.rematchRun ?? 0) === run &&
+          latest.rematchCursor === cursor &&
+          Date.now() - started < budgetMs;
+        if (!repeats)
+          await Food.updateMany({ fdcId: { $in: fdcIds } }, { $set: { allergensMatchedAt: null } });
         if (Date.now() - started >= budgetMs) {
           const remaining = await Food.countDocuments({ fdcId: { $gte: cursor } });
           return { done: false, processed, remaining };
