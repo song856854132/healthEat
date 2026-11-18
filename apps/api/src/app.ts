@@ -46,7 +46,8 @@ app.use("/api/users", ...withSession, usersRouter);
 app.use("/api/admin", ...withSession, adminRouter);
 app.use("/api/curate", ...withSession, curateRouter);
 app.use("/api/logs", ...withSession, logsRouter);
-// Public, session-free: the USDA proxy only needs the database for its caches.
+// Public: search is session-free; details read the session (routes/foods.ts) to add a signed-in
+// caller's local data. The database answers for the USDA caches and the local data (T28).
 // gstack-shortcut(dec-c0d8580f-f9cf-4938-a944-15a9d2ab1b5e): no abuse limit on these routes (a script can
 // spend the USDA quota and grow the caches on the shared cluster), upgrade when a global hourly budget for
 // uncached USDA calls and smaller cache entries are designed (follow-up in TODOS.md).
