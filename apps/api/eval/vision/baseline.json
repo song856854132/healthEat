@@ -15,16 +15,12 @@
         {
           "name": "scrambled eggs",
           "grams": 182,
-          "match": [
-            "egg"
-          ]
+          "match": ["egg"]
         },
         {
           "name": "bacon",
           "grams": 33,
-          "match": [
-            "bacon"
-          ]
+          "match": ["bacon"]
         }
       ]
     },
@@ -35,22 +31,12 @@
         {
           "name": "chicken",
           "grams": 137,
-          "match": [
-            "chicken"
-          ]
+          "match": ["chicken"]
         },
         {
           "name": "mixed greens",
           "grams": 54,
-          "match": [
-            "mixed greens",
-            "salad",
-            "lettuce",
-            "spinach",
-            "arugula",
-            "mesclun",
-            "greens"
-          ]
+          "match": ["mixed greens", "salad", "lettuce", "spinach", "arugula", "mesclun", "greens"]
         }
       ]
     },
@@ -61,23 +47,17 @@
         {
           "name": "berries",
           "grams": 63,
-          "match": [
-            "berr"
-          ]
+          "match": ["berr"]
         },
         {
           "name": "watermelon",
           "grams": 132,
-          "match": [
-            "watermelon"
-          ]
+          "match": ["watermelon"]
         },
         {
           "name": "pineapple",
           "grams": 107,
-          "match": [
-            "pineapple"
-          ]
+          "match": ["pineapple"]
         }
       ]
     },
@@ -88,24 +68,17 @@
         {
           "name": "grapes",
           "grams": 52,
-          "match": [
-            "grape"
-          ]
+          "match": ["grape"]
         },
         {
           "name": "almonds",
           "grams": 48,
-          "match": [
-            "almond"
-          ]
+          "match": ["almond"]
         },
         {
           "name": "sausage",
           "grams": 112,
-          "match": [
-            "sausage",
-            "meatball"
-          ]
+          "match": ["sausage", "meatball"]
         }
       ]
     },
@@ -116,18 +89,12 @@
         {
           "name": "sweet potato",
           "grams": 79,
-          "match": [
-            "sweet potato",
-            "yam",
-            "squash"
-          ]
+          "match": ["sweet potato", "yam", "squash"]
         },
         {
           "name": "scrambled eggs",
           "grams": 146,
-          "match": [
-            "egg"
-          ]
+          "match": ["egg"]
         }
       ]
     },
@@ -138,16 +105,12 @@
         {
           "name": "broccoli",
           "grams": 93,
-          "match": [
-            "broccoli"
-          ]
+          "match": ["broccoli"]
         },
         {
           "name": "scrambled eggs",
           "grams": 210,
-          "match": [
-            "egg"
-          ]
+          "match": ["egg"]
         }
       ]
     },
@@ -158,17 +121,12 @@
         {
           "name": "bacon",
           "grams": 47,
-          "match": [
-            "bacon"
-          ]
+          "match": ["bacon"]
         },
         {
           "name": "hash browns",
           "grams": 114,
-          "match": [
-            "hash brown",
-            "potato"
-          ]
+          "match": ["hash brown", "potato"]
         }
       ]
     },
@@ -179,23 +137,17 @@
         {
           "name": "almonds",
           "grams": 86,
-          "match": [
-            "almond"
-          ]
+          "match": ["almond"]
         },
         {
           "name": "cauliflower",
           "grams": 97,
-          "match": [
-            "cauliflower"
-          ]
+          "match": ["cauliflower"]
         },
         {
           "name": "apple",
           "grams": 160,
-          "match": [
-            "apple"
-          ]
+          "match": ["apple"]
         }
       ]
     },
@@ -206,22 +158,12 @@
         {
           "name": "broccoli",
           "grams": 92,
-          "match": [
-            "broccoli"
-          ]
+          "match": ["broccoli"]
         },
         {
           "name": "mixed greens",
           "grams": 55,
-          "match": [
-            "mixed greens",
-            "salad",
-            "lettuce",
-            "spinach",
-            "arugula",
-            "mesclun",
-            "greens"
-          ]
+          "match": ["mixed greens", "salad", "lettuce", "spinach", "arugula", "mesclun", "greens"]
         }
       ]
     },
@@ -232,16 +174,12 @@
         {
           "name": "scrambled eggs",
           "grams": 81,
-          "match": [
-            "egg"
-          ]
+          "match": ["egg"]
         },
         {
           "name": "roasted potatoes",
           "grams": 142,
-          "match": [
-            "potato"
-          ]
+          "match": ["potato"]
         }
       ]
     }
@@ -322,9 +260,7 @@
             "found": true
           }
         ],
-        "extras": [
-          "yogurt, plain"
-        ]
+        "extras": ["yogurt, plain"]
       },
       {
         "id": "dish_1558380557",
@@ -371,9 +307,7 @@
             "found": true
           }
         ],
-        "extras": [
-          "hot sauce"
-        ]
+        "extras": ["hot sauce"]
       },
       {
         "id": "dish_1563898722",
@@ -413,9 +347,7 @@
             "found": true
           }
         ],
-        "extras": [
-          "pico de gallo salsa"
-        ]
+        "extras": ["pico de gallo salsa"]
       },
       {
         "id": "dish_1558722247",
