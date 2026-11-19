@@ -53,7 +53,8 @@ async function main() {
     console.error(
       "Set ANTHROPIC_API_KEY, or the federation variables (ANTHROPIC_FEDERATION_RULE_ID, ANTHROPIC_ORGANIZATION_ID, ANTHROPIC_IDENTITY_TOKEN_FILE); the eval calls Claude and cannot run without them.",
     );
-    process.exit(2);
+    process.exitCode = 2;
+    return;
   }
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8")) as Baseline;
   const results: PhotoResult[] = [];
@@ -69,7 +70,8 @@ async function main() {
       console.error(
         `${photo.id}  ERROR ${code}; stopping, nothing recorded. Fix the cause and rerun.`,
       );
-      process.exit(2);
+      process.exitCode = 2;
+      return;
     }
     results.push(result);
     for (const i of result.items) {
@@ -111,7 +113,8 @@ async function main() {
     writeFileSync(baselinePath, await prettier.format(JSON.stringify(baseline, null, 2), options));
     console.log(`recorded the run in ${baselinePath}`);
   }
-  process.exit(summary.pass ? 0 : 1);
+  // exitCode, not exit(): exit() can cut piped output where stdout is asynchronous (macOS pipes).
+  process.exitCode = summary.pass ? 0 : 1;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) void main();
