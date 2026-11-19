@@ -1,0 +1,188 @@
+{
+  "source": {
+    "dataset": "Nutrition5k (Google Research)",
+    "url": "https://github.com/google-research-datasets/Nutrition5k",
+    "license": "CC BY 4.0",
+    "imagery": "realsense_overhead/<id>/rgb.png, re-encoded as JPEG quality 88",
+    "grams": "dish_metadata_cafe1.csv and dish_metadata_cafe2.csv, weighed per ingredient"
+  },
+  "rule": "An expected item is found when the proposed items naming it add up to within 2x of its weighed grams. The eval passes when at least 90% of expected items are found. Fixed before the first run.",
+  "photos": [
+    {
+      "id": "dish_1562086740",
+      "file": "photos/dish_1562086740.jpg",
+      "expected": [
+        {
+          "name": "scrambled eggs",
+          "grams": 182.0,
+          "match": ["egg"]
+        },
+        {
+          "name": "bacon",
+          "grams": 33.0,
+          "match": ["bacon"]
+        }
+      ]
+    },
+    {
+      "id": "dish_1565640772",
+      "file": "photos/dish_1565640772.jpg",
+      "expected": [
+        {
+          "name": "chicken",
+          "grams": 137.0,
+          "match": ["chicken"]
+        },
+        {
+          "name": "mixed greens",
+          "grams": 54.0,
+          "match": ["mixed greens", "salad", "lettuce", "spinach", "arugula", "mesclun", "greens"]
+        }
+      ]
+    },
+    {
+      "id": "dish_1563468269",
+      "file": "photos/dish_1563468269.jpg",
+      "expected": [
+        {
+          "name": "berries",
+          "grams": 63.0,
+          "match": ["berr"]
+        },
+        {
+          "name": "watermelon",
+          "grams": 132.0,
+          "match": ["watermelon"]
+        },
+        {
+          "name": "pineapple",
+          "grams": 107.0,
+          "match": ["pineapple"]
+        }
+      ]
+    },
+    {
+      "id": "dish_1558380557",
+      "file": "photos/dish_1558380557.jpg",
+      "expected": [
+        {
+          "name": "grapes",
+          "grams": 52.0,
+          "match": ["grape"]
+        },
+        {
+          "name": "almonds",
+          "grams": 48.0,
+          "match": ["almond"]
+        },
+        {
+          "name": "sausage",
+          "grams": 112.0,
+          "match": ["sausage", "meatball"]
+        }
+      ]
+    },
+    {
+      "id": "dish_1561739954",
+      "file": "photos/dish_1561739954.jpg",
+      "expected": [
+        {
+          "name": "sweet potato",
+          "grams": 79.0,
+          "match": ["sweet potato", "yam", "squash"]
+        },
+        {
+          "name": "scrambled eggs",
+          "grams": 146.0,
+          "match": ["egg"]
+        }
+      ]
+    },
+    {
+      "id": "dish_1563898722",
+      "file": "photos/dish_1563898722.jpg",
+      "expected": [
+        {
+          "name": "broccoli",
+          "grams": 93.0,
+          "match": ["broccoli"]
+        },
+        {
+          "name": "scrambled eggs",
+          "grams": 210.0,
+          "match": ["egg"]
+        }
+      ]
+    },
+    {
+      "id": "dish_1574702473",
+      "file": "photos/dish_1574702473.jpg",
+      "expected": [
+        {
+          "name": "bacon",
+          "grams": 47.0,
+          "match": ["bacon"]
+        },
+        {
+          "name": "hash browns",
+          "grams": 114.0,
+          "match": ["hash brown", "potato"]
+        }
+      ]
+    },
+    {
+      "id": "dish_1558722247",
+      "file": "photos/dish_1558722247.jpg",
+      "expected": [
+        {
+          "name": "almonds",
+          "grams": 86.0,
+          "match": ["almond"]
+        },
+        {
+          "name": "cauliflower",
+          "grams": 97.0,
+          "match": ["cauliflower"]
+        },
+        {
+          "name": "apple",
+          "grams": 160.0,
+          "match": ["apple"]
+        }
+      ]
+    },
+    {
+      "id": "dish_1565033110",
+      "file": "photos/dish_1565033110.jpg",
+      "expected": [
+        {
+          "name": "broccoli",
+          "grams": 92.0,
+          "match": ["broccoli"]
+        },
+        {
+          "name": "mixed greens",
+          "grams": 55.0,
+          "match": ["mixed greens", "salad", "lettuce", "spinach", "arugula", "mesclun", "greens"]
+        }
+      ]
+    },
+    {
+      "id": "dish_1562950057",
+      "file": "photos/dish_1562950057.jpg",
+      "expected": [
+        {
+          "name": "scrambled eggs",
+          "grams": 81.0,
+          "match": ["egg"]
+        },
+        {
+          "name": "roasted potatoes",
+          "grams": 142.0,
+          "match": ["potato"]
+        }
+      ]
+    }
+  ],
+  "recorded": null
+}

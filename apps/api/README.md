@@ -244,6 +244,15 @@ npx vitest run --coverage             # from the repo root, as CI runs it: both 
 The first test run downloads a MongoDB binary (about 100 MB, cached in `~/.cache/mongodb-binaries`).
 On an Ubuntu release the downloader does not know yet (26.04 today), set `MONGOMS_DISTRO=ubuntu-2404`.
 
+### Vision eval
+
+`npm run eval:vision -w @healtheat/api` sends the 10 reference photos in `eval/vision/` through
+`proposeItems` once each and grades the answers against weighed grams. An item is found when the proposed
+items naming it add up to within 2x of its weight. The eval passes when 90% of items are found.
+It needs `ANTHROPIC_API_KEY`, costs about $0.15 a run and never runs in CI. Rerun it after any change
+to the photo prompt, the model or the output schema; `-- --record` saves the run as the baseline in
+`eval/vision/baseline.json`. The photos and weights are from Nutrition5k (Google Research, CC BY 4.0).
+
 ## Layout
 
 ```
@@ -276,6 +285,7 @@ src/services/summary.ts  weekly summary: bands, calorie meter, exposure meter an
 src/services/gaps.ts  close the gap: rankGapFoods (amount per kcal, kcal floor, top 6) and gapFoodsFor (GAP_FOODS seed plus cached whole foods, minus avoided allergens)
 src/services/roles.ts setRoles (admin route: atomic conditional role write, lockout guards), usableAdminCount (shared with self-delete), applyAdminBootstrap (ADMIN_USERNAMES)
 src/routes/           one router per resource (health, spike, auth, users, admin, curate, foods, allergens, logs, home, vision); routers never touch fetch or process.env
+eval/vision/            the paid vision eval: run.ts, grade.ts, baseline.json and 10 Nutrition5k photos (CC BY 4.0)
 test/setup.ts         mongodb-memory-server per worker, collections cleared after each test
 test/fixtures/usda/   recorded USDA payloads (search, a Foundation food, a branded food) for the food tests
 ```
