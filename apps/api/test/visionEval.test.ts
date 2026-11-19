@@ -6,6 +6,7 @@ import { VISION_MODEL } from "../src/services/vision.js";
 import {
   type EvalPhoto,
   GRAMS_FACTOR,
+  type PhotoResult,
   PASS_SHARE,
   gradePhoto,
   summarize,
@@ -78,7 +79,12 @@ describe("vision eval baseline", () => {
   const dir = join(__dirname, "../eval/vision");
   const baseline = JSON.parse(readFileSync(join(dir, "baseline.json"), "utf8")) as {
     photos: EvalPhoto[];
-    recorded: { model: string; promptSha256: string; summary: { pass: boolean } } | null;
+    recorded: {
+      model: string;
+      promptSha256: string;
+      summary: ReturnType<typeof summarize>;
+      photos: PhotoResult[];
+    } | null;
   };
 
   // Value: protects=every reference photo exists and is small enough for the route's own size cap, so
@@ -99,12 +105,21 @@ describe("vision eval baseline", () => {
   // Value: protects=the rule that a photo prompt or model change reruns the paid eval: the recorded
   //   baseline must be a passing run of the prompt and model the app sends today; fails_when=SYSTEM_PROMPT
   //   or VISION_MODEL changes without `npm run eval:vision -- --record`; why_new=T18; seam=none;
-  //   no_claim=model quality (only the recorded run measures that)
-  it("was recorded as a passing run of today's photo prompt and model", () => {
+  //   no_claim=model quality (only the recorded run measures that). Extended: protects=the recorded run
+  //   graded the same photos and weighed items the eval uses today, and its summary is what the rule
+  //   gives; fails_when=expected grams, items or photos are edited without re-recording
+  it("was recorded as a passing run of today's photo prompt, model, photos and weights", () => {
     expect(baseline.recorded).toMatchObject({
       model: VISION_MODEL,
       promptSha256: promptSha256(),
       summary: { pass: true },
     });
+    const recorded = baseline.recorded!;
+    expect(
+      recorded.photos.map((r) => ({ id: r.id, items: r.items.map((i) => [i.name, i.weighed]) })),
+    ).toEqual(
+      baseline.photos.map((p) => ({ id: p.id, items: p.expected.map((e) => [e.name, e.grams]) })),
+    );
+    expect(summarize(recorded.photos)).toEqual(recorded.summary);
   });
 });
