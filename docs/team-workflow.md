@@ -15,7 +15,11 @@ Status: agreed; set up on 2026-11-02 (URLs in README.md).
    recognition (`ANTHROPIC_API_KEY` on the API), created in an Anthropic Console workspace
    `healtheat-app` with a **USD 30 monthly spend limit**. It lives in Vercel env and GCP
    Secret Manager, never in the repo or a prompt. CI's PR review runs on the owner's
-   subscription through a `claude setup-token` token (section 4).
+   subscription through a `claude setup-token` token (section 4). The vision eval
+   (`npm run eval:vision`, run by hand, never in CI) can sign in without a key, through workload
+   identity federation. A Console rule trusts short-lived ID tokens of a Google service account in the dev GCP project, which the
+   owner's Google account may mint (`roles/iam.serviceAccountOpenIdTokenCreator`). Nothing is
+   stored, and each token lasts at most 10 minutes.
 2. **Vercel Hobby (free) has no team members.** A commit authored by a GitHub account
    that is not the Vercel project owner is refused by the Git integration
    ("the git author must have access to the project"). The fix is to **deploy from

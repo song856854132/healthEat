@@ -14,7 +14,8 @@ export const VISION_MODEL = "claude-opus-5-5";
 /** A stuck call fails fast with a retryable error, well inside the function's 300 s window. */
 export const VISION_TIMEOUT_MS = 60_000;
 
-const SYSTEM_PROMPT = `You look at a photo of a meal and list the foods you can see, so the user can log them.
+/** The instructions sent with every photo; the vision eval (T18) records their hash with its baseline. */
+export const SYSTEM_PROMPT = `You look at a photo of a meal and list the foods you can see, so the user can log them.
 
 For each distinct food, give:
 - query: a short, plain name a person would type into the USDA FoodData Central search, such as "white rice, cooked" or "banana, raw". One food per item; split a plate into its parts.

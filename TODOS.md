@@ -68,7 +68,7 @@
 
 **Why:** Deferred from plan: `~/.claude/plans/resume-the-unfinished-implementation-federated-otter.md` (Step 8, T13 owner step). The follow-ups are the non-blocking notes of the T13 review; spend is already capped at 30 calls per member per day.
 
-**Context:** `apps/api/src/services/vision.ts`, `apps/api/src/services/visionUsage.ts`; T18 (vision eval) needs the key too.
+**Context:** `apps/api/src/services/vision.ts`, `apps/api/src/services/visionUsage.ts`; T18 (vision eval) recorded its baseline through workload identity federation, so it does not need the key.
 
 **Effort:** S
 **Priority:** P1
