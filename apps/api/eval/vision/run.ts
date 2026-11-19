@@ -105,7 +105,10 @@ async function main() {
       summary,
       photos: results,
     };
-    writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
+    // Written through Prettier so the recorded file passes the repo's format check as it is.
+    const prettier = await import("prettier");
+    const options = { ...(await prettier.resolveConfig(baselinePath)), filepath: baselinePath };
+    writeFileSync(baselinePath, await prettier.format(JSON.stringify(baseline, null, 2), options));
     console.log(`recorded the run in ${baselinePath}`);
   }
   process.exit(summary.pass ? 0 : 1);
