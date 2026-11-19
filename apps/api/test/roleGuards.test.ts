@@ -112,6 +112,10 @@ describe("role guards", () => {
       },
       { name: "GET /api/users/me/summary", send: (a) => a.get("/api/users/me/summary") },
       {
+        name: "GET /api/users/me/gaps/:nutrientId/foods",
+        send: (a) => a.get("/api/users/me/gaps/1109/foods"),
+      },
+      {
         name: "POST /api/vision/meal",
         send: (a) => a.post("/api/vision/meal").send({ image: "AAAA", mediaType: "image/jpeg" }),
       },
