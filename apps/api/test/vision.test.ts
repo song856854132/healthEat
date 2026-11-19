@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { Anthropic } from "@anthropic-ai/sdk";
 import type { Types } from "mongoose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
