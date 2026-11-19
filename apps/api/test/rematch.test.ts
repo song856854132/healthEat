@@ -648,15 +648,16 @@ describe("re-match batch check after its write (#46 review notes)", () => {
 });
 
 describe("DELETE /api/allergens/:id", () => {
-  it("removes the entry with its FoodAllergen and UserAllergen rows, and counts the Curator's edit", async () => {
+  it("removes the entry with its FoodAllergen and (track-mode) UserAllergen rows, and counts the Curator's edit", async () => {
     await cacheFoods(6);
     const id = await peanutId();
     await startRematch(id);
     await rematchAllergen(id);
     const { agent: member } = await login("mia");
+    // Tracked, not avoided: an avoided allergen cannot be deleted (#52, next test).
     await member
       .put("/api/users/me/allergens")
-      .send({ allergens: [{ key: "peanuts" }, { key: "soy" }] })
+      .send({ allergens: [{ key: "peanuts", mode: "track" }, { key: "soy" }] })
       .expect(200);
     const { agent: cura, user } = await login("cura", ["member", "curator"]);
 
@@ -673,6 +674,42 @@ describe("DELETE /api/allergens/:id", () => {
     // A seed entry a Curator deleted stays deleted (T11 marker).
     await request(app).get("/api/allergens").expect(200);
     expect(await Allergen.exists({ key: "peanuts" })).toBeNull();
+  });
+
+  it("refuses with 409 while a member avoids the allergen, changing nothing, until no one does (#52)", async () => {
+    await cacheFoods(6);
+    const id = await peanutId();
+    await startRematch(id);
+    await rematchAllergen(id);
+    const rows = await FoodAllergen.countDocuments({ allergenId: id });
+    expect(rows).toBeGreaterThan(0);
+    const { agent: mia } = await login("mia");
+    const { agent: max } = await login("max");
+    await mia
+      .put("/api/users/me/allergens")
+      .send({ allergens: [{ key: "peanuts" }] }) // allergy tier: avoid by default
+      .expect(200);
+    await max
+      .put("/api/users/me/allergens")
+      .send({ allergens: [{ key: "peanuts", mode: "track" }] })
+      .expect(200);
+    const { agent: cura, user } = await login("cura", ["member", "curator"]);
+
+    const res = await cura.delete(`/api/allergens/${id}`).expect(409);
+    expect(res.body).toMatchObject({ error: "allergen_avoided", details: { members: 1 } });
+    expect(await Allergen.exists({ _id: id })).not.toBeNull();
+    expect(await FoodAllergen.countDocuments({ allergenId: id })).toBe(rows);
+    expect(await UserAllergen.countDocuments({ allergenId: id })).toBe(2);
+    expect((await CuratorProfile.findOne({ userId: user._id }).lean())?.editsCount ?? 0).toBe(0);
+
+    // Once the avoider switches to tracking, the delete goes through and sweeps both settings.
+    await mia
+      .put("/api/users/me/allergens")
+      .send({ allergens: [{ key: "peanuts", mode: "track" }] })
+      .expect(200);
+    await cura.delete(`/api/allergens/${id}`).expect(204);
+    expect(await Allergen.exists({ _id: id })).toBeNull();
+    expect(await UserAllergen.countDocuments({ allergenId: id })).toBe(0);
   });
 
   it("is 401 without a session, 403 for a member, 404 for an unknown or malformed id", async () => {
