@@ -16,6 +16,7 @@ import { foodsRouter } from "./routes/foods.js";
 import { homeRouter } from "./routes/home.js";
 import { allergensRouter } from "./routes/allergens.js";
 import { logsRouter } from "./routes/logs.js";
+import { visionRouter } from "./routes/vision.js";
 import { requireDb } from "./lib/db.js";
 import { sessionMiddleware } from "./lib/session.js";
 import { errorHandler, notFound } from "./middleware/error.js";
@@ -46,6 +47,8 @@ app.use("/api/users", ...withSession, usersRouter);
 app.use("/api/admin", ...withSession, adminRouter);
 app.use("/api/curate", ...withSession, curateRouter);
 app.use("/api/logs", ...withSession, logsRouter);
+// Photo logging (T13): member only; 503 vision_unavailable when ANTHROPIC_API_KEY is unset.
+app.use("/api/vision", ...withSession, visionRouter);
 // Public: search is session-free; details read the session (routes/foods.ts) to add a signed-in
 // caller's local data. The database answers for the USDA caches and the local data (T28).
 // gstack-shortcut(dec-c0d8580f-f9cf-4938-a944-15a9d2ab1b5e): no abuse limit on these routes (a script can

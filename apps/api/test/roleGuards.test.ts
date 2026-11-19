@@ -115,6 +115,10 @@ describe("role guards", () => {
         name: "GET /api/users/me/gaps/:nutrientId/foods",
         send: (a) => a.get("/api/users/me/gaps/1109/foods"),
       },
+      {
+        name: "POST /api/vision/meal",
+        send: (a) => a.post("/api/vision/meal").send({ image: "AAAA", mediaType: "image/jpeg" }),
+      },
     ];
     for (const call of calls) {
       const res = await call.send(agent);

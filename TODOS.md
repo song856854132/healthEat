@@ -62,4 +62,16 @@
 **Priority:** P3
 **Depends on:** T22
 
+### Photo logging: set the Anthropic key, then tighten refusals and spend
+
+**What:** (1) The owner sets `ANTHROPIC_API_KEY` in Vercel (Preview and Production, API project) and in `~/.env.staging` on the dev VM; until then `POST /api/vision/meal` answers `503 vision_unavailable`. (2) Then, before members rely on it: tell a refusal that comes back with text apart from an unparseable answer (call `messages.create`, check `stop_reason` before parsing) so a declined photo says "log the meal by search" instead of "try again"; refund unbilled upstream failures (bad key, 5xx, overload) without spending the daily refund allowance; lower `max_tokens` toward the cost model; decide on an app-wide daily photo ceiling.
+
+**Why:** Deferred from plan: `~/.claude/plans/resume-the-unfinished-implementation-federated-otter.md` (Step 8, T13 owner step). The follow-ups are the non-blocking notes of the T13 review; spend is already capped at 30 calls per member per day.
+
+**Context:** `apps/api/src/services/vision.ts`, `apps/api/src/services/visionUsage.ts`; T18 (vision eval) needs the key too.
+
+**Effort:** S
+**Priority:** P1
+**Depends on:** the owner's key
+
 ## Completed
