@@ -14,13 +14,17 @@
       "expected": [
         {
           "name": "scrambled eggs",
-          "grams": 182.0,
-          "match": ["egg"]
+          "grams": 182,
+          "match": [
+            "egg"
+          ]
         },
         {
           "name": "bacon",
-          "grams": 33.0,
-          "match": ["bacon"]
+          "grams": 33,
+          "match": [
+            "bacon"
+          ]
         }
       ]
     },
@@ -30,13 +34,23 @@
       "expected": [
         {
           "name": "chicken",
-          "grams": 137.0,
-          "match": ["chicken"]
+          "grams": 137,
+          "match": [
+            "chicken"
+          ]
         },
         {
           "name": "mixed greens",
-          "grams": 54.0,
-          "match": ["mixed greens", "salad", "lettuce", "spinach", "arugula", "mesclun", "greens"]
+          "grams": 54,
+          "match": [
+            "mixed greens",
+            "salad",
+            "lettuce",
+            "spinach",
+            "arugula",
+            "mesclun",
+            "greens"
+          ]
         }
       ]
     },
@@ -46,18 +60,24 @@
       "expected": [
         {
           "name": "berries",
-          "grams": 63.0,
-          "match": ["berr"]
+          "grams": 63,
+          "match": [
+            "berr"
+          ]
         },
         {
           "name": "watermelon",
-          "grams": 132.0,
-          "match": ["watermelon"]
+          "grams": 132,
+          "match": [
+            "watermelon"
+          ]
         },
         {
           "name": "pineapple",
-          "grams": 107.0,
-          "match": ["pineapple"]
+          "grams": 107,
+          "match": [
+            "pineapple"
+          ]
         }
       ]
     },
@@ -67,18 +87,25 @@
       "expected": [
         {
           "name": "grapes",
-          "grams": 52.0,
-          "match": ["grape"]
+          "grams": 52,
+          "match": [
+            "grape"
+          ]
         },
         {
           "name": "almonds",
-          "grams": 48.0,
-          "match": ["almond"]
+          "grams": 48,
+          "match": [
+            "almond"
+          ]
         },
         {
           "name": "sausage",
-          "grams": 112.0,
-          "match": ["sausage", "meatball"]
+          "grams": 112,
+          "match": [
+            "sausage",
+            "meatball"
+          ]
         }
       ]
     },
@@ -88,13 +115,19 @@
       "expected": [
         {
           "name": "sweet potato",
-          "grams": 79.0,
-          "match": ["sweet potato", "yam", "squash"]
+          "grams": 79,
+          "match": [
+            "sweet potato",
+            "yam",
+            "squash"
+          ]
         },
         {
           "name": "scrambled eggs",
-          "grams": 146.0,
-          "match": ["egg"]
+          "grams": 146,
+          "match": [
+            "egg"
+          ]
         }
       ]
     },
@@ -104,13 +137,17 @@
       "expected": [
         {
           "name": "broccoli",
-          "grams": 93.0,
-          "match": ["broccoli"]
+          "grams": 93,
+          "match": [
+            "broccoli"
+          ]
         },
         {
           "name": "scrambled eggs",
-          "grams": 210.0,
-          "match": ["egg"]
+          "grams": 210,
+          "match": [
+            "egg"
+          ]
         }
       ]
     },
@@ -120,13 +157,18 @@
       "expected": [
         {
           "name": "bacon",
-          "grams": 47.0,
-          "match": ["bacon"]
+          "grams": 47,
+          "match": [
+            "bacon"
+          ]
         },
         {
           "name": "hash browns",
-          "grams": 114.0,
-          "match": ["hash brown", "potato"]
+          "grams": 114,
+          "match": [
+            "hash brown",
+            "potato"
+          ]
         }
       ]
     },
@@ -136,18 +178,24 @@
       "expected": [
         {
           "name": "almonds",
-          "grams": 86.0,
-          "match": ["almond"]
+          "grams": 86,
+          "match": [
+            "almond"
+          ]
         },
         {
           "name": "cauliflower",
-          "grams": 97.0,
-          "match": ["cauliflower"]
+          "grams": 97,
+          "match": [
+            "cauliflower"
+          ]
         },
         {
           "name": "apple",
-          "grams": 160.0,
-          "match": ["apple"]
+          "grams": 160,
+          "match": [
+            "apple"
+          ]
         }
       ]
     },
@@ -157,13 +205,23 @@
       "expected": [
         {
           "name": "broccoli",
-          "grams": 92.0,
-          "match": ["broccoli"]
+          "grams": 92,
+          "match": [
+            "broccoli"
+          ]
         },
         {
           "name": "mixed greens",
-          "grams": 55.0,
-          "match": ["mixed greens", "salad", "lettuce", "spinach", "arugula", "mesclun", "greens"]
+          "grams": 55,
+          "match": [
+            "mixed greens",
+            "salad",
+            "lettuce",
+            "spinach",
+            "arugula",
+            "mesclun",
+            "greens"
+          ]
         }
       ]
     },
@@ -173,16 +231,259 @@
       "expected": [
         {
           "name": "scrambled eggs",
-          "grams": 81.0,
-          "match": ["egg"]
+          "grams": 81,
+          "match": [
+            "egg"
+          ]
         },
         {
           "name": "roasted potatoes",
-          "grams": 142.0,
-          "match": ["potato"]
+          "grams": 142,
+          "match": [
+            "potato"
+          ]
         }
       ]
     }
   ],
-  "recorded": null
+  "recorded": {
+    "at": "2026-11-19T03:17:44.720Z",
+    "model": "claude-opus-5-5",
+    "promptSha256": "276d0221dc492ba0cb8e989dd59012547c9378f406a20ecdf9a6e8800e7a9fa4",
+    "summary": {
+      "found": 23,
+      "expected": 23,
+      "share": 1,
+      "pass": true
+    },
+    "photos": [
+      {
+        "id": "dish_1562086740",
+        "items": [
+          {
+            "name": "scrambled eggs",
+            "weighed": 182,
+            "proposed": 150,
+            "ratio": 0.8241758241758241,
+            "found": true
+          },
+          {
+            "name": "bacon",
+            "weighed": 33,
+            "proposed": 20,
+            "ratio": 0.6060606060606061,
+            "found": true
+          }
+        ],
+        "extras": []
+      },
+      {
+        "id": "dish_1565640772",
+        "items": [
+          {
+            "name": "chicken",
+            "weighed": 137,
+            "proposed": 130,
+            "ratio": 0.948905109489051,
+            "found": true
+          },
+          {
+            "name": "mixed greens",
+            "weighed": 54,
+            "proposed": 60,
+            "ratio": 1.1111111111111112,
+            "found": true
+          }
+        ],
+        "extras": []
+      },
+      {
+        "id": "dish_1563468269",
+        "items": [
+          {
+            "name": "berries",
+            "weighed": 63,
+            "proposed": 70,
+            "ratio": 1.1111111111111112,
+            "found": true
+          },
+          {
+            "name": "watermelon",
+            "weighed": 132,
+            "proposed": 150,
+            "ratio": 1.1363636363636365,
+            "found": true
+          },
+          {
+            "name": "pineapple",
+            "weighed": 107,
+            "proposed": 150,
+            "ratio": 1.4018691588785046,
+            "found": true
+          }
+        ],
+        "extras": [
+          "yogurt, plain"
+        ]
+      },
+      {
+        "id": "dish_1558380557",
+        "items": [
+          {
+            "name": "grapes",
+            "weighed": 52,
+            "proposed": 60,
+            "ratio": 1.1538461538461537,
+            "found": true
+          },
+          {
+            "name": "almonds",
+            "weighed": 48,
+            "proposed": 30,
+            "ratio": 0.625,
+            "found": true
+          },
+          {
+            "name": "sausage",
+            "weighed": 112,
+            "proposed": 85,
+            "ratio": 0.7589285714285714,
+            "found": true
+          }
+        ],
+        "extras": []
+      },
+      {
+        "id": "dish_1561739954",
+        "items": [
+          {
+            "name": "sweet potato",
+            "weighed": 79,
+            "proposed": 120,
+            "ratio": 1.518987341772152,
+            "found": true
+          },
+          {
+            "name": "scrambled eggs",
+            "weighed": 146,
+            "proposed": 150,
+            "ratio": 1.0273972602739727,
+            "found": true
+          }
+        ],
+        "extras": [
+          "hot sauce"
+        ]
+      },
+      {
+        "id": "dish_1563898722",
+        "items": [
+          {
+            "name": "broccoli",
+            "weighed": 93,
+            "proposed": 120,
+            "ratio": 1.2903225806451613,
+            "found": true
+          },
+          {
+            "name": "scrambled eggs",
+            "weighed": 210,
+            "proposed": 150,
+            "ratio": 0.7142857142857143,
+            "found": true
+          }
+        ],
+        "extras": []
+      },
+      {
+        "id": "dish_1574702473",
+        "items": [
+          {
+            "name": "bacon",
+            "weighed": 47,
+            "proposed": 25,
+            "ratio": 0.5319148936170213,
+            "found": true
+          },
+          {
+            "name": "hash browns",
+            "weighed": 114,
+            "proposed": 120,
+            "ratio": 1.0526315789473684,
+            "found": true
+          }
+        ],
+        "extras": [
+          "pico de gallo salsa"
+        ]
+      },
+      {
+        "id": "dish_1558722247",
+        "items": [
+          {
+            "name": "almonds",
+            "weighed": 86,
+            "proposed": 60,
+            "ratio": 0.6976744186046512,
+            "found": true
+          },
+          {
+            "name": "cauliflower",
+            "weighed": 97,
+            "proposed": 100,
+            "ratio": 1.0309278350515463,
+            "found": true
+          },
+          {
+            "name": "apple",
+            "weighed": 160,
+            "proposed": 150,
+            "ratio": 0.9375,
+            "found": true
+          }
+        ],
+        "extras": []
+      },
+      {
+        "id": "dish_1565033110",
+        "items": [
+          {
+            "name": "broccoli",
+            "weighed": 92,
+            "proposed": 120,
+            "ratio": 1.3043478260869565,
+            "found": true
+          },
+          {
+            "name": "mixed greens",
+            "weighed": 55,
+            "proposed": 60,
+            "ratio": 1.0909090909090908,
+            "found": true
+          }
+        ],
+        "extras": []
+      },
+      {
+        "id": "dish_1562950057",
+        "items": [
+          {
+            "name": "scrambled eggs",
+            "weighed": 81,
+            "proposed": 110,
+            "ratio": 1.3580246913580247,
+            "found": true
+          },
+          {
+            "name": "roasted potatoes",
+            "weighed": 142,
+            "proposed": 160,
+            "ratio": 1.1267605633802817,
+            "found": true
+          }
+        ],
+        "extras": []
+      }
+    ]
+  }
 }
