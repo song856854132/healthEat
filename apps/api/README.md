@@ -253,6 +253,12 @@ It needs `ANTHROPIC_API_KEY`, costs about $0.15 a run and never runs in CI. Reru
 to the photo prompt, the model or the output schema; `-- --record` saves the run as the baseline in
 `eval/vision/baseline.json`. The photos and weights are from Nutrition5k (Google Research, CC BY 4.0).
 
+Without an API key the eval authenticates through workload identity federation. Set
+`ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_IDENTITY_TOKEN_FILE`, a file
+holding a Google service account ID token minted with
+`gcloud auth print-identity-token --impersonate-service-account=<sa> --audiences=https://api.anthropic.com --include-email`.
+The Console rule must match that token's audience and pin the account's `sub` and `email`.
+
 ## Layout
 
 ```

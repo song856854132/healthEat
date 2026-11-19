@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Anthropic } from "@anthropic-ai/sdk";
 import { HttpError } from "../../src/lib/http.js";
 import {
   SYSTEM_PROMPT,
   VISION_MODEL,
+  VISION_TIMEOUT_MS,
   proposeItems,
   visionClient,
 } from "../../src/services/vision.js";
@@ -17,6 +19,7 @@ import { type EvalPhoto, type PhotoResult, gradePhoto, summarize } from "./grade
 //
 //   ANTHROPIC_API_KEY=... npm run eval:vision -w @healtheat/api            grade and print PASS or FAIL
 //   ANTHROPIC_API_KEY=... npm run eval:vision -w @healtheat/api -- --record   also save the run as the baseline
+//   Or, with no API key, the workload identity federation variables (apps/api/README.md, Vision eval).
 
 type Baseline = {
   rule: string;
@@ -38,9 +41,18 @@ export const promptSha256 = () => createHash("sha256").update(SYSTEM_PROMPT).dig
 
 async function main() {
   const record = process.argv.includes("--record");
-  const client = visionClient();
+  // The app's client needs ANTHROPIC_API_KEY. Without one, the eval can authenticate through workload
+  // identity federation: the SDK exchanges ANTHROPIC_IDENTITY_TOKEN_FILE under ANTHROPIC_FEDERATION_RULE_ID
+  // for a short-lived token, with the app's timeout and no retries.
+  const client =
+    visionClient() ??
+    (process.env.ANTHROPIC_FEDERATION_RULE_ID
+      ? new Anthropic({ timeout: VISION_TIMEOUT_MS, maxRetries: 0 })
+      : null);
   if (!client) {
-    console.error("ANTHROPIC_API_KEY is not set; the eval calls Claude and cannot run without it.");
+    console.error(
+      "Set ANTHROPIC_API_KEY, or the federation variables (ANTHROPIC_FEDERATION_RULE_ID, ANTHROPIC_ORGANIZATION_ID, ANTHROPIC_IDENTITY_TOKEN_FILE); the eval calls Claude and cannot run without them.",
+    );
     process.exit(2);
   }
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8")) as Baseline;
