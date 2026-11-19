@@ -202,6 +202,92 @@ describe("POST /api/users/me/logs", () => {
   });
 });
 
+describe("POST /api/users/me/logs with a requestId (#51)", () => {
+  const RID = "6f1c2b9e-3d4a-4f5b-9c8d-7e6f5a4b3c2d";
+  const body = { fdcId: 2095236, grams: 30, meal: "lunch", requestId: RID };
+
+  it("answers a repeat with the first entry (200), writing nothing and fetching nothing", async () => {
+    const alice = await member("alice");
+    await alice
+      .put("/api/users/me/allergens")
+      .send({ allergens: [{ key: "milk" }] })
+      .expect(200);
+    const first = await alice.post("/api/users/me/logs").send(body).expect(201);
+    const fetches = fetchMock.mock.calls.length;
+    const again = await alice.post("/api/users/me/logs").send(body).expect(200);
+    expect(LogEntryCreated.parse(again.body)).toEqual(LogEntryCreated.parse(first.body));
+    expect(again.body.alerts.map((a: { key: string }) => a.key)).toEqual(["milk"]);
+    expect(await LogEntry.countDocuments()).toBe(1);
+    expect(fetchMock.mock.calls.length).toBe(fetches);
+  });
+
+  it("keeps the first date for a repeat without one, and matches a repeat that names it", async () => {
+    const alice = await member("alice");
+    const first = await alice.post("/api/users/me/logs").send(body).expect(201);
+    await alice
+      .post("/api/users/me/logs")
+      .send({ ...body, date: first.body.entry.date })
+      .expect(200);
+    expect(await LogEntry.countDocuments()).toBe(1);
+  });
+
+  it("refuses the same requestId with a different food, amount, meal or date (409), writing nothing", async () => {
+    const alice = await member("alice");
+    await alice.post("/api/users/me/logs").send(body).expect(201);
+    for (const changed of [
+      { grams: 31 },
+      { meal: "dinner" },
+      { fdcId: 999001 },
+      { date: daysBefore(utcToday(), 1) },
+    ]) {
+      const res = await alice
+        .post("/api/users/me/logs")
+        .send({ ...body, ...changed })
+        .expect(409);
+      expect(res.body.error).toBe("request_id_conflict");
+    }
+    expect(await LogEntry.countDocuments()).toBe(1);
+  });
+
+  it("writes one entry when two copies race, and both answer it", async () => {
+    const alice = await member("alice");
+    await alice.post("/api/users/me/logs").send({ ...body, requestId: undefined }); // cache the food
+    await LogEntry.deleteMany({});
+    const [a, b] = await Promise.all([
+      alice.post("/api/users/me/logs").send(body),
+      alice.post("/api/users/me/logs").send(body),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 201]);
+    expect(a.body.entry.id).toBe(b.body.entry.id);
+    expect(await LogEntry.countDocuments()).toBe(1);
+  });
+
+  it("treats another member's identical requestId as their own", async () => {
+    const alice = await member("alice");
+    const bob = await member("bob");
+    await alice.post("/api/users/me/logs").send(body).expect(201);
+    await bob.post("/api/users/me/logs").send(body).expect(201);
+    expect(await LogEntry.countDocuments()).toBe(2);
+  });
+
+  it("still writes two entries for two posts without a requestId", async () => {
+    const alice = await member("alice");
+    const plain = { fdcId: 2095236, grams: 30, meal: "lunch" };
+    await alice.post("/api/users/me/logs").send(plain).expect(201);
+    await alice.post("/api/users/me/logs").send(plain).expect(201);
+    expect(await LogEntry.countDocuments()).toBe(2);
+  });
+
+  it("refuses a requestId that is not a UUID", async () => {
+    const alice = await member("alice");
+    await alice
+      .post("/api/users/me/logs")
+      .send({ ...body, requestId: "tap-1" })
+      .expect(400);
+    expect(await LogEntry.countDocuments()).toBe(0);
+  });
+});
+
 describe("GET /api/users/me/logs", () => {
   it("lists only the caller's entries in the range, by date, meal and time, with the food's name", async () => {
     const alice = await member("alice");
@@ -413,6 +499,13 @@ describe("indexes", () => {
     const logIdx = await LogEntry.collection.indexes();
     expect(logIdx).toContainEqual(expect.objectContaining({ key: { userId: 1, date: 1 } }));
     expect(logIdx).toContainEqual(expect.objectContaining({ key: { date: 1 } }));
+    expect(logIdx).toContainEqual(
+      expect.objectContaining({
+        key: { userId: 1, requestId: 1 },
+        unique: true,
+        partialFilterExpression: { requestId: { $type: "string" } },
+      }),
+    );
     expect(await UserAllergen.collection.indexes()).toContainEqual(
       expect.objectContaining({ key: { userId: 1, allergenId: 1 }, unique: true }),
     );

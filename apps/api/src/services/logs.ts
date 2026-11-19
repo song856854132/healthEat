@@ -108,36 +108,96 @@ async function avoidedKeys(userId: Types.ObjectId): Promise<Set<string>> {
   return new Set(allergens.map((a) => a.key));
 }
 
+let indexesReady: Promise<unknown> | undefined;
+/** The requestId unique index must exist before the first insert relies on it (#51). */
+const ensureIndexes = () =>
+  (indexesReady ??= LogEntry.createIndexes().catch((err: unknown) => {
+    indexesReady = undefined;
+    throw err;
+  }));
+
+const isDuplicate = (err: unknown) => (err as { code?: number }).code === 11000;
+
+/** An entry's answer: the entry plus every avoid-mode allergen its food matched. */
+async function created(
+  userId: Types.ObjectId,
+  entry: EntryDoc,
+  allergens: AllergenAlert[],
+): Promise<LogEntryCreated> {
+  const avoided = await avoidedKeys(userId);
+  const [view] = await views([entry]);
+  return { entry: view, alerts: allergens.filter((a) => avoided.has(a.key)) };
+}
+
+/**
+ * The entry an earlier create with this requestId wrote, answered again. A different food, amount,
+ * meal or date under the same requestId is a client bug, refused with 409. A repeat without a date
+ * keeps the first request's date, so a retry that lands after midnight still matches.
+ */
+async function replay(
+  userId: Types.ObjectId,
+  input: LogEntryCreateInput,
+  now: Date,
+): Promise<LogEntryCreated | null> {
+  const first = (await LogEntry.findOne({
+    userId,
+    requestId: input.requestId,
+  }).lean()) as EntryDoc | null;
+  if (!first) return null;
+  if (
+    first.fdcId !== input.fdcId ||
+    first.grams !== input.grams ||
+    first.meal !== input.meal ||
+    (input.date !== undefined && first.date !== input.date)
+  )
+    throw new HttpError(409, "request_id_conflict", "this requestId already logged another entry");
+  const food = await getFood(first.fdcId, now);
+  return created(userId, first, food.allergens);
+}
+
 /**
  * POST /api/users/me/logs. The food is fetched from USDA and matched against the allergen dictionary
  * first when it is not cached (R3-25), so the entry never points at an unknown food and the alert check
  * sees its allergens. A date after the member's today is refused; an earlier date backfills a past day
- * and still returns its alerts (R3-26).
+ * and still returns its alerts (R3-26). With a `requestId` the create is idempotent (#51): a repeat
+ * answers the first entry with `created: false` and writes nothing, also when two copies race (the
+ * unique index lets one insert win and the other reads it back).
  */
 export async function createLog(
   userId: Types.ObjectId,
   input: LogEntryCreateInput,
   now = new Date(),
-): Promise<LogEntryCreated> {
+): Promise<LogEntryCreated & { created: boolean }> {
+  if (input.requestId) {
+    await ensureIndexes();
+    const again = await replay(userId, input, now);
+    if (again) return { ...again, created: false };
+  }
   const today = await memberToday(userId, now);
   const date = input.date ?? today;
   if (date > today)
     throw new HttpError(400, "date_in_future", `the latest date you can log is ${today}`);
   const food = await getFood(input.fdcId, now);
-  const entry = await LogEntry.create({
-    userId,
-    date,
-    meal: input.meal,
-    fdcId: food.fdcId,
-    grams: input.grams,
-    source: "search",
-    confidence: 1,
-    createdAt: now,
-  });
-  const avoided = await avoidedKeys(userId);
-  const alerts: AllergenAlert[] = food.allergens.filter((a) => avoided.has(a.key));
-  const [view] = await views([entry.toObject() as EntryDoc]);
-  return { entry: view, alerts };
+  let entry;
+  try {
+    entry = await LogEntry.create({
+      userId,
+      date,
+      meal: input.meal,
+      fdcId: food.fdcId,
+      grams: input.grams,
+      source: "search",
+      confidence: 1,
+      createdAt: now,
+      ...(input.requestId ? { requestId: input.requestId } : {}),
+    });
+  } catch (err) {
+    if (!input.requestId || !isDuplicate(err)) throw err;
+    const winner = await replay(userId, input, now);
+    if (!winner) throw err;
+    return { ...winner, created: false };
+  }
+  return { ...(await created(userId, entry.toObject() as EntryDoc, food.allergens)), created: true };
 }
 
 /** PUT /api/logs/:id: grams and meal only (R3-27); the entry was already checked to be the caller's. */
