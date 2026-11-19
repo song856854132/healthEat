@@ -63,9 +63,13 @@ async function main() {
     try {
       result = gradePhoto(photo, await proposeItems(client, { image, mediaType: "image/jpeg" }));
     } catch (err) {
+      // A failed call (a bad credential, an outage, a timeout) is not a model answer to grade: stop before
+      // spending on the remaining photos, and never record it as the baseline.
       const code = err instanceof HttpError ? err.code : String(err);
-      console.log(`${photo.id}  ERROR ${code}`);
-      result = { ...gradePhoto(photo, []), extras: [`error: ${code}`] };
+      console.error(
+        `${photo.id}  ERROR ${code}; stopping, nothing recorded. Fix the cause and rerun.`,
+      );
+      process.exit(2);
     }
     results.push(result);
     for (const i of result.items) {
