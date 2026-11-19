@@ -2,6 +2,7 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { MAX_VISION_IMAGE_BYTES } from "@healtheat/shared";
 import { describe, expect, it } from "vitest";
+import { VISION_MODEL } from "../src/services/vision.js";
 import {
   type EvalPhoto,
   GRAMS_FACTOR,
@@ -9,6 +10,7 @@ import {
   gradePhoto,
   summarize,
 } from "../eval/vision/grade.js";
+import { promptSha256 } from "../eval/vision/run.js";
 
 const photo: EvalPhoto = {
   id: "dish",
@@ -76,6 +78,7 @@ describe("vision eval baseline", () => {
   const dir = join(__dirname, "../eval/vision");
   const baseline = JSON.parse(readFileSync(join(dir, "baseline.json"), "utf8")) as {
     photos: EvalPhoto[];
+    recorded: { model: string; promptSha256: string; summary: { pass: boolean } } | null;
   };
 
   // Value: protects=every reference photo exists and is small enough for the route's own size cap, so
@@ -91,5 +94,17 @@ describe("vision eval baseline", () => {
         expect(e.match.every((m) => m === m.toLowerCase() && m.length > 0)).toBe(true);
       }
     }
+  });
+
+  // Value: protects=the rule that a photo prompt or model change reruns the paid eval: the recorded
+  //   baseline must be a passing run of the prompt and model the app sends today; fails_when=SYSTEM_PROMPT
+  //   or VISION_MODEL changes without `npm run eval:vision -- --record`; why_new=T18; seam=none;
+  //   no_claim=model quality (only the recorded run measures that)
+  it("was recorded as a passing run of today's photo prompt and model", () => {
+    expect(baseline.recorded).toMatchObject({
+      model: VISION_MODEL,
+      promptSha256: promptSha256(),
+      summary: { pass: true },
+    });
   });
 });
