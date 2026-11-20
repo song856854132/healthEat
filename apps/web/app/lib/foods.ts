@@ -6,6 +6,7 @@ import {
   LogEntryCreated,
 } from "@healtheat/shared";
 import type { FoodDataType, LogEntryCreateInput } from "@healtheat/shared";
+import { apiFetch } from "./api";
 
 // Browser-side calls to the food and log routes (apps/api/README.md, REST table). Same-origin only:
 // the Next.js rewrite proxies /api/* to Express, so there is no API URL in the client and the
@@ -90,7 +91,8 @@ async function getJson<T>(
 ): Promise<Result<T>> {
   let res: Response;
   try {
-    res = await fetch(url, { credentials: "same-origin", cache: "no-store", ...init });
+    // apiFetch: a 401 from the log call also tells the nav the session is gone.
+    res = await apiFetch(url, init);
   } catch (err) {
     if (init.signal?.aborted) throw err; // the caller moved on; nothing to show
     return { ok: false, failure: NETWORK };
