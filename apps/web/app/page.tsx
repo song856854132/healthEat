@@ -17,6 +17,9 @@ export default function Home() {
       </p>
       <p>More is coming soon.</p>
       <Spike />
+      <p>
+        <Link href="/about">About</Link> · <Link href="/privacy">Privacy policy</Link>
+      </p>
     </main>
   );
 }

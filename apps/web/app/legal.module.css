@@ -1,0 +1,65 @@
+/* /privacy and /about: long-form text. A module, not globals.css, so these pages own their styles;
+   colours come from the tokens in globals.css (--ink, --paper, --line). */
+
+.page {
+  line-height: 1.6;
+}
+.page h2 {
+  font-size: 1.25rem;
+  margin: 32px 0 8px;
+}
+.page h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 20px 0 4px;
+}
+.page p,
+.page li {
+  overflow-wrap: anywhere;
+}
+.page ul {
+  padding-left: 1.25rem;
+}
+.page li + li {
+  margin-top: 4px;
+}
+.updated {
+  font-size: 0.9rem;
+  opacity: 0.75;
+  margin: 0 0 16px;
+}
+.summary {
+  border-left: 3px solid var(--line);
+  padding: 4px 0 4px 12px;
+  margin: 16px 0;
+}
+.tableWrap {
+  overflow-x: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+.table th,
+.table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 6px 12px 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.table thead th {
+  white-space: nowrap;
+}
+.citation {
+  font-size: 0.9rem;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.related {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 0.95rem;
+}
