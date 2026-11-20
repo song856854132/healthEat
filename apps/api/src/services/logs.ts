@@ -197,7 +197,10 @@ export async function createLog(
     if (!winner) throw err;
     return { ...winner, created: false };
   }
-  return { ...(await created(userId, entry.toObject() as EntryDoc, food.allergens)), created: true };
+  return {
+    ...(await created(userId, entry.toObject() as EntryDoc, food.allergens)),
+    created: true,
+  };
 }
 
 /** PUT /api/logs/:id: grams and meal only (R3-27); the entry was already checked to be the caller's. */
