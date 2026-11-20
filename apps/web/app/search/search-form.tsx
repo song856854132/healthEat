@@ -20,6 +20,7 @@ export function SearchForm({ criteria }: { criteria: SearchCriteria }) {
     const next = readCriteria({
       q: String(data.get("q") ?? ""),
       dataType: String(data.get("dataType") ?? ""),
+      date: String(data.get("date") ?? ""),
     });
     e.preventDefault();
     if (next.q) router.push(searchHref(next)); // whitespace alone passes `required`: ignore it
@@ -57,6 +58,7 @@ export function SearchForm({ criteria }: { criteria: SearchCriteria }) {
           </option>
         ))}
       </select>
+      {criteria.date ? <input type="hidden" name="date" value={criteria.date} /> : null}
       <button type="submit">Search</button>
     </form>
   );

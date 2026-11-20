@@ -273,7 +273,12 @@ test("details: allergens, portions and a hard alert when logging", async ({ page
   await page.getByLabel("Meal").selectOption("lunch");
   await page.getByRole("button", { name: "Log 56 g" }).click();
   await expect(page.getByTestId("log-alert")).toContainText("Contains Milk");
-  await expect(page.getByTestId("log-done")).toHaveText("Logged 56 g to lunch on 2026-11-17.");
+  await expect(page.getByTestId("log-done")).toHaveText(
+    "Logged 56 g to lunch on 2026-11-17. See the day log",
+  );
+  await expect(
+    page.getByTestId("log-done").getByRole("link", { name: "See the day log" }),
+  ).toHaveAttribute("href", "/log/2026-11-17");
   expect(posted).toEqual({ fdcId: 2001, grams: 56, meal: "lunch", requestId: expect.any(String) });
 });
 

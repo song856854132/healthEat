@@ -1434,8 +1434,13 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: issue #39; eng review 2026-11-18 (D6)
   - Files: apps/api/src/services/foodStats.ts, apps/api/src/routes/foods.ts, apps/api/src/models/LogEntry.ts, packages/shared/src/foods.ts
   - Verify: anonymous sees counts only; a suspended account's session sees the anonymous view
+- [ ] **T29 (#68, P1, human: ~1 day / CC: ~40 min)** — apps/web + e2e — Day log `/log/[date]`: the day's entries by meal, edit grams and meal (`PUT /api/logs/:id`), delete with confirmation, previous/next day and a date picker bounded by today in the member's time zone, and "Add food" that carries the date through `/search` to Details so "Log this" backfills that day (lane B item 4, day log half; number proposed 2026-11-20, owner to confirm)
+  - Surfaced by: Implementation Tasks: order and dependencies, Lane B item 4
+  - Files: apps/web/app/log/page.tsx, apps/web/app/log/today-redirect.tsx, apps/web/app/log/[date]/page.tsx, apps/web/app/log/[date]/day-log.tsx, apps/web/app/lib/logs.ts, apps/web/app/lib/foods.ts, apps/web/app/search/*, apps/web/app/food/[fdcId]/*, apps/web/app/nav.tsx, e2e/day-log.spec.ts
+  - Verify: Playwright: signed-out redirect; malformed date 404; `/log` opens today; entries grouped by meal with photo confidence; edit moves an entry to its new meal; delete after confirming; a 404 on delete counts as deleted; Add food on a past day posts that `date`; edit and delete against the real routes; no horizontal scroll at 360 px
+  - Not yet: the photo confirm step (T13 web half, #11); Member Home widgets (the next lane B task)
 
-_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23 and T24 are lane B GitHub issues with no entry here)._
+_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24 and T29 are lane B GitHub issues; their entries above were added by their PRs)._
 
 ## Implementation Tasks: order and dependencies
 
@@ -1459,7 +1464,7 @@ Lane B (teammate: `apps/web`), in order:
 1. **T12, web-only part**: privacy banner and acknowledgment cookie, `/privacy`, `/about`, footer, nav shell. No API needed. First task.
 2. **T23** Login and Register pages and the signed-in nav, against the `/api/auth/*` contract, as soon as T9 is on `main` (mock the API locally before that).
 3. **T24** Search and Results page with URL state, then Details with local data, against T3.
-4. Member Home widgets and the day log page against T6 and T10 (phase 1 bands follow with the summary service).
+4. Member Home widgets and the day log page against T6 and T10 (phase 1 bands follow with the summary service). Split 2026-11-20: the day log is **T29** (#68); the Member Home widgets follow as their own task.
 5. **T19** band rendering spec and **T21**'s Curator and Admin pages once their APIs exist.
 6. **T17** Playwright flows grow alongside each page.
 
