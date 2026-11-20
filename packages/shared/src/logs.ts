@@ -31,13 +31,16 @@ const Grams = z.number().positive().max(MAX_LOG_GRAMS);
 
 /**
  * Body of POST /api/users/me/logs. `date` is optional: the API uses today in the member's time zone,
- * and refuses a date after that day (backfilling a past day is allowed).
+ * and refuses a date after that day (backfilling a past day is allowed). `requestId` is optional: a
+ * UUID the client makes once per "log this" tap and resends on a retry, so a double tap or a retried
+ * request writes one entry, not two (owner decision #51).
  */
 export const LogEntryCreateInput = z.strictObject({
   fdcId: FdcIdParam.pipe(z.number()),
   grams: Grams,
   meal: Meal,
   date: LogDate.optional(),
+  requestId: z.uuid().optional(),
 });
 export type LogEntryCreateInput = z.infer<typeof LogEntryCreateInput>;
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  AccountUpdateInput,
   ActiveRoleInput,
   AdminProfileInput,
   CuratorProfileInput,
@@ -9,8 +10,14 @@ import {
   LogListResponse,
   LogsQuery,
   MeResponse,
+  MemberProfileInput,
+  PublicProfileView,
   RoleProfileView,
+  USERNAME_PATTERN,
   SESSION_COOKIE,
+  GapFoodsResponse,
+  SummaryQuery,
+  SummaryResponse,
   UserAllergensInput,
   UserAllergensResponse,
 } from "@healtheat/shared";
@@ -20,10 +27,12 @@ import { deleteAccount } from "../services/account.js";
 import * as auth from "../services/auth.js";
 import * as logs from "../services/logs.js";
 import * as profiles from "../services/profiles.js";
+import { gapFoodsFor } from "../services/gaps.js";
+import { summaryFor } from "../services/summary.js";
 
-// /api/users/me/*: routes scoped to the caller (design doc REST table). There is no route that names
-// another member, so no account can address someone else's logs or allergen settings (A2, D18).
-// Role profiles: the Curator's and the Admin's (T21); the member profile edit is not built yet.
+// /api/users/me/*: routes scoped to the caller (design doc REST table). The only route that names another
+// account is the public profile (GET /:username, public fields only), so no account can address someone
+// else's logs or allergen settings (A2, D18). Role profiles: member (T27), Curator and Admin (T21).
 export const usersRouter = Router();
 
 // Deletes the caller's account and everything it owns (T5 cascade, D6), then ends this session. The
@@ -47,6 +56,22 @@ usersRouter.delete(
   }),
 );
 
+// Edits the account fields (T27): the email. The username never changes (rubric), so a body that sends one
+// is refused outright rather than silently ignored.
+usersRouter.put(
+  "/me",
+  ...requireAuth,
+  asyncHandler(async (req, res) => {
+    if (req.body && typeof req.body === "object" && "username" in req.body)
+      throw new HttpError(400, "username_immutable", "the username cannot be changed");
+    const input = AccountUpdateInput.parse(req.body);
+    const user = currentUser(res);
+    await profiles.updateAccount(user, input);
+    user.email = input.email;
+    res.json(MeResponse.parse(await auth.me(user)));
+  }),
+);
+
 usersRouter.put(
   "/me/active-role",
   ...requireAuth,
@@ -59,8 +84,8 @@ usersRouter.put(
   }),
 );
 
-// The caller's own role profile, for a role they hold (403 otherwise). An unknown kind, or `member`
-// (not editable yet), is a 400 from the kind schema.
+// The caller's own role profile, for a role they hold (403 otherwise). An unknown kind is a 400 from the
+// kind schema.
 usersRouter.get(
   "/me/profiles/:kind",
   ...requireAuth,
@@ -76,7 +101,11 @@ usersRouter.put(
   asyncHandler(async (req, res) => {
     const kind = EditableProfileKind.parse(req.params.kind);
     const input =
-      kind === "curator" ? CuratorProfileInput.parse(req.body) : AdminProfileInput.parse(req.body);
+      kind === "member"
+        ? MemberProfileInput.parse(req.body)
+        : kind === "curator"
+          ? CuratorProfileInput.parse(req.body)
+          : AdminProfileInput.parse(req.body);
     res.json(RoleProfileView.parse(await profiles.updateProfile(currentUser(res), kind, input)));
   }),
 );
@@ -98,7 +127,9 @@ usersRouter.post(
   ...member,
   asyncHandler(async (req, res) => {
     const input = LogEntryCreateInput.parse(req.body);
-    res.status(201).json(LogEntryCreated.parse(await logs.createLog(currentUser(res)._id, input)));
+    const { created, ...body } = await logs.createLog(currentUser(res)._id, input);
+    // 200 for a repeat of an earlier requestId: the answer is the first entry, nothing new was written.
+    res.status(created ? 201 : 200).json(LogEntryCreated.parse(body));
   }),
 );
 
@@ -118,5 +149,39 @@ usersRouter.put(
     const input = UserAllergensInput.parse(req.body);
     const allergens = await logs.setUserAllergens(currentUser(res)._id, input);
     res.json(UserAllergensResponse.parse({ allergens }));
+  }),
+);
+
+// The member's week (T25): coverage bands, today's calorie meter, exposure meter and today's alerts.
+usersRouter.get(
+  "/me/summary",
+  ...member,
+  asyncHandler(async (req, res) => {
+    const { weekEnding } = SummaryQuery.parse(req.query);
+    res.json(SummaryResponse.parse(await summaryFor(currentUser(res)._id, weekEnding)));
+  }),
+);
+
+// Close the gap (T26): the best whole-food sources of one tracked nutrient, minus avoided allergens.
+usersRouter.get(
+  "/me/gaps/:nutrientId/foods",
+  ...member,
+  asyncHandler(async (req, res) => {
+    const nutrientId = Number(req.params.nutrientId);
+    if (!Number.isInteger(nutrientId)) throw new HttpError(404, "nutrient_not_tracked");
+    res.json(GapFoodsResponse.parse(await gapFoodsFor(currentUser(res)._id, nutrientId)));
+  }),
+);
+
+// Public profile (T27): no session needed. The session, when there is one, only decides whether the caller
+// is this account (then the email and member profile are included). A malformed username is a 404 like an
+// unknown one. Declared last, so the /me routes above always win.
+usersRouter.get(
+  "/:username",
+  asyncHandler(async (req, res) => {
+    const username = String(req.params.username).toLowerCase();
+    if (!USERNAME_PATTERN.test(username)) throw new HttpError(404, "user_not_found");
+    const viewerId = req.session?.userId ? String(req.session.userId) : null;
+    res.json(PublicProfileView.parse(await profiles.publicProfile(username, viewerId)));
   }),
 );

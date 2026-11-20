@@ -15,7 +15,11 @@ Status: agreed; set up on 2026-11-02 (URLs in README.md).
    recognition (`ANTHROPIC_API_KEY` on the API), created in an Anthropic Console workspace
    `healtheat-app` with a **USD 30 monthly spend limit**. It lives in Vercel env and GCP
    Secret Manager, never in the repo or a prompt. CI's PR review runs on the owner's
-   subscription through a `claude setup-token` token (section 4).
+   subscription through a `claude setup-token` token (section 4). The vision eval
+   (`npm run eval:vision`, run by hand, never in CI) can sign in without a key, through workload
+   identity federation. A Console rule trusts short-lived ID tokens of a Google service account in the dev GCP project, which the
+   owner's Google account may mint (`roles/iam.serviceAccountOpenIdTokenCreator`). Nothing is
+   stored, and each token lasts at most 10 minutes.
 2. **Vercel Hobby (free) has no team members.** A commit authored by a GitHub account
    that is not the Vercel project owner is refused by the Git integration
    ("the git author must have access to the project"). The fix is to **deploy from
@@ -110,7 +114,9 @@ that URI as a production secret (never paste it, never commit it).
 .github/workflows/
   ci.yml        on: pull_request, push to main
                 one job "typecheck, lint, unit and API tests": npm ci, build shared, typecheck, lint,
-                format check, vitest (shared + api projects; supertest, mongodb-memory-server since T9a)
+                format check, vitest (shared + api projects; supertest, mongodb-memory-server since T9a),
+                run as `npx vitest run --coverage` since T15: per-file coverage floors for summary.ts and
+                dictionary.ts in the root vitest.config.ts fail the job
   preview.yml   on: pull_request
                 jobs: vercel deploy api (API project's preview env: MONGODB_URI, MONGODB_DB=healtheat_preview, SESSION_SECRET)
                       -> vercel deploy web --env API_ORIGIN=<api preview url>

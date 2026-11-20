@@ -13,8 +13,10 @@ import { usersRouter } from "./routes/users.js";
 import { adminRouter } from "./routes/admin.js";
 import { curateRouter } from "./routes/curate.js";
 import { foodsRouter } from "./routes/foods.js";
+import { homeRouter } from "./routes/home.js";
 import { allergensRouter } from "./routes/allergens.js";
 import { logsRouter } from "./routes/logs.js";
+import { visionRouter } from "./routes/vision.js";
 import { requireDb } from "./lib/db.js";
 import { sessionMiddleware } from "./lib/session.js";
 import { errorHandler, notFound } from "./middleware/error.js";
@@ -45,13 +47,18 @@ app.use("/api/users", ...withSession, usersRouter);
 app.use("/api/admin", ...withSession, adminRouter);
 app.use("/api/curate", ...withSession, curateRouter);
 app.use("/api/logs", ...withSession, logsRouter);
-// Public, session-free: the USDA proxy only needs the database for its caches.
+// Photo logging (T13): member only; 503 vision_unavailable when ANTHROPIC_API_KEY is unset.
+app.use("/api/vision", ...withSession, visionRouter);
+// Public: search is session-free; details read the session (routes/foods.ts) to add a signed-in
+// caller's local data. The database answers for the USDA caches and the local data (T28).
 // gstack-shortcut(dec-c0d8580f-f9cf-4938-a944-15a9d2ab1b5e): no abuse limit on these routes (a script can
 // spend the USDA quota and grow the caches on the shared cluster), upgrade when a global hourly budget for
 // uncached USDA calls and smaller cache entries are designed (follow-up in TODOS.md).
 app.use("/api/foods", requireDb, foodsRouter);
 // Public read of the allergen dictionary; it lives in the database, so the database has to answer.
 app.use("/api/allergens", requireDb, allergensRouter);
+// The anonymous Home feed (T10): public, read from a snapshot rebuilt at most every 5 minutes.
+app.use("/api/home", requireDb, homeRouter);
 
 app.use(notFound);
 app.use(errorHandler);
