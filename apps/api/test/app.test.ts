@@ -41,7 +41,7 @@ describe("spike cookie flow", () => {
   it("slow waits the requested time (bounded)", async () => {
     const res = await request(app).get("/api/spike/slow?seconds=0.2").expect(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.waitedMs).toBeGreaterThanOrEqual(180);
+    expect(res.body.waitedMs).toBeGreaterThanOrEqual(200);
   });
   it("unknown routes return JSON 404", async () => {
     const res = await request(app).get("/api/nope").expect(404);

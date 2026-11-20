@@ -75,5 +75,22 @@ export const FoodDetails = FoodSummary.extend({
 });
 export type FoodDetails = z.infer<typeof FoodDetails>;
 
+/**
+ * Local data on a food (T28; design doc Pages table, Details): how often it was logged in the 7 UTC dates
+ * ending today and by how many members, for everyone; the usernames of members who opted into public
+ * logs, and the caller's own grams, only for a signed-in caller (null otherwise).
+ */
+export const LocalStats = z.object({
+  logCount7d: z.number().int().min(0),
+  memberCount7d: z.number().int().min(0),
+  publicLoggers: z.array(z.string()).nullable(),
+  myGrams7d: z.number().min(0).nullable(),
+});
+export type LocalStats = z.infer<typeof LocalStats>;
+
+/** Response of GET /api/foods/:fdcId: the food's details plus its local data (T28). */
+export const FoodDetailsResponse = FoodDetails.extend({ localStats: LocalStats });
+export type FoodDetailsResponse = z.infer<typeof FoodDetailsResponse>;
+
 /** Path parameter of GET /api/foods/:fdcId. */
 export const FdcIdParam = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER);

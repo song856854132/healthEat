@@ -13,6 +13,7 @@ import app from "../src/app.js";
 import { Allergen, DictionarySeed, Food, FoodAllergen } from "../src/models/index.js";
 import {
   ingredientSegments,
+  loadDictionary,
   matchAndStore,
   matchFood,
   normalize,
@@ -410,5 +411,23 @@ describe("review fixes (T11 pass 1)", () => {
     const rows = await FoodAllergen.find({ fdcId: 2095236 }).lean();
     expect(rows.map((r) => r.matchedSynonym)).toEqual(["peanuts"]);
     expect((await Food.findOne({ fdcId: 2095236 }).lean())?.allergensMatchedAt).toBeNull();
+  });
+});
+
+describe("a stored allergen missing its phrase lists (T15)", () => {
+  // Value: protects=an allergen document stored without synonyms, description keywords or exclude
+  //   phrases loads as empty lists: the dictionary still loads, that entry matches nothing, and every
+  //   other allergen still matches; fails_when=a missing list throws and every food read fails, or the
+  //   defaults leak into other entries; why_new=T15 coverage of the loader's defaults (eng review D13);
+  //   seam=none; no_claim=how such a document is written
+  it("loads it with empty lists and keeps matching the others", async () => {
+    await loadDictionary();
+    await Allergen.collection.insertOne({ key: "bare", displayName: "Bare", tier: "allergy" });
+    const dict = await loadDictionary();
+    const bare = dict.find((e) => e.key === "bare")!;
+    expect(bare).toMatchObject({ synonyms: [], descriptionKeywords: [], excludePhrases: [] });
+    expect(
+      Object.keys(match({ description: "Bare peanut bar", ingredientsText: "PEANUTS" }, dict)),
+    ).toEqual(["peanuts"]);
   });
 });

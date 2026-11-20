@@ -20,7 +20,12 @@ const MemberProfileSchema = new Schema(
     phone: { type: String, maxlength: 32 },
     publicLogs: { type: Boolean, default: false },
     showPhoneOnProfile: { type: Boolean, default: false },
-    visionUsage: { date: { type: String }, count: { type: Number, default: 0 } },
+    // T13: photos counted today (member's local date) and failed calls refunded today (capped).
+    visionUsage: {
+      date: { type: String },
+      count: { type: Number, default: 0 },
+      refunds: { type: Number, default: 0 },
+    },
   },
   { timestamps: true },
 );

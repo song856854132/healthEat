@@ -50,4 +50,28 @@
 **Priority:** P1
 **Depends on:** nothing
 
+### Unmatched queue: retire tokens a later dictionary edit makes matchable
+
+**What:** When a Curator edit (not a queue "map") adds a synonym that now matches a pending unmatched-ingredient token, mark the token mapped or hide it from the queue.
+
+**Why:** Otherwise those tokens stay pending in `/curate/unmatched` with stale counts (eng review 2026-11-18, outside voice OV6).
+
+**Context:** T22 records tokens in `matchAndStore`; the allergen re-match (`rematchAllergen`) has its own path. A check per dictionary edit over pending tokens, or a filter at queue read time, would do.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** T22
+
+### Photo logging: set the Anthropic key, then tighten refusals and spend
+
+**What:** (1) The owner sets `ANTHROPIC_API_KEY` in Vercel (Preview and Production, API project) and in `~/.env.staging` on the dev VM; until then `POST /api/vision/meal` answers `503 vision_unavailable`. (2) Then, before members rely on it: tell a refusal that comes back with text apart from an unparseable answer (call `messages.create`, check `stop_reason` before parsing) so a declined photo says "log the meal by search" instead of "try again"; refund unbilled upstream failures (bad key, 5xx, overload) without spending the daily refund allowance; lower `max_tokens` toward the cost model; decide on an app-wide daily photo ceiling.
+
+**Why:** Deferred from plan: `~/.claude/plans/resume-the-unfinished-implementation-federated-otter.md` (Step 8, T13 owner step). The follow-ups are the non-blocking notes of the T13 review; spend is already capped at 30 calls per member per day.
+
+**Context:** `apps/api/src/services/vision.ts`, `apps/api/src/services/visionUsage.ts`; T18 (vision eval) recorded its baseline through workload identity federation, so it does not need the key.
+
+**Effort:** S
+**Priority:** P1
+**Depends on:** the owner's key
+
 ## Completed
