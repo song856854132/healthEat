@@ -186,8 +186,8 @@ account stays locked, and the member's next login with the right password finish
 answering 403. The only usable Admin (active, not being deleted) gets `409 last_admin`, checked before and
 after the flag with `usableAdminCount` (the same count as role changes); a refusal clears the flag, so a
 flagged last Admin's next login calls the deletion off and signs them in. `DELETE /api/allergens/:id`
-first refuses with 409 while any member avoids the allergen (#52), then deletes the allergen's `FoodAllergen` and `UserAllergen` rows, then the entry, then its `FoodAllergen` rows
-once more (a food matched meanwhile); a retry after the entry is gone still sweeps its rows before answering
+first refuses with 409 while the entry exists and any member avoids it (#52), then deletes the allergen's `FoodAllergen` and `UserAllergen` rows, then the entry, then its `FoodAllergen` rows
+once more (a food matched meanwhile); a retry after the entry is gone still sweeps its rows, avoid settings included, before answering
 404, and a re-match that finds its allergen gone drops the rows it wrote. After a dictionary edit,
 `startRematch` sets `Allergen.rematchCursor` to 0 (the next fdcId to process) and bumps `rematchRun`;
 `rematchAllergen` walks the cached foods in fdcId batches of 500, one ordered `bulkWrite` per batch (delete
