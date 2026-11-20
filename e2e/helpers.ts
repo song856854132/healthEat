@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 /**
- * A fresh throwaway account with a random password. There is no delete route before T5, so these
- * accounts stay in the target database; nothing in the repo can log in to them. The username fits
+ * A fresh throwaway account with a random password. The specs do not delete it (DELETE /api/users/me
+ * exists since T5, but nothing here calls it), so it stays in the target database; nothing in the repo
+ * can log in to it. The username fits
  * USERNAME_PATTERN in @healtheat/shared (lowercase letters, digits, underscore, at most 24 chars).
  */
 export function makeAccount(prefix: string) {

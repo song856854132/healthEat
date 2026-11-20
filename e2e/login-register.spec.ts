@@ -281,3 +281,20 @@ test("Enter during the redirect after registering sends no second registration",
   await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
   expect(posts).toBe(1);
 });
+
+// A submit before the page hydrates (slow network, JS failed or off) is a native form post. It must
+// never put the password in the address bar, history, server logs or a Referer.
+for (const path of ["/login", "/register"] as const) {
+  test(`a native submit on ${path} keeps the password out of the URL`, async ({ browser }) => {
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+    await page.goto(path);
+    if (path === "/register") await page.fill("#field-email", "nojs@example.com");
+    await page.fill("#field-username", "nojs_user");
+    await page.fill("#field-password", "not-a-real-password-1");
+    await Promise.all([page.waitForLoadState("load"), page.click('button[type="submit"]')]);
+    expect(page.url()).not.toContain("password");
+    expect(page.url()).not.toContain("not-a-real-password-1");
+    await context.close();
+  });
+}

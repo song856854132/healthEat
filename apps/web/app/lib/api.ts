@@ -11,6 +11,13 @@ type ErrorBody = { error?: string; details?: unknown };
 const NETWORK_ERROR = "Could not reach the server. Check your connection.";
 const BAD_RESPONSE = "The server sent an unexpected response. Try again.";
 
+// apps/api/src/middleware/auth.ts: no session (401), or a suspended or deleting account (403).
+const SIGNED_OUT_ERRORS = new Set([
+  "unauthenticated",
+  "account_suspended",
+  "account_deletion_pending",
+]);
+
 const CONFLICT_MESSAGES: Record<string, string> = {
   username: "That username is taken.",
   email: "An account with that email already exists.",
@@ -50,7 +57,15 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
  */
 export async function fetchMe(signal?: AbortSignal): Promise<MeResponse | null> {
   const res = await apiFetch("/api/auth/me", { signal });
-  if (res.status === 401 || res.status === 403) return null;
+  if (res.status === 401 || res.status === 403) {
+    // Only the API's own answers end the session in the UI; a 401/403 from anything in front of it
+    // (a protection page, a firewall, a proxy) says nothing about the session.
+    const body = (await res.json().catch(() => ({}))) as ErrorBody;
+    if (body.error && SIGNED_OUT_ERRORS.has(body.error)) return null;
+    throw new Error(
+      `GET /api/auth/me answered ${res.status} ${body.error ?? "without an API error"}`,
+    );
+  }
   if (!res.ok) throw new Error(`GET /api/auth/me answered ${res.status}`);
   const parsed = MeResponse.safeParse(await res.json());
   if (!parsed.success) throw new Error("GET /api/auth/me sent an unexpected body");

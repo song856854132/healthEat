@@ -48,7 +48,8 @@ export default function RegisterPage() {
   return (
     <main>
       <h1>Create your account</h1>
-      <form className="auth-form" onSubmit={onSubmit} noValidate>
+      {/* method="post": a submit before hydration must not put the password in the URL. */}
+      <form className="auth-form" method="post" onSubmit={onSubmit} noValidate>
         <FormAlert message={errors.form} />
         <Field
           name="username"
