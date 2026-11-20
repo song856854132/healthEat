@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { LogEntryCreateInput, MAX_LOG_GRAMS, MEALS } from "@healtheat/shared";
 import type { AllergenAlert, LogEntryView, Meal } from "@healtheat/shared";
@@ -15,6 +15,16 @@ const MEAL_LABELS: Record<Meal, string> = {
   dinner: "Dinner",
   snack: "Snack",
 };
+
+/** The smallest amount the form logs (matches the custom amount input's min). */
+const MIN_GRAMS = 0.1;
+
+/** crypto.randomUUID needs a secure context (https or localhost); without it, log without an id. */
+function newRequestId(): string | undefined {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : undefined;
+}
 
 /** A starting meal from the browser's clock; the user can change it. */
 export function mealForHour(hour: number): Meal {
@@ -40,15 +50,30 @@ export function LogForm({ fdcId, grams }: { fdcId: number; grams: number }) {
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // One id per log (#51): a tap repeated after a lost answer sends the same id, so the API writes the
+  // entry once. A new id after a success, a conflict, or any change to what is being logged.
+  const requestId = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    requestId.current = undefined;
+  }, [fdcId, grams, meal]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy.current) return;
-    if (!(grams > 0)) {
-      setOutcome({ kind: "error", message: "Enter an amount in grams." });
+    if (!(grams >= MIN_GRAMS)) {
+      setOutcome({
+        kind: "error",
+        message: grams > 0 ? `Enter at least ${MIN_GRAMS} g.` : "Enter an amount in grams.",
+      });
       return;
     }
-    const parsed = LogEntryCreateInput.safeParse({ fdcId, grams, meal });
+    requestId.current ??= newRequestId();
+    const parsed = LogEntryCreateInput.safeParse({
+      fdcId,
+      grams,
+      meal,
+      ...(requestId.current ? { requestId: requestId.current } : {}),
+    });
     if (!parsed.success) {
       setOutcome({
         kind: "error",
@@ -65,6 +90,7 @@ export function LogForm({ fdcId, grams }: { fdcId: number; grams: number }) {
     const result = await logFood(parsed.data);
     busy.current = false;
     setPending(false);
+    if (result.ok || result.failure.error === "request_id_conflict") requestId.current = undefined;
     if (result.ok) {
       setOutcome({ kind: "logged", entry: result.data.entry, alerts: result.data.alerts });
     } else if (result.failure.status === 401) {

@@ -65,6 +65,7 @@ const MESSAGES: Record<string, string> = {
   account_suspended: "This account is suspended.",
   account_deletion_pending: "This account is being deleted.",
   date_in_future: "That date is after today.",
+  request_id_conflict: "This log changed while it was being sent. Tap Log again.",
   database_unavailable: "The database is not answering right now. Try again in a moment.",
 };
 

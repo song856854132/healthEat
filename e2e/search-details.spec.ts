@@ -274,7 +274,50 @@ test("details: allergens, portions and a hard alert when logging", async ({ page
   await page.getByRole("button", { name: "Log 56 g" }).click();
   await expect(page.getByTestId("log-alert")).toContainText("Contains Milk");
   await expect(page.getByTestId("log-done")).toHaveText("Logged 56 g to lunch on 2026-11-17.");
-  expect(posted).toEqual({ fdcId: 2001, grams: 56, meal: "lunch" });
+  expect(posted).toEqual({ fdcId: 2001, grams: 56, meal: "lunch", requestId: expect.any(String) });
+});
+
+// #51: the API writes one entry per requestId, so a tap repeated after a lost answer must reuse it,
+// while a new log (after a success, or of a different amount) must not.
+test("log this: a retry after a lost answer reuses its requestId, a new log gets a new one", async ({
+  page,
+}) => {
+  await page.route("**/api/foods/2001", (route) => route.fulfill({ json: details() }));
+  const ids: string[] = [];
+  await page.route("**/api/users/me/logs", (route) => {
+    const body = route.request().postDataJSON() as { requestId?: string; grams: number };
+    ids.push(body.requestId ?? "");
+    if (ids.length === 1) return route.abort("failed"); // the write may have happened; no answer
+    return route.fulfill({
+      status: ids.length === 2 ? 200 : 201, // 200: the API replaying the first write
+      json: LogEntryCreated.parse({
+        entry: {
+          id: "6560f0f0f0f0f0f0f0f0f0f0",
+          date: "2026-11-17",
+          meal: "lunch",
+          fdcId: 2001,
+          description: "Mock cheddar",
+          grams: body.grams,
+          source: "search",
+          confidence: 1,
+          createdAt: FETCHED_AT,
+        },
+        alerts: [],
+      }),
+    });
+  });
+  await page.goto("/food/2001");
+  await page.getByLabel("Meal").selectOption("lunch");
+  const log = page.getByRole("button", { name: "Log 28 g" });
+  await log.click();
+  await expect(page.getByTestId("log-error")).toBeVisible();
+  await log.click();
+  await expect(page.getByTestId("log-done")).toBeVisible();
+  await log.click();
+  await expect.poll(() => ids.length).toBe(3);
+  expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
+  expect(ids[1]).toBe(ids[0]);
+  expect(ids[2]).not.toBe(ids[0]);
 });
 
 test("an unknown food and a malformed id", async ({ page }) => {
