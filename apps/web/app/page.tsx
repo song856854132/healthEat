@@ -11,7 +11,11 @@ export default function Home() {
         you when your week is running low on a nutrient and tracks exposure to the ingredients your
         body reacts to.
       </p>
-      <p>Coming soon. The pipeline is live; the product is not yet.</p>
+      <p>
+        <Link href="/search">Search foods</Link> in USDA FoodData Central and see their nutrients
+        and allergens.
+      </p>
+      <p>More is coming soon.</p>
       <Spike />
       <p>
         <Link href="/about">About</Link> · <Link href="/privacy">Privacy policy</Link>

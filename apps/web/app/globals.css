@@ -3,12 +3,14 @@
   --ink: #1d1d1f;
   --paper: #fafaf7;
   --line: #c9c9c4;
+  --danger: #b3261e;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --ink: #ececea;
     --paper: #141414;
     --line: #3a3a3a;
+    --danger: #f2b8b5;
   }
 }
 * {
@@ -59,4 +61,109 @@ button {
 }
 code {
   font-size: 0.9em;
+}
+a {
+  color: inherit;
+}
+.site-header {
+  border-bottom: 1px solid var(--line);
+}
+.site-nav {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.brand {
+  font-weight: 700;
+  text-decoration: none;
+}
+.nav-session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 36px;
+}
+.nav-session button {
+  margin-right: 0;
+}
+.nav-user {
+  font-weight: 600;
+}
+.role-badge {
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.button-link {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-decoration: none;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 400px;
+  margin-top: 24px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field label {
+  font-weight: 600;
+}
+.field input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  width: 100%;
+}
+.field input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.hint,
+.field-error,
+.form-error,
+.form-footer {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.hint {
+  opacity: 0.75;
+}
+.field-error,
+.form-error {
+  color: var(--danger);
+}
+.form-error {
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+}
+button.primary {
+  align-self: flex-start;
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Only a button waiting on a request shows the busy cursor. */
+button[aria-busy="true"] {
+  cursor: progress;
 }

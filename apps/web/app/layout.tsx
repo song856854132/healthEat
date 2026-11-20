@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { AuthProvider } from "./auth-context";
+import { Nav } from "./nav";
 
 export const metadata: Metadata = {
   title: "healthEat",
@@ -11,7 +13,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>
+          <Nav />
+          {children}
+        </AuthProvider>
+      </body>
     </html>
   );
 }
