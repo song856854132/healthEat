@@ -167,3 +167,37 @@ button:disabled {
 button[aria-busy="true"] {
   cursor: progress;
 }
+/* Privacy notice (privacy-banner.tsx): in the page flow under the header, never over content. */
+.privacy-banner {
+  border-bottom: 1px solid var(--line);
+}
+.privacy-banner-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.privacy-banner-inner p {
+  margin: 0;
+  flex: 1 1 280px;
+  font-size: 0.95rem;
+}
+.privacy-banner-inner button {
+  margin-right: 0;
+}
+.site-footer {
+  border-top: 1px solid var(--line);
+}
+.site-footer-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 0.9rem;
+}
