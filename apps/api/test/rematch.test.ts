@@ -765,7 +765,13 @@ describe("DELETE /api/allergens/:id", () => {
     await startRematch(id);
     await rematchAllergen(id);
     const { agent: cura } = await login("cura", ["member", "curator"]);
+    const { user: mia } = await login("mia");
     await Allergen.deleteOne({ _id: id }); // the entry is gone ...
+    // Extended by /ship coverage audit (#52).
+    // Value: protects=an orphaned avoid-mode setting of a deleted entry is swept (404), not refused 409;
+    // fails_when=the avoid count runs without the existed guard; why_new=the 409 test only covers a live
+    // entry; seam=none; no_claim=a real crash (the orphan row is inserted directly)
+    await UserAllergen.create({ userId: mia._id, allergenId: id, mode: "avoid" });
     await FoodAllergen.create({
       fdcId: 3,
       allergenId: id,
@@ -777,6 +783,7 @@ describe("DELETE /api/allergens/:id", () => {
     expect(await FoodAllergen.countDocuments({ allergenId: id })).toBeGreaterThan(0);
     await cura.delete(`/api/allergens/${id}`).expect(404);
     expect(await FoodAllergen.countDocuments({ allergenId: id })).toBe(0);
+    expect(await UserAllergen.countDocuments({ allergenId: id })).toBe(0);
   });
 
   it("finishes on a retry after a crash part way", async () => {
