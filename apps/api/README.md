@@ -157,8 +157,9 @@ T11, a failed write, or a dictionary that kept changing during the match) is mat
 A dictionary edit reaches already matched foods only through the re-match pass (T5).
 
 Log routes (design doc A2, R3-25 to R3-27; T6): `logentries` (`LogEntry {userId, date, meal, fdcId, grams,
-source, confidence, photoBatchId, createdAt}`, indexes `{userId, date}`, `{date}` and `{fdcId, date}`,
-the last for a food's local data, T28) and `userallergens`
+source, confidence, photoBatchId, requestId, createdAt}`, indexes `{userId, date}`, `{date}` and `{fdcId, date}`,
+the last for a food's local data, T28, plus a unique `{userId, requestId}` index limited to entries that carry a
+`requestId`, which makes the create idempotent, #51) and `userallergens`
 (`UserAllergen {userId, allergenId, mode, weeklyThreshold}`, unique per member and allergen). Listing,
 creating and allergen settings live under `/api/users/me/*`, so no log or settings route names another member; `PUT/DELETE
 /api/logs/:id` pass `requireOwner`, which answers 404 `log_not_found` for an id that names no entry and 403
@@ -287,7 +288,7 @@ src/services/unmatched.ts  the Curator's unmatched-ingredient queue: listUnmatch
 src/services/account.ts  deleteAccount: the rerunnable account deletion cascade (deletionPending first); deleteSessions
 src/services/admin.ts listUsers, userDetail, setStatus (suspend ends sessions; lockout guards), deleteUser (T5 cascade)
 src/services/profiles.ts  getProfile/updateProfile for the member, Curator and Admin role profiles; updateAccount (email); publicProfile
-src/services/logs.ts  day logs (todayIn, listLogs, createLog with fetch-and-match and alerts, updateLog) and allergen settings
+src/services/logs.ts  day logs (todayIn, listLogs, createLog with fetch-and-match, alerts and requestId replay, updateLog) and allergen settings
 src/services/vision.ts  proposeItems: one meal photo to {query, grams, confidence} items (claude-opus-5-5, structured output, fallbacks "default", 60 s timeout, no retries)
 src/services/visionUsage.ts  reservePhoto/refundPhoto: the atomic 20-a-day photo counter on the member's local date
 src/services/home.ts  publicFeed: the anonymous Home feed (PublicFeedSnapshot rebuilt at most every 5 minutes, listed profiles re-checked per serve)
