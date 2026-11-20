@@ -23,6 +23,9 @@ const EnvSchema = z.object({
   ADMIN_USERNAMES: z.preprocess(empty, z.string().optional()),
   // USDA FoodData Central key (api.data.gov). Server-side only; never sent to the browser.
   USDA_API_KEY: z.preprocess(empty, z.string().optional()),
+  // Anthropic key for photo logging (T13). Optional: without it POST /api/vision/meal answers 503
+  // vision_unavailable and everything else works. Server-side only.
+  ANTHROPIC_API_KEY: z.preprocess(empty, z.string().optional()),
 });
 export type Env = z.infer<typeof EnvSchema>;
 

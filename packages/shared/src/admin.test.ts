@@ -27,7 +27,8 @@ describe("profile inputs", () => {
       false,
     );
     expect(AdminProfileInput.safeParse({ grantsCount: 1 }).success).toBe(false);
-    expect(EditableProfileKind.safeParse("member").success).toBe(false);
+    expect(EditableProfileKind.safeParse("member").success).toBe(true); // editable since T27
+    expect(EditableProfileKind.safeParse("coach").success).toBe(false);
   });
 });
 

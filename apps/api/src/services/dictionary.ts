@@ -9,7 +9,15 @@ import {
 } from "@healtheat/shared";
 import { Types } from "mongoose";
 import { HttpError } from "../lib/http.js";
-import { Allergen, DictionarySeed, Food, FoodAllergen, UserAllergen } from "../models/index.js";
+import {
+  Allergen,
+  DictionarySeed,
+  Food,
+  FoodAllergen,
+  IngredientToken,
+  IngredientTokenFood,
+  UserAllergen,
+} from "../models/index.js";
 
 // Allergen dictionary and matcher (design doc: Allergen matching, D12). The matcher is plain string
 // work so it can run over a whole batch of cached foods in one request (T5 re-match).
@@ -111,6 +119,87 @@ export function matchFood(
     if (hit) out.push(hit);
   }
   return out;
+}
+
+/** Shortest and longest ingredient phrase the unmatched queue keeps. */
+const TOKEN_MIN = 3;
+const TOKEN_MAX = 80;
+
+/**
+ * The ingredient phrases of a food that match no synonym of any dictionary entry (T22): the normalised
+ * segments `ingredientSegments` gives, so a phrase mapped from the queue matches as a synonym.
+ */
+export function unmatchedTokens(
+  ingredientsText: string | null | undefined,
+  dictionary: DictionaryEntry[],
+): string[] {
+  if (!ingredientsText) return [];
+  const compiled = dictionary.map(compile);
+  const out = new Set<string>();
+  for (const seg of ingredientSegments(ingredientsText)) {
+    if (seg.length < TOKEN_MIN || seg.length > TOKEN_MAX) continue;
+    const hit = compiled.some((c) => firstMatch(mask(` ${seg} `, c.excludes), c.synonyms));
+    if (!hit) out.add(seg);
+  }
+  return [...out];
+}
+
+/**
+ * Records a food's unmatched phrases (T22, eng review D2): one unordered insert of (token, food) pairs,
+ * duplicates skipped by the unique index, then one bulkWrite that counts only the pairs actually new, so
+ * re-matching or refreshing the same food never raises a count.
+ */
+export async function recordUnmatchedTokens(fdcId: number, tokens: string[]): Promise<void> {
+  if (tokens.length === 0) return;
+  // The distinct-food count rests on the unique indexes: make sure they exist before the first write,
+  // as a fresh database builds them in the background (the same guard as auth.ts).
+  await tokenIndexes();
+  const docs = tokens.map((token) => ({ token, fdcId }));
+  let inserted: string[];
+  try {
+    await IngredientTokenFood.collection.insertMany(docs, { ordered: false });
+    inserted = tokens;
+  } catch (err) {
+    const ids = (err as { result?: { insertedIds?: Record<number, unknown> } }).result?.insertedIds;
+    if ((err as { code?: number }).code !== 11000 || !ids) throw err;
+    inserted = Object.keys(ids).map((i) => tokens[Number(i)]!);
+  }
+  if (inserted.length === 0) return;
+  try {
+    await IngredientToken.bulkWrite(
+      inserted.map((token) => ({
+        updateOne: {
+          filter: { token },
+          update: {
+            $inc: { count: 1 },
+            $push: { sampleFdcIds: { $each: [fdcId], $slice: 5 } },
+            $setOnInsert: { status: "new" },
+          },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  } catch (err) {
+    // Those pairs are in but their counts are not: take them back so the next match counts them. An
+    // unordered bulk write names its failed operations; the others did count and keep their pairs.
+    const failed = (err as { writeErrors?: { index: number }[] }).writeErrors;
+    const lost = failed ? failed.map((w) => inserted[w.index]!) : inserted;
+    await IngredientTokenFood.deleteMany({ fdcId, token: { $in: lost } }).catch(() => undefined);
+    throw err;
+  }
+}
+
+let tokenIndexesReady: Promise<unknown> | null = null;
+function tokenIndexes(): Promise<unknown> {
+  tokenIndexesReady ??= Promise.all([
+    IngredientTokenFood.createIndexes(),
+    IngredientToken.createIndexes(),
+  ]).catch((err: unknown) => {
+    tokenIndexesReady = null;
+    throw err;
+  });
+  return tokenIndexesReady;
 }
 
 const byName = (a: { displayName: string }, b: { displayName: string }) =>
@@ -282,6 +371,20 @@ export async function matchAndStore(
         { fdcId: food.fdcId, fetchedAt: food.fetchedAt },
         { $set: { allergensMatchedAt: now } },
       );
+      // The unmatched-ingredient queue (T22) runs after the stamp and on its own: a failure here is
+      // logged and never changes the food's matches, rows or stamp (eng review D5).
+      try {
+        await recordUnmatchedTokens(
+          food.fdcId,
+          unmatchedTokens(food.ingredientsText, docs.map(toEntry)),
+        );
+      } catch (tokenErr) {
+        console.error(
+          "[dictionary] recording unmatched ingredients for %d failed:",
+          food.fdcId,
+          tokenErr instanceof Error ? tokenErr.message : tokenErr,
+        );
+      }
       break;
     } catch (err) {
       // A concurrent match of the same food inserted the same rows first (duplicate key): it stamps them.
@@ -297,22 +400,49 @@ export async function matchAndStore(
   return matches.map(view).sort(byName);
 }
 
+/** Unstamped foods matched at once by `allergensForFoods`. */
+const MATCH_CONCURRENCY = 5;
+
 /** A food's detected allergens: its stored rows, or a fresh match when it has none yet. */
 export async function allergensForFood(food: MatchableFood): Promise<FoodAllergenMatch[]> {
-  if (!food.allergensMatchedAt) return matchAndStore(food);
-  const rows = await FoodAllergen.find({ fdcId: food.fdcId }).lean();
-  if (rows.length === 0) return [];
-  const entries = await Allergen.find({ _id: { $in: rows.map((r) => r.allergenId) } }).lean();
+  return (await allergensForFoods([food])).get(food.fdcId) ?? [];
+}
+
+/**
+ * Detected allergens of many foods at once (T25, eng review D7): one FoodAllergen read and one Allergen
+ * read for every stamped food, and a fresh `matchAndStore` for each food not stamped yet. Each list is
+ * ordered by display name. An allergen deleted since the match (its rows go with it in T5) is not shown.
+ */
+export async function allergensForFoods(
+  foods: MatchableFood[],
+): Promise<Map<number, FoodAllergenMatch[]>> {
+  const out = new Map<number, FoodAllergenMatch[]>();
+  const stamped = foods.filter((f) => f.allergensMatchedAt);
+  // Unstamped foods (cached from search, or unstamped by a re-match) are matched a few at a time, so a
+  // week of them costs a few rounds of matchAndStore rather than one after another.
+  const unstamped = foods.filter((f) => !f.allergensMatchedAt);
+  for (let i = 0; i < unstamped.length; i += MATCH_CONCURRENCY) {
+    const batch = unstamped.slice(i, i + MATCH_CONCURRENCY);
+    const matched = await Promise.all(batch.map((food) => matchAndStore(food)));
+    batch.forEach((food, j) => out.set(food.fdcId, matched[j]!));
+  }
+  if (stamped.length === 0) return out;
+  const rows = await FoodAllergen.find({ fdcId: { $in: stamped.map((f) => f.fdcId) } }).lean();
+  const ids = [...new Set(rows.map((r) => String(r.allergenId)))];
+  const entries = ids.length > 0 ? await Allergen.find({ _id: { $in: ids } }).lean() : [];
   const byId = new Map(entries.map((e) => [String(e._id), toEntry(e)]));
-  return rows
-    .flatMap((r) => {
-      const entry = byId.get(String(r.allergenId));
-      // An allergen deleted since the match (its rows go with it in T5) is simply not shown.
-      return entry
-        ? [view({ entry, matchKind: r.matchKind as MatchKind, matchedSynonym: r.matchedSynonym })]
-        : [];
-    })
-    .sort(byName);
+  for (const food of stamped) out.set(food.fdcId, []);
+  for (const r of rows) {
+    const entry = byId.get(String(r.allergenId));
+    if (!entry) continue;
+    out
+      .get(r.fdcId)
+      ?.push(
+        view({ entry, matchKind: r.matchKind as MatchKind, matchedSynonym: r.matchedSynonym }),
+      );
+  }
+  for (const list of out.values()) list.sort(byName);
+  return out;
 }
 
 /** Foods per re-match batch: one bulkWrite each (design doc, Re-match on dictionary change; S4). */
@@ -332,10 +462,19 @@ type BatchFood = {
 };
 const BATCH_FIELDS = { fdcId: 1, description: 1, ingredientsText: 1, fetchedAt: 1 };
 
-/** The same USDA copies of the same foods (both lists in fdcId order). */
-const sameCopies = (a: BatchFood[], b: BatchFood[]) =>
-  a.length === b.length &&
-  a.every((f, i) => b[i]!.fdcId === f.fdcId && b[i]!.fetchedAt.getTime() === f.fetchedAt.getTime());
+/**
+ * Which USDA copy a food holds: its `fetchedAt` as JSON, so a Date compares by time and a malformed value
+ * (written past the schema) by its own content, never throwing and never equal to a different one.
+ */
+const copyKey = (d: unknown) => JSON.stringify(d ?? null);
+
+/** The fdcIds of `batch` whose USDA copy is not the one in `copies` (a newer copy, or none). */
+function movedFoods(batch: BatchFood[], copies: { fdcId: number; fetchedAt?: unknown }[]) {
+  const now = new Map(copies.map((c) => [c.fdcId, copyKey(c.fetchedAt)]));
+  return batch
+    .filter((f) => !now.has(f.fdcId) || now.get(f.fdcId) !== copyKey(f.fetchedAt))
+    .map((f) => f.fdcId);
+}
 
 /**
  * One ordered bulkWrite: delete this allergen's rows for the foods in `fdcIds`, then insert the matches of
@@ -389,9 +528,12 @@ export async function startRematch(allergenId: Types.ObjectId): Promise<void> {
  *
  * A batch's write can land late, after a newer edit's pass or a food's USDA refresh already rewrote those
  * foods, and replace their rows with matches from the old entry or the old ingredient text. So after the
- * write the batch reads the run counter and the foods' `fetchedAt` again; if either moved, it writes the
- * batch once more from the newer entry and copies. If they move again, the batch's foods are left
- * unstamped, so the next read of each matches it whole against the current dictionary.
+ * write the batch reads the run counter and the foods' `fetchedAt` again (only those two fields, so a
+ * batch where nothing moved reads little); if either moved, it writes the batch once more from the newer
+ * entry and copies. If they move again, the foods that may hold stale rows are left unstamped (the whole
+ * batch after a newer edit, only the refreshed foods otherwise), so the next read of each matches it
+ * whole against the current dictionary. A batch whose write stops at a concurrent writer's duplicate key
+ * leaves its foods unstamped, then repeats from the cursor, and stops at the time budget like any other.
  */
 export async function rematchAllergen(
   allergenId: Types.ObjectId,
@@ -425,24 +567,40 @@ export async function rematchAllergen(
           await writeBatch(toEntry(current), fdcIds, batch, now());
           const after = await Allergen.findById(allergenId).lean();
           if (!after) break; // deleted meanwhile: the next read of the entry sweeps its rows
-          const copies: BatchFood[] = await Food.find({ fdcId: { $in: fdcIds } }, BATCH_FIELDS)
-            .sort({ fdcId: 1 })
-            .lean();
-          if ((after.rematchRun ?? 0) === (current.rematchRun ?? 0) && sameCopies(batch, copies))
-            break;
+          const copies = await Food.find(
+            { fdcId: { $in: fdcIds } },
+            { fdcId: 1, fetchedAt: 1 },
+          ).lean();
+          const runMoved = (after.rematchRun ?? 0) !== (current.rematchRun ?? 0);
+          const moved = movedFoods(batch, copies);
+          if (!runMoved && moved.length === 0) break;
           if (attempt === MATCH_ATTEMPTS) {
             await Food.updateMany(
-              { fdcId: { $in: fdcIds } },
+              { fdcId: { $in: runMoved ? fdcIds : moved } },
               { $set: { allergensMatchedAt: null } },
             );
             break;
           }
-          current = after; // a newer edit or USDA copy landed meanwhile: write the batch from it
-          batch = copies;
+          // A newer edit or USDA copy landed meanwhile: write the batch again from it.
+          current = after;
+          batch = await Food.find({ fdcId: { $in: fdcIds } }, BATCH_FIELDS)
+            .sort({ fdcId: 1 })
+            .lean();
         }
       } catch (err) {
-        // Another request re-matched the same batch at the same time: re-read the cursor and go on.
+        // Another request re-matched the same batch at the same time: re-read the cursor and go on,
+        // unless the time budget is spent.
         if (!isDuplicate(err)) throw err;
+        // The ordered write stopped at a row another writer had just inserted: this batch's later inserts
+        // never ran, and that writer (another batch, or one food's matchAndStore) may cover only its own
+        // food. The batch cannot vouch for its foods' rows, and a repeat below can be skipped by another
+        // pass moving the cursor first, so its foods are left unstamped: the next read of each matches it
+        // whole. Collisions are rare, so the cost is a few extra matches.
+        await Food.updateMany({ fdcId: { $in: fdcIds } }, { $set: { allergensMatchedAt: null } });
+        if (Date.now() - started >= budgetMs) {
+          const remaining = await Food.countDocuments({ fdcId: { $gte: cursor } });
+          return { done: false, processed, remaining };
+        }
         continue;
       }
       processed += foods.length;
@@ -468,14 +626,21 @@ const objectId = (id: string) => {
 };
 
 /**
- * DELETE /api/allergens/:id (R3-3): no matching pass. The allergen's FoodAllergen and UserAllergen rows
- * go first, then the entry, then its FoodAllergen rows once more, for a food matched by a concurrent
+ * DELETE /api/allergens/:id (R3-3): no matching pass. While any member avoids the allergen the delete is
+ * refused with 409 and nothing changes (owner decision #52): their alerts depend on it, so a Curator
+ * renames the entry instead. Otherwise the allergen's FoodAllergen and UserAllergen (track-mode) rows go
+ * first, then the entry, then its FoodAllergen rows once more, for a food matched by a concurrent
  * request while the entry still existed. Every step is rerunnable: a retry finishes the job, and a
- * retry after the entry is already gone still sweeps its rows before answering 404.
+ * retry after the entry is already gone still sweeps its rows before answering 404. A member who adds
+ * an avoid setting in the milliseconds between the count and the sweep loses it (no transactions, D6).
  */
 export async function deleteAllergen(id: string): Promise<void> {
   const allergenId = objectId(id);
   const existed = (await Allergen.exists({ _id: allergenId })) !== null;
+  if (existed) {
+    const members = await UserAllergen.countDocuments({ allergenId, mode: "avoid" });
+    if (members > 0) throw new HttpError(409, "allergen_avoided", { members });
+  }
   await FoodAllergen.deleteMany({ allergenId });
   await UserAllergen.deleteMany({ allergenId });
   if (!existed) throw new HttpError(404, "allergen_not_found"); // rows left by a crash are gone now
@@ -549,6 +714,52 @@ export async function updateAllergen(
     { runValidators: true },
   );
   if (res.matchedCount === 0) throw new HttpError(404, "allergen_not_found");
+  return rematchAfterWrite(allergenId, opts);
+}
+
+/** Most synonyms an allergen holds (the shared AllergenEntry limit). */
+const MAX_SYNONYMS = 200;
+
+/**
+ * Adds one synonym to an allergen in a single atomic update (T22 queue "map"): nothing read earlier is
+ * written back, so a concurrent map or Curator edit of the same allergen is never undone. Refuses with
+ * 409 synonyms_full when the allergen already holds the shared maximum and lacks this phrase. Runs the
+ * allergen's re-match like any Curator edit.
+ */
+export async function addSynonym(
+  id: string,
+  synonym: string,
+  curatorId: Types.ObjectId,
+  opts?: Parameters<typeof rematchAllergen>[1],
+): Promise<AllergenWrite> {
+  const allergenId = objectId(id);
+  const current = await Allergen.findById(allergenId, { excludePhrases: 1 }).lean();
+  if (!current) throw new HttpError(404, "allergen_not_found");
+  // A phrase the allergen's exclude list hides could never match: refuse rather than mark it mapped.
+  const norm = normalize(synonym);
+  if (
+    !mask(
+      ` ${norm} `,
+      phrases(current.excludePhrases ?? []).map((p) => p.norm),
+    ).includes(` ${norm} `)
+  )
+    throw new HttpError(409, "token_excluded", "the allergen's exclude phrases hide this phrase");
+  const res = await Allergen.updateOne(
+    {
+      _id: allergenId,
+      $or: [{ synonyms: synonym }, { [`synonyms.${MAX_SYNONYMS - 1}`]: { $exists: false } }],
+    },
+    {
+      $addToSet: { synonyms: synonym },
+      $set: { source: "curator", updatedBy: curatorId, updatedAt: new Date(), rematchCursor: 0 },
+      $inc: { rematchRun: 1 },
+    },
+  );
+  if (res.matchedCount === 0) {
+    if (!(await Allergen.exists({ _id: allergenId })))
+      throw new HttpError(404, "allergen_not_found");
+    throw new HttpError(409, "synonyms_full", `an allergen holds at most ${MAX_SYNONYMS} synonyms`);
+  }
   return rematchAfterWrite(allergenId, opts);
 }
 
