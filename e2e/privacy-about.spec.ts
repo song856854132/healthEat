@@ -4,24 +4,31 @@ import { expect, test } from "@playwright/test";
 // package's dist/ is not built there. Playwright compiles the TypeScript itself.
 import { PRIVACY_ACK_COOKIE, SESSION_COOKIE } from "../packages/shared/src/index";
 
-// Lane B (T12, part 1): the /privacy and /about pages. Both are public and static. The privacy page
+// Lane B (T12): the /privacy and /about pages. Both are public and static. The privacy page
 // must carry every disclosure the design doc lists ("Privacy policy must disclose"), and every cookie
 // the site actually sets must be named on it, so the policy cannot drift from the code.
 
 test("both pages are public and reachable from Home", async ({ page }) => {
+  // The footer on every page links both (T12: "/privacy is linked in the footer of every page"); the
+  // pages also link each other in their text.
+  const footer = page.getByRole("navigation", { name: "Footer" });
+  const main = page.getByRole("main");
   await page.goto("/");
-  await page.getByRole("link", { name: "Privacy policy", exact: true }).click();
+  await footer.getByRole("link", { name: "Privacy policy", exact: true }).click();
   await expect(page).toHaveURL(/\/privacy$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Privacy policy");
   await expect(page).toHaveTitle(/Privacy policy/);
 
-  await page.getByRole("link", { name: /^About/ }).click();
+  await main.getByRole("link", { name: /^About/ }).click();
   await expect(page).toHaveURL(/\/about$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("About healthEat");
   await expect(page).toHaveTitle(/About/);
 
-  await page.getByRole("link", { name: "Privacy policy", exact: true }).click();
+  await main.getByRole("link", { name: "Privacy policy", exact: true }).click();
   await expect(page).toHaveURL(/\/privacy$/);
+
+  await footer.getByRole("link", { name: "About", exact: true }).click();
+  await expect(page).toHaveURL(/\/about$/);
 });
 
 test("the privacy policy makes every disclosure the design doc requires", async ({ page }) => {
@@ -52,6 +59,10 @@ test("the privacy policy makes every disclosure the design doc requires", async 
   // How to delete the account and what goes with it.
   await expect(page.getByRole("heading", { name: "Deleting your account" })).toBeVisible();
   await expect(main).toContainText("/api/users/me");
+  await expect(main.getByRole("link", { name: "your profile" })).toHaveAttribute(
+    "href",
+    "/profile",
+  );
   await expect(main).toContainText("every food log entry, your allergen settings");
 });
 

@@ -31,6 +31,8 @@ type AuthState = {
   recheck: () => Promise<Session>;
   /** The account a login or register just returned; wins over any /me answer still in flight. */
   setMe: (me: MeResponse) => void;
+  /** The server ended the session another way (the account was deleted): show signed out. */
+  clear: () => void;
   /** Ends the server session; `me` is cleared only when the server confirms. */
   logout: () => Promise<{ ok: true } | { ok: false; message: string }>;
 };
@@ -92,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [recheck, apply]);
 
   const setMe = useCallback((next: MeResponse) => apply(next), [apply]);
+  const clear = useCallback(() => apply(null), [apply]);
 
   const logout = useCallback(async () => {
     const result = await apiLogout();
@@ -100,8 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [apply]);
 
   const value = useMemo(
-    () => ({ me, checkFailed, recheck, setMe, logout }),
-    [me, checkFailed, recheck, setMe, logout],
+    () => ({ me, checkFailed, recheck, setMe, clear, logout }),
+    [me, checkFailed, recheck, setMe, clear, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

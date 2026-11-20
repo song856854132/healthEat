@@ -1,0 +1,41 @@
+/* /profile. Colours come from the tokens in globals.css (--ink, --paper, --line, --danger). */
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0 0 12px;
+}
+.facts dt {
+  font-weight: 600;
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.check input {
+  margin-top: 4px;
+  flex: none;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.actions button {
+  margin-right: 0;
+}
+.danger {
+  border-color: var(--danger);
+}
+.deleteButton {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--paper);
+}

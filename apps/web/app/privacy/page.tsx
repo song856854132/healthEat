@@ -50,8 +50,9 @@ export default function PrivacyPage() {
         <li>
           <strong>Your member profile:</strong> your time zone (taken from your browser when you
           register), and the details you choose to add: sex, birth year, height, weight, activity
-          level, calorie band, phone number, and your sharing choices (all off by default). It also
-          counts how many meal photos you analysed today, to apply the daily photo limit.
+          level, calorie band, phone number, and your sharing choices (all off by default; change
+          them under &quot;Sharing and contact&quot; on your profile page). It also counts how many
+          meal photos you analysed today, to apply the daily photo limit.
         </li>
         <li>
           <strong>Your food log:</strong> for each entry, the date, the meal, the food, the amount
@@ -182,9 +183,11 @@ export default function PrivacyPage() {
         within minutes.
       </p>
       <p>
-        While signed in, delete it with a <code>DELETE</code> request to <code>/api/users/me</code>.
-        A Delete account button on your profile page is being added. If you are the only Admin, the
-        deletion is refused until another Admin exists, so the site always keeps one.
+        To delete it, sign in, open <Link href="/profile">your profile</Link> (your username at the
+        top of the page) and use <strong>Delete account</strong>; you confirm by typing your
+        username. The page sends a <code>DELETE</code> request to <code>/api/users/me</code>, which
+        you can also call yourself while signed in. If you are the only Admin, the deletion is
+        refused until another Admin exists, so the site always keeps one.
       </p>
 
       <h2 id="changes">Changes and questions</h2>
