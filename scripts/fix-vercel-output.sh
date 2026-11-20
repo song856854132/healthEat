@@ -50,5 +50,8 @@ json.dump(d,open(p,"w"),indent=2)
 PY
     shared=$((shared+1))
   fi
-done < <(find "$out" -maxdepth 1 -name '*.func' -type d)
+# Any depth: a route below the root is nested (/food/[fdcId] -> functions/food/[fdcId].func). -prune
+# stops find at each function, so the node_modules copied into it above are not searched. Symlinked
+# .func entries (routes Vercel dedupes onto one function) are not directories and are skipped.
+done < <(find "$out" -name '*.func' -type d -prune)
 echo "apps/$app: $funcs function(s); $copied hoisted file(s) materialised; shared fixed in $shared"
