@@ -4,7 +4,7 @@ A weekly nutrient-and-sensitivity coach. Calorie trackers stop at calories; heal
 when your week is running low on a nutrient, which real foods close the gap, and tracks your
 exposure to the ingredients your body reacts to. Kambaz open-ended final project, graduate tier.
 
-- Design and plan: [`docs/designs/healtheat-nutrient-coach.md`](docs/designs/healtheat-nutrient-coach.md) (approved; tasks T1 to T22 at the end)
+- Design and plan: [`docs/designs/healtheat-nutrient-coach.md`](docs/designs/healtheat-nutrient-coach.md) (approved; tasks T1 to T22 and T25 to T28 at the end)
 - How the team works: [`docs/team-workflow.md`](docs/team-workflow.md)
 - New teammate: [`docs/ONBOARDING.md`](docs/ONBOARDING.md)
 - Backlog beyond the plan: [`TODOS.md`](TODOS.md)
@@ -33,6 +33,7 @@ set -a; . .env.example; set +a   # or on the VM: set -a; . ~/.env.staging; set +
 npm run dev:api                 # http://localhost:4000/api/health
 npm run dev:web                 # http://localhost:3000  (API_ORIGIN=http://localhost:4000)
 npm test                        # unit + API tests (vitest, supertest); API tests start an in-memory MongoDB (first run downloads a ~100 MB binary)
+npx vitest run --coverage       # what CI runs: the same tests plus the coverage floors for summary.ts and dictionary.ts (vitest.config.ts)
 npm run e2e                     # Playwright; without BASE_URL it starts a local stack (in-memory MongoDB, api, web) itself
 ```
 

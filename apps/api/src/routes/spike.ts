@@ -40,7 +40,23 @@ spikeRouter.post("/logout", (_req, res) => {
 spikeRouter.get("/slow", async (req, res) => {
   const requested = Number(req.query.seconds ?? 65);
   const seconds = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 240) : 65;
-  const started = Date.now();
-  await new Promise((r) => setTimeout(r, seconds * 1000));
-  res.json({ ok: true, waitedMs: Date.now() - started });
+  res.json({ ok: true, waitedMs: await waitAtLeast(seconds * 1000) });
 });
+
+// Sleeps until at least `ms` have passed on the monotonic clock and returns the wait in
+// whole milliseconds, rounded up. A timer can wake a fraction of a millisecond early by
+// another clock (#43: Date.now() read 64999 for a 65 s timer), so it tops up until the
+// measured wait reaches `ms`.
+export async function waitAtLeast(
+  ms: number,
+  now: () => number = () => performance.now(),
+  sleep: (ms: number) => Promise<unknown> = (d) => new Promise((r) => setTimeout(r, d)),
+): Promise<number> {
+  const started = now();
+  let waited = 0;
+  for (let next = ms; next > 0; next = Math.ceil(ms - waited)) {
+    await sleep(next);
+    waited = now() - started;
+  }
+  return Math.ceil(waited);
+}

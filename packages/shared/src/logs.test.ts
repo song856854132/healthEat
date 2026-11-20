@@ -20,6 +20,9 @@ describe("log schemas (T6)", () => {
     expect(LogEntryCreateInput.parse(ok)).toEqual(ok);
     expect(LogEntryCreateInput.safeParse({ ...ok, grams: MAX_LOG_GRAMS + 1 }).success).toBe(false);
     expect(LogEntryCreateInput.safeParse({ ...ok, userId: "x" }).success).toBe(false);
+    const requestId = "6f1c2b9e-3d4a-4f5b-9c8d-7e6f5a4b3c2d";
+    expect(LogEntryCreateInput.parse({ ...ok, requestId })).toEqual({ ...ok, requestId });
+    expect(LogEntryCreateInput.safeParse({ ...ok, requestId: "tap-1" }).success).toBe(false);
   });
 
   it("edits grams and meal only, and at least one of them", () => {
