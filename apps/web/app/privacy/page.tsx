@@ -11,8 +11,8 @@ export const metadata: Metadata = {
 // Bump when the text changes in substance. The policy describes the app as built: each statement
 // matches the code it names (apps/api models, lib/session.ts, routes/auth.ts, services/account.ts),
 // and e2e/privacy-about.spec.ts checks that every cookie the site sets is listed here.
-const UPDATED = "November 18, 2026";
-const UPDATED_ISO = "2026-11-18";
+const UPDATED = "November 20, 2026";
+const UPDATED_ISO = "2026-11-20";
 
 /**
  * /privacy (design doc, Pages table; "Privacy policy on first visit" and "Privacy policy must
@@ -50,7 +50,8 @@ export default function PrivacyPage() {
         <li>
           <strong>Your member profile:</strong> your time zone (taken from your browser when you
           register), and the details you choose to add: sex, birth year, height, weight, activity
-          level, calorie band, phone number, and your sharing choices (all off by default).
+          level, calorie band, phone number, and your sharing choices (all off by default). It also
+          counts how many meal photos you analysed today, to apply the daily photo limit.
         </li>
         <li>
           <strong>Your food log:</strong> for each entry, the date, the meal, the food, the amount
@@ -86,14 +87,18 @@ export default function PrivacyPage() {
         <li>
           <strong>Other members and visitors</strong> cannot read your logs, bands, symptoms,
           allergen settings, email or body measurements. Your username is public, because profile
-          pages and links use it. Your username appears next to foods you logged only if you turn on
-          public logs, and only to signed-in viewers. Your phone number is shown only if you turn
-          that on. Counts across all members (such as how often a food was logged this week) can
-          appear on public pages without usernames.
+          pages and links use it; your profile page also shows when you joined and your Member or
+          Curator role. If you turn on public logs, your username appears next to foods you logged
+          (to signed-in viewers), and your username, a Member badge and your join date can be listed
+          among the newest members on the Home page, visible without signing in. Your phone number
+          is shown only if you turn that on. Counts across all members (such as how often a food was
+          logged this week) can appear on public pages without usernames.
         </li>
         <li>
           <strong>Curators</strong> maintain the allergen dictionary. They see dictionary data and
-          aggregate match counts, never anyone&apos;s logs.
+          aggregate match counts, never anyone&apos;s logs. A Curator&apos;s credentials, bio and
+          specialties are public on their profile page, and a Curator who opts in to the listing
+          appears on the Home page with a Curator badge.
         </li>
         <li>
           <strong>Admins</strong> manage accounts. They see account fields only: username, email,
@@ -141,7 +146,7 @@ export default function PrivacyPage() {
               </th>
               <td>
                 Keeps you signed in. Set when you register or log in. Page scripts cannot read it
-                (HttpOnly), and it is sent only over HTTPS.
+                (HttpOnly), and on the live site it is sent only over HTTPS.
               </td>
               <td>14 days, renewed as you use the site; removed when you log out</td>
             </tr>
@@ -159,14 +164,22 @@ export default function PrivacyPage() {
           </tbody>
         </table>
       </div>
-      <p>Both cookies are first-party and needed for the site to work. There are no others.</p>
+      <p>
+        Both cookies are first-party and needed for the site to work. The only other cookie is{" "}
+        <code>he_spike</code>, set only if you press &quot;Set cookie&quot; in the connection check
+        on the Home page; it holds a fixed test name, nothing about you, and expires after an hour
+        or when you press &quot;Clear cookie&quot;.
+      </p>
 
       <h2 id="delete">Deleting your account</h2>
       <p>
         Deleting your account removes your account, all your profiles, every food log entry, your
         allergen settings and your sessions, and later your symptom entries once symptom logging
         exists. It takes effect at once: you are signed out and cannot log in again, and it cannot
-        be undone. Aggregate counts that never contained your username are not affected.
+        be undone. Aggregate counts that never contained your username are not affected. If you were
+        a Curator, the dictionary entries you edited keep an internal id of the editor (not your
+        username), and the Home page&apos;s stored list drops your username at its next refresh,
+        within minutes.
       </p>
       <p>
         While signed in, delete it with a <code>DELETE</code> request to <code>/api/users/me</code>.

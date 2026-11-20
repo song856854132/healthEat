@@ -39,6 +39,12 @@ test("the privacy policy makes every disclosure the design doc requires", async 
   await expect(main).toContainText(/Admins.*see account fields only/s);
   // Which profile fields are public.
   await expect(main).toContainText("Your username is public");
+  // The signed-out Home lists opted-in members and curators (GET /api/home/public), and a Curator's
+  // credentials, bio and specialties are on their public profile (GET /api/users/:username).
+  await expect(main).toContainText("visible without signing in");
+  await expect(main).toContainText("credentials, bio and specialties are public");
+  // What we store includes the daily photo counter (MemberProfile.visionUsage).
+  await expect(main).toContainText("how many meal photos you analysed today");
   // Cookies, by name.
   const cookies = page.getByRole("table");
   await expect(cookies.getByRole("rowheader", { name: SESSION_COOKIE })).toBeVisible();

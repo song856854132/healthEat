@@ -80,11 +80,11 @@ export default function AboutPage() {
 
       <h3 id="anthropic">Anthropic</h3>
       <p>
-        Photo logging, planned for a later release, uses Claude, a model by{" "}
-        <a href="https://www.anthropic.com/">Anthropic</a>, to recognise the foods in a meal photo
-        and suggest a search and a portion for each. You confirm every item before it is logged, and
-        nutrient values still come from USDA. Photos are not stored by {APP_NAME}; see the{" "}
-        <Link href="/privacy#third-parties">privacy policy</Link>.
+        Photo logging (its server side is built; the page that uses it is coming) uses Claude, a
+        model by <a href="https://www.anthropic.com/">Anthropic</a>, to recognise the foods in a
+        meal photo and suggest a search and a portion for each. You confirm every item before it is
+        logged, and nutrient values still come from USDA. Photos are not stored by {APP_NAME}; see
+        the <Link href="/privacy#third-parties">privacy policy</Link>.
       </p>
 
       <p className={styles.related}>
