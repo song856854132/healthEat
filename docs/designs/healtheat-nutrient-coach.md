@@ -1408,6 +1408,10 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Scope revision — D18 (replaces the cut coach depth in phase 3)
   - Files: apps/api/src/models/IngredientToken.ts, apps/api/src/services/dictionary.ts, apps/web/app/curate/unmatched/page.tsx
   - Verify: unit test: caching a food with "soy lecithin" (matched) and "xanthan gum" (unmatched) creates one token; mapping it appends the synonym and FoodAllergen rows appear
+- [ ] **T23 (P1, human: ~1 day / CC: ~30 min)** — apps/web + e2e — Login and Register pages and the signed-in nav against /api/auth (lane B item 2)
+  - Surfaced by: Implementation Tasks: order and dependencies, Lane B item 2 (task number added 2026-11-16)
+  - Files: apps/web/app/login/page.tsx, apps/web/app/register/page.tsx, apps/web/app/nav.tsx, apps/web/app/auth-context.tsx, apps/web/app/use-auth-form.tsx, apps/web/app/lib/api.ts, e2e/login-register.spec.ts
+  - Verify: Playwright: register, nav shows the username, reload keeps the session, duplicate username conflict, log out, wrong password error, log back in
 
 - [ ] **T25 (#48, P1, human: ~2 days / CC: ~1.5 hr)** — apps/api + packages/shared — Weekly summary: `GET /api/users/me/summary?weekEnding=` with 7-day coverage bands, today's calorie meter, exposure meter and today's alerts; DRI table with an adult reference row (targets for members without sex or age, `targetBasis: "reference"`); `TRACKED_NUTRIENTS` with canonical ids and unit conversions; a nutrient a food does not report is unknown, not zero (`dataCoverage`, "not enough data" below 50%); `calorieMeter: null` with `profile_incomplete` when the band cannot be set or computed; allergens through a batched `allergensForFoods`
   - Surfaced by: eng review 2026-11-18 (REST table row with no task; decisions D4, D7, D9, D11)
@@ -1448,7 +1452,7 @@ Update 2026-11-18 (eng review of the lane A finish plan): the remaining lane A o
 
 Lane B (teammate: `apps/web`), in order:
 1. **T12, web-only part**: privacy banner and acknowledgment cookie, `/privacy`, `/about`, footer, nav shell. No API needed. First task.
-2. Login and Register pages and the signed-in nav, against the `/api/auth/*` contract, as soon as T9 is on `main` (mock the API locally before that).
+2. **T23** Login and Register pages and the signed-in nav, against the `/api/auth/*` contract, as soon as T9 is on `main` (mock the API locally before that).
 3. Search and Results page with URL state, then Details with local data, against T3.
 4. Member Home widgets and the day log page against T6 and T10 (phase 1 bands follow with the summary service).
 5. **T19** band rendering spec and **T21**'s Curator and Admin pages once their APIs exist.
