@@ -626,14 +626,21 @@ const objectId = (id: string) => {
 };
 
 /**
- * DELETE /api/allergens/:id (R3-3): no matching pass. The allergen's FoodAllergen and UserAllergen rows
- * go first, then the entry, then its FoodAllergen rows once more, for a food matched by a concurrent
+ * DELETE /api/allergens/:id (R3-3): no matching pass. While any member avoids the allergen the delete is
+ * refused with 409 and nothing changes (owner decision #52): their alerts depend on it, so a Curator
+ * renames the entry instead. Otherwise the allergen's FoodAllergen and UserAllergen (track-mode) rows go
+ * first, then the entry, then its FoodAllergen rows once more, for a food matched by a concurrent
  * request while the entry still existed. Every step is rerunnable: a retry finishes the job, and a
- * retry after the entry is already gone still sweeps its rows before answering 404.
+ * retry after the entry is already gone still sweeps its rows before answering 404. A member who adds
+ * an avoid setting in the milliseconds between the count and the sweep loses it (no transactions, D6).
  */
 export async function deleteAllergen(id: string): Promise<void> {
   const allergenId = objectId(id);
   const existed = (await Allergen.exists({ _id: allergenId })) !== null;
+  if (existed) {
+    const members = await UserAllergen.countDocuments({ allergenId, mode: "avoid" });
+    if (members > 0) throw new HttpError(409, "allergen_avoided", { members });
+  }
   await FoodAllergen.deleteMany({ allergenId });
   await UserAllergen.deleteMany({ allergenId });
   if (!existed) throw new HttpError(404, "allergen_not_found"); // rows left by a crash are gone now
