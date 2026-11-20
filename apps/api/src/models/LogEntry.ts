@@ -13,6 +13,8 @@ const LogEntrySchema = new Schema({
   source: { type: String, enum: LOG_SOURCES, required: true },
   confidence: { type: Number, required: true, min: 0, max: 1 },
   photoBatchId: { type: String, default: null },
+  // The client's UUID for one "log this" tap (owner decision #51); absent on entries logged without one.
+  requestId: { type: String, default: undefined },
   createdAt: { type: Date, required: true, default: () => new Date() },
 });
 // A member's day logs (the logs route, summaries) and every member's week (the public Home feed, T10).
@@ -20,6 +22,12 @@ LogEntrySchema.index({ userId: 1, date: 1 });
 LogEntrySchema.index({ date: 1 });
 // One food's week of logs (the Details page local data, T28; eng review D6).
 LogEntrySchema.index({ fdcId: 1, date: 1 });
+// A repeated create with the same requestId finds the first entry instead of writing a second (#51).
+// Partial: entries without a requestId are never constrained.
+LogEntrySchema.index(
+  { userId: 1, requestId: 1 },
+  { unique: true, partialFilterExpression: { requestId: { $type: "string" } } },
+);
 
 export type LogEntryAttrs = InferSchemaType<typeof LogEntrySchema>;
 export type LogEntryDoc = HydratedDocument<LogEntryAttrs>;

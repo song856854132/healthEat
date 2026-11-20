@@ -127,7 +127,9 @@ usersRouter.post(
   ...member,
   asyncHandler(async (req, res) => {
     const input = LogEntryCreateInput.parse(req.body);
-    res.status(201).json(LogEntryCreated.parse(await logs.createLog(currentUser(res)._id, input)));
+    const { created, ...body } = await logs.createLog(currentUser(res)._id, input);
+    // 200 for a repeat of an earlier requestId: the answer is the first entry, nothing new was written.
+    res.status(created ? 201 : 200).json(LogEntryCreated.parse(body));
   }),
 );
 
