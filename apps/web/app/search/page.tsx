@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { readCriteria } from "../lib/foods";
+import { formatLogDate } from "../lib/logs";
 import styles from "../foods.module.css";
 import { SearchResults } from "./results";
 import { SearchForm } from "./search-form";
@@ -18,10 +20,17 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
  */
 export default async function SearchPage({ searchParams }: Props) {
   const criteria = readCriteria(await searchParams);
-  const key = `${criteria.q}|${criteria.dataType ?? ""}|${criteria.page}`;
+  const key = `${criteria.q}|${criteria.dataType ?? ""}|${criteria.page}|${criteria.date ?? ""}`;
   return (
     <main className={styles.wide}>
       <h1>Search foods</h1>
+      {criteria.date ? (
+        // Came from a day log's "Add food": "Log this" on Details goes to that day.
+        <p className={styles.logDateNote} data-testid="search-log-date">
+          Adding to <strong>{formatLogDate(criteria.date)}</strong>.{" "}
+          <Link href={`/log/${criteria.date}`}>Back to the day log</Link>
+        </p>
+      ) : null}
       {/* Keyed on the URL: Back and Forward must show that search's own terms, not the last typed. */}
       <SearchForm key={`form|${key}`} criteria={criteria} />
       <p className={styles.source}>

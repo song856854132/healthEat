@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FOOD_SEARCH_MAX_PAGE } from "@healtheat/shared";
 import type { FoodSearchResponse, FoodSummary } from "@healtheat/shared";
-import { searchFoods, searchHref } from "../lib/foods";
+import { foodHref, searchFoods, searchHref } from "../lib/foods";
 import type { Failure, SearchCriteria } from "../lib/foods";
 import { formatAmount, headline } from "../lib/nutrients";
 import styles from "../foods.module.css";
@@ -81,7 +81,7 @@ export function SearchResults({ criteria }: { criteria: SearchCriteria }) {
       {data.cached ? <CachedNote fetchedAt={data.fetchedAt} /> : null}
       <ol className={styles.resultList} start={(data.page - 1) * data.pageSize + 1}>
         {data.foods.map((food) => (
-          <ResultRow key={food.fdcId} food={food} />
+          <ResultRow key={food.fdcId} food={food} date={criteria.date} />
         ))}
       </ol>
       <Pager criteria={criteria} totalPages={data.totalPages} />
@@ -89,12 +89,12 @@ export function SearchResults({ criteria }: { criteria: SearchCriteria }) {
   );
 }
 
-function ResultRow({ food }: { food: FoodSummary }) {
+function ResultRow({ food, date }: { food: FoodSummary; date?: string }) {
   const h = headline(food.nutrients);
   return (
     <li className={styles.resultRow} data-testid="search-result">
       <div className={styles.resultMain}>
-        <Link href={`/food/${food.fdcId}`} className={styles.resultTitle}>
+        <Link href={foodHref(food.fdcId, date)} className={styles.resultTitle}>
           {food.description}
         </Link>
         <span className={styles.meta}>
@@ -119,7 +119,7 @@ function ResultRow({ food }: { food: FoodSummary }) {
           <dd>{h.carbs ? `${formatAmount(h.carbs.amountPer100g)} g` : "–"}</dd>
         </div>
       </dl>
-      <Link href={`/food/${food.fdcId}#log`} className={styles.logLink}>
+      <Link href={foodHref(food.fdcId, date, "#log")} className={styles.logLink}>
         Log this
       </Link>
     </li>

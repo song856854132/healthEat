@@ -1,0 +1,132 @@
+/* /log/[date]. Colours come from the tokens in globals.css (--ink, --paper, --line, --danger). */
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+.todayBadge {
+  margin-left: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.dayNav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin: 16px 0;
+}
+.dayLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.datePicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.datePicker input,
+.editForm input,
+.editForm select {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+.datePicker button {
+  margin-right: 0;
+}
+.summaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+.summaryRow p {
+  margin: 0;
+}
+.problem {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.problem p {
+  margin: 0 0 8px;
+}
+.mealHeading {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+.entryList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 0;
+}
+.entry + .entry {
+  border-top: 1px solid var(--line);
+}
+.entryMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.entryName {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.entryMeta {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+.entryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.entryActions button,
+.confirm button {
+  margin-right: 0;
+}
+.editForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+}
+.editForm input {
+  width: 7em;
+}
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--paper);
+}
