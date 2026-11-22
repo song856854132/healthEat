@@ -82,9 +82,10 @@ async function failure(res: Response): Promise<Failure> {
   return { status: res.status, error, message };
 }
 
-type Result<T> = { ok: true; data: T } | { ok: false; failure: Failure };
+export type Result<T> = { ok: true; data: T } | { ok: false; failure: Failure };
 
-async function getJson<T>(
+/** Calls an API route and parses a 2xx body with `schema`; never rejects unless `init.signal` aborted. */
+export async function getJson<T>(
   url: string,
   schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } },
   init: RequestInit = {},

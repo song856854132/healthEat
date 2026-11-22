@@ -1,25 +1,20 @@
 import Link from "next/link";
 import { APP_NAME } from "@healtheat/shared";
+import { HomeView } from "./home-view";
 import { Spike } from "./spike";
+import styles from "./home.module.css";
 
+// Home (T30): the view depends on the session, so it renders in the browser (home-view.tsx).
 export default function Home() {
   return (
-    <main>
+    <main className={styles.wide}>
       <h1>{APP_NAME}</h1>
-      <p className="lede">
-        A weekly nutrient-and-sensitivity coach. Calorie trackers stop at calories; this one tells
-        you when your week is running low on a nutrient and tracks exposure to the ingredients your
-        body reacts to.
-      </p>
-      <p>
-        <Link href="/search">Search foods</Link> in USDA FoodData Central and see their nutrients
-        and allergens.
-      </p>
-      <p>More is coming soon.</p>
-      <Spike />
+      <HomeView />
       <p>
         <Link href="/about">About</Link> · <Link href="/privacy">Privacy policy</Link>
       </p>
+      {/* T1 proxy spike: its acceptance test (e2e/spike.spec.ts) runs against Home. */}
+      <Spike />
     </main>
   );
 }
