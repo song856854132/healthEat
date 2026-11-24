@@ -51,9 +51,9 @@ export function Nav() {
               <Link href="/log" data-testid="nav-day-log">
                 Day log
               </Link>
-              <span data-testid="nav-username" className="nav-user">
+              <Link href="/profile" data-testid="nav-username" className="nav-user">
                 {me.user.username}
-              </span>
+              </Link>
               <span data-testid="nav-role" className="role-badge">
                 {ROLE_LABELS[me.user.activeRole]}
               </span>
