@@ -235,6 +235,37 @@ test("edit an entry's grams and meal, and delete one after confirming", async ({
   await expect(page.getByTestId("log-entry")).toHaveCount(1);
 });
 
+test("a slow delete and a quick edit on two rows both stay on the page", async ({ page }) => {
+  await signUp(page);
+  const day = addDays(todayUtc(), -1);
+  await mockDay(page, [
+    entry({ id: "slow", date: day, description: "Mock slow", grams: 50 }),
+    entry({ id: "quick", date: day, meal: "lunch", description: "Mock quick", grams: 60 }),
+  ]);
+  // Routes registered later run first: hold the DELETE, then hand it to mockDay's handler.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/logs/slow", async (route) => {
+    if (route.request().method() === "DELETE") await held;
+    await route.fallback();
+  });
+  await page.goto(`/log/${day}`);
+  await expect(page.getByTestId("log-entry")).toHaveCount(2, { timeout: 30_000 });
+
+  await page.getByRole("button", { name: "Delete Mock slow" }).click();
+  await page.getByRole("button", { name: "Yes, delete" }).click();
+  await page.getByRole("button", { name: "Edit Mock quick" }).click();
+  await page.getByLabel("Amount (g)").fill("99");
+  await page.getByRole("button", { name: "Save" }).click();
+  const quick = page.getByTestId("meal-lunch").getByTestId("entry-grams");
+  await expect(quick).toHaveText("99 g", { timeout: 30_000 });
+
+  release(); // the delete answers after the edit did
+  await expect(page.getByText("Mock slow")).toHaveCount(0, { timeout: 30_000 });
+  await expect(quick).toHaveText("99 g");
+  await expect(page.getByTestId("day-summary")).toHaveText("1 entry · 99 g in all");
+});
+
 test("an entry deleted in another tab, and a failed save", async ({ page }) => {
   await signUp(page);
   const day = addDays(todayUtc(), -1);

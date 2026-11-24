@@ -57,7 +57,13 @@ export function DayLog({ date }: { date: string }) {
           ? { kind: "ready", today, entries: logs.data.entries }
           : { kind: "error", message: logs.failure.message },
       );
-    })().catch(() => undefined); // aborted: the date changed or the page closed
+    })().catch(() => {
+      // Aborted: the date changed or the page closed. Anything else (a time zone this browser does
+      // not know) must not leave the page on "Loading…".
+      if (!controller.signal.aborted) {
+        setLoad({ kind: "error", message: "Could not work out today's date here. Try again." });
+      }
+    });
     return () => controller.abort();
   }, [signedIn, date, attempt]);
 
@@ -110,7 +116,11 @@ export function DayLog({ date }: { date: string }) {
         <Entries
           date={date}
           entries={load.entries}
-          onChange={(entries) => setLoad({ ...load, entries })}
+          // An updater, not a list: two rows can settle in either order, and each must apply to the
+          // entries as they are then, not as they were when its request started.
+          onChange={(update) =>
+            setLoad((l) => (l.kind === "ready" ? { ...l, entries: update(l.entries) } : l))
+          }
           onStale={reload}
         />
       ) : null}
@@ -164,12 +174,12 @@ function Entries({
 }: {
   date: string;
   entries: LogEntryView[];
-  onChange: (entries: LogEntryView[]) => void;
+  onChange: (update: (entries: LogEntryView[]) => LogEntryView[]) => void;
   onStale: () => void;
 }) {
   const replace = (next: LogEntryView) =>
-    onChange(entries.map((e) => (e.id === next.id ? next : e)));
-  const remove = (id: string) => onChange(entries.filter((e) => e.id !== id));
+    onChange((list) => list.map((e) => (e.id === next.id ? next : e)));
+  const remove = (id: string) => onChange((list) => list.filter((e) => e.id !== id));
   const totalGrams = entries.reduce((sum, e) => sum + e.grams, 0);
 
   return (
@@ -264,6 +274,7 @@ function EntryRow({
       return;
     }
     if (parsed.data.grams === entry.grams && parsed.data.meal === entry.meal) {
+      setError(null);
       setMode("view");
       return;
     }

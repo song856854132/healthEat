@@ -18,13 +18,17 @@ export function TodayRedirect() {
     }
     if (!me) return;
     const controller = new AbortController();
-    memberTimeZone(controller.signal).then(
-      (r) => {
+    memberTimeZone(controller.signal)
+      .then((r) => {
         if (r.ok) router.replace(`/log/${todayIn(r.data)}`);
         else setError(r.failure.message);
-      },
-      () => undefined, // aborted
-    );
+      })
+      .catch(() => {
+        // Aborted, or a time zone this browser does not know (todayIn throws): say so either way
+        // unless the page moved on.
+        if (!controller.signal.aborted)
+          setError("Could not work out today's date here. Try again.");
+      });
     return () => controller.abort();
   }, [me, router]);
 

@@ -57,13 +57,17 @@ export async function deleteLog(id: string): Promise<Result<null>> {
 
 /** Today's date (YYYY-MM-DD) in an IANA time zone. */
 export function todayIn(timeZone: string, now: Date = new Date()): string {
-  // en-CA formats as YYYY-MM-DD.
-  return new Intl.DateTimeFormat("en-CA", {
+  // From the parts, not a locale's whole format: no locale's date layout is guaranteed to stay
+  // YYYY-MM-DD across browser versions.
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(now);
+  }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("year").padStart(4, "0")}-${part("month")}-${part("day")}`;
 }
 
 /** The calendar date `days` after `date` (negative goes back). Pure date arithmetic, in UTC. */
