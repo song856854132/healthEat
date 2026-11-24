@@ -181,7 +181,7 @@ test("a past day lists its entries by meal, with day navigation", async ({ page 
   await expect(page.getByTestId("log-entry")).toHaveText([/Not this day/], { timeout: 30_000 });
 
   await page.getByLabel("Go to date").fill(day);
-  await page.getByRole("button", { name: "Go" }).click();
+  await page.getByRole("button", { name: "Go", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/log/${day}$`));
   await page.getByRole("link", { name: "Today", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/log/${todayUtc()}$`));
