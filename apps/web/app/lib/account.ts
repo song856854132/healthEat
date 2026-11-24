@@ -15,7 +15,7 @@ const MESSAGES: Record<string, string> = {
   bad_response: "The server sent an unexpected response. Try again.",
   unauthenticated: "Your session has ended. Log in again.",
   account_suspended: "This account is suspended.",
-  account_deletion_pending: "This account is being deleted.",
+  account_deletion_pending: "This account is being deleted. Log in again to finish deleting it.",
   validation_error: "Some fields are not valid.",
   last_admin:
     "You are the only Admin, so this account cannot be deleted until another Admin exists.",

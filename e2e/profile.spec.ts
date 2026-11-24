@@ -67,6 +67,50 @@ test("the nav opens the profile, and sharing choices and the phone are saved", a
   expect(((await hidden.json()) as { phone: string | null }).phone).toBeNull();
 });
 
+test("Delete never removes an account another tab signed in to meanwhile", async ({ page }) => {
+  const first = await signUp(page, "pa");
+  await page.goto("/profile");
+  await expect(page.getByTestId("profile-username")).toHaveText(first.username, {
+    timeout: 30_000,
+  });
+  await page.getByRole("button", { name: "Delete account…" }).click();
+  await page.getByLabel(/Type your username/).fill(first.username);
+
+  // Another tab logs out and registers a second account: the cookie now names that one, while this
+  // page still shows the first and the form is armed. page.request shares the browser's cookies.
+  expect((await page.request.post("/api/auth/logout")).ok()).toBe(true);
+  const second = await signUp(page, "pb");
+
+  await page.getByRole("button", { name: "Delete my account permanently" }).click();
+
+  // The page checks the session first and shows the account the cookie names; nothing is deleted.
+  await expect(page.getByTestId("profile-username")).toHaveText(second.username, {
+    timeout: 30_000,
+  });
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your profile");
+  const me = await page.request.get("/api/auth/me");
+  expect(me.status()).toBe(200);
+  expect(((await me.json()) as { user: { username: string } }).user.username).toBe(second.username);
+  expect((await page.request.get(`/api/users/${first.username}`)).status()).toBe(200);
+});
+
+test("a refused delete shows why and keeps the account", async ({ page }) => {
+  const account = await signUp(page, "pr");
+  await page.route("**/api/users/me", (route) =>
+    route.request().method() === "DELETE"
+      ? route.fulfill({ status: 409, json: { error: "last_admin" } })
+      : route.continue(),
+  );
+  await page.goto("/profile");
+  await page.getByRole("button", { name: "Delete account…" }).click({ timeout: 30_000 });
+  await page.getByLabel(/Type your username/).fill(account.username);
+  const confirm = page.getByRole("button", { name: "Delete my account permanently" });
+  await confirm.click();
+  await expect(page.locator(".form-error")).toContainText("only Admin", { timeout: 30_000 });
+  await expect(confirm).toBeEnabled();
+  await expect(page.getByTestId("nav-username")).toHaveText(account.username);
+});
+
 test("Delete account asks for the username, deletes, and the account cannot log in", async ({
   page,
 }) => {

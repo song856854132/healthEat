@@ -14,6 +14,23 @@ import styles from "./profile.module.css";
 
 const ROLE_LABELS = { member: "Member", curator: "Curator", admin: "Admin" } as const;
 
+const SWITCHED =
+  "You are no longer signed in as this account here (another tab changed the session). Reload the page.";
+
+/**
+ * The PUT and DELETE act on whatever account the session cookie names right now, not the one this page
+ * shows: another tab may have logged in as someone else. Ask the server first, and refuse unless it is
+ * still `username`. Resolves to an error message, or null when it is safe to go on.
+ */
+async function confirmSession(
+  recheck: () => Promise<MeResponse | null | undefined>,
+  username: string,
+): Promise<string | null> {
+  const now = await recheck();
+  if (now === undefined) return "Could not check your session. Try again.";
+  return now?.user.username === username ? null : SWITCHED;
+}
+
 export function ProfileView() {
   const { me, checkFailed, clear } = useAuth();
   const router = useRouter();
@@ -58,8 +75,9 @@ export function ProfileView() {
     <main>
       <h1>Your profile</h1>
       <AccountSection me={me} />
-      <SharingSection key={me.user.username} />
+      <SharingSection key={me.user.username} username={me.user.username} />
       <DeleteSection
+        key={me.user.username}
         username={me.user.username}
         onDeleted={() => {
           setDeleted(true);
@@ -104,7 +122,7 @@ type Load =
  * `showPhoneOnProfile`, `phone`; R3-14). The PUT sends only these three fields, so the body details
  * the summary uses are left as they are.
  */
-function SharingSection() {
+function SharingSection({ username }: { username: string }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [attempt, setAttempt] = useState(0);
 
@@ -137,6 +155,7 @@ function SharingSection() {
       ) : null}
       {load.state === "ready" ? (
         <SharingForm
+          username={username}
           profile={load.profile}
           onSaved={(profile) => setLoad({ state: "ready", profile })}
         />
@@ -146,9 +165,11 @@ function SharingSection() {
 }
 
 function SharingForm({
+  username,
   profile,
   onSaved,
 }: {
+  username: string;
   profile: MemberProfileView;
   onSaved: (profile: MemberProfileView) => void;
 }) {
@@ -159,6 +180,7 @@ function SharingForm({
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
+  const { recheck } = useAuth();
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -188,6 +210,11 @@ function SharingForm({
     setPending(true);
     setErrors({});
     try {
+      const switched = await confirmSession(recheck, username);
+      if (switched) {
+        setErrors({ form: switched });
+        return;
+      }
       const result = await updateMemberProfile(parsed.data);
       if (result.ok) {
         onSaved(result.data);
@@ -204,66 +231,69 @@ function SharingForm({
 
   return (
     <form className="auth-form" onSubmit={onSubmit} noValidate>
-      {errors.form ? (
-        <p role="alert" className="form-error">
-          {errors.form}
-        </p>
-      ) : null}
-      <label className={styles.check}>
-        <input
-          type="checkbox"
-          name="publicLogs"
-          checked={publicLogs}
-          onChange={(e) => {
-            setPublicLogs(e.target.checked);
-            setSaved(false);
-          }}
-        />
-        <span>
-          Public logs: show my username next to foods I log (to signed-in visitors), and list me
-          among the newest members on Home
-        </span>
-      </label>
-      <Field
-        name="phone"
-        label="Phone number (optional)"
-        type="tel"
-        autoComplete="tel"
-        value={phone}
-        onChange={(e) => {
-          setPhone(e.target.value);
-          setSaved(false);
-        }}
-        hint="Private unless you choose to show it below."
-        error={errors.phone}
-      />
-      <label className={styles.check}>
-        <input
-          type="checkbox"
-          name="showPhoneOnProfile"
-          checked={showPhone}
-          onChange={(e) => {
-            setShowPhone(e.target.checked);
-            setSaved(false);
-          }}
-        />
-        <span>Show my phone number on my public profile</span>
-      </label>
-      <div className={styles.actions}>
-        <button
-          type="submit"
-          className="primary"
-          disabled={pending}
-          aria-busy={pending || undefined}
-        >
-          {pending ? "Saving…" : "Save"}
-        </button>
-        {saved ? (
-          <span role="status" className="hint">
-            Saved.
-          </span>
+      {/* Disabled while saving, so a change made mid-save is not followed by "Saved." without being sent. */}
+      <fieldset disabled={pending} className={styles.fieldset}>
+        {errors.form ? (
+          <p role="alert" className="form-error">
+            {errors.form}
+          </p>
         ) : null}
-      </div>
+        <label className={styles.check}>
+          <input
+            type="checkbox"
+            name="publicLogs"
+            checked={publicLogs}
+            onChange={(e) => {
+              setPublicLogs(e.target.checked);
+              setSaved(false);
+            }}
+          />
+          <span>
+            Public logs: show my username next to foods I log (to signed-in visitors), and list me
+            among the newest members on Home
+          </span>
+        </label>
+        <Field
+          name="phone"
+          label="Phone number (optional)"
+          type="tel"
+          autoComplete="tel"
+          value={phone}
+          onChange={(e) => {
+            setPhone(e.target.value);
+            setSaved(false);
+          }}
+          hint="Private unless you choose to show it below."
+          error={errors.phone}
+        />
+        <label className={styles.check}>
+          <input
+            type="checkbox"
+            name="showPhoneOnProfile"
+            checked={showPhone}
+            onChange={(e) => {
+              setShowPhone(e.target.checked);
+              setSaved(false);
+            }}
+          />
+          <span>Show my phone number on my public profile</span>
+        </label>
+        <div className={styles.actions}>
+          <button
+            type="submit"
+            className="primary"
+            disabled={pending}
+            aria-busy={pending || undefined}
+          >
+            {pending ? "Saving…" : "Save"}
+          </button>
+          {saved ? (
+            <span role="status" className="hint">
+              Saved.
+            </span>
+          ) : null}
+        </div>
+      </fieldset>
     </form>
   );
 }
@@ -279,6 +309,7 @@ function DeleteSection({ username, onDeleted }: { username: string; onDeleted: (
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
   const confirmed = typed.trim().toLowerCase() === username;
+  const { recheck } = useAuth();
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -286,7 +317,10 @@ function DeleteSection({ username, onDeleted }: { username: string; onDeleted: (
     busy.current = true;
     setPending(true);
     setError(null);
-    const result = await deleteAccount();
+    const switched = await confirmSession(recheck, username);
+    const result = switched
+      ? { ok: false as const, failure: { message: switched } }
+      : await deleteAccount();
     if (result.ok) {
       onDeleted();
       return; // stays pending: the section is replaced by the "Account deleted" page

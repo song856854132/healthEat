@@ -184,7 +184,6 @@ button[aria-busy="true"] {
 .privacy-banner-inner p {
   margin: 0;
   flex: 1 1 280px;
-  font-size: 0.95rem;
 }
 .privacy-banner-inner button {
   margin-right: 0;
