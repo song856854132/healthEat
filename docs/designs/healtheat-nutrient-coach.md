@@ -94,11 +94,13 @@ Two Vercel projects (`healtheat-web`, `healtheat-api`), each with root directory
 | `/profile/[username]` | Public profile (sensitive hidden) | Yes | Yes | Yes | Yes |
 | `/search?q=&dataType=&page=` | Search and Results (USDA remote) | Yes | Yes, plus "log this" | Yes, plus matched-allergen chips per result | Yes |
 | `/food/[fdcId]` | Details (USDA remote plus local data: aggregate log counts, allergens detected, your 7-day contribution; usernames only for members who opted into public logs and only to signed-in viewers) | Yes | Yes, log and portion | Yes, plus the matched-synonym breakdown and an "add synonym" shortcut into `/curate/allergens/[key]` | Yes |
-| `/log/[date]` | Own day log, edit portions, photo confirm | redirect | Yes | n/a | n/a |
+| `/log/[date]` | Own day log, edit portions, photo confirm | redirect | Yes | via member view | via member view |
 | `/curate/allergens`, `/curate/allergens/[key]` | Dictionary CRUD: allergen list, per-allergen synonyms and description keywords, re-match status and "Continue re-match" | redirect | n/a | Yes | n/a |
 | `/curate/unmatched?status=&page=` (phase 3) | Unmatched ingredient queue: phrases from cached foods that hit no synonym, sorted by frequency; map to an allergen or ignore | redirect | n/a | Yes | n/a |
 | `/admin/users?q=&role=&page=`, `/admin/users/[username]` | Account management: list and filter users, grant or revoke Curator and Admin, suspend or reactivate, delete an account (same cascade as self-delete) | redirect | n/a | n/a | Yes |
 | `/privacy`, `/about` | Policy, attributions (USDA, Open Food Facts, Anthropic) | Yes | Yes | Yes | Yes |
+
+The Member, Curator and Admin columns describe the view for the account's active role (R3-7). Every account holds `member` and `requireRole` ignores `activeRole`, so a Curator or Admin can switch to the member view and use every member page; "n/a" means the page is not part of that role's view, not that it is refused.
 
 Identity is requested only at the moment it is needed (log, edit profile, curate, administer). State lives in the URL: search criteria, page, date, fdcId, allergen key, username, queue status.
 
@@ -1261,6 +1263,8 @@ T25 (2026-11-18) adds the weekly summary (`apps/api/src/services/summary.ts`, `S
 
 T13 API half (2026-11-18; the photo confirm UI is lane B's half). `POST /api/vision/meal` (member; `apps/api/src/routes/vision.ts`, `apps/api/src/services/vision.ts` and `visionUsage.ts`, `VisionMealInput`, `VisionItem` and `VisionMealResponse` in `packages/shared/src/vision.ts`) sends one photo to `claude-opus-5-5` with structured output and `fallbacks: "default"`, a 60 s client timeout and no retries, and answers proposed `{query, grams, confidence}` items; nothing is saved. `ANTHROPIC_API_KEY` is optional: without it the route answers `503 vision_unavailable`. The 20-a-day counter is `MemberProfile.visionUsage {date, count, refunds}` on the member's local date. Two changes from the plan text above: the stored date only moves forward, so a time zone edit cannot reset the count (the REST table says "reset when `date` changes"); and a failed call is given back only up to 10 times a day, because Anthropic bills failed calls too, so from the 11th failure a failed photo counts (R3-29 says failures never count). Contract: `apps/api/README.md`; setting the key and the follow-ups: `TODOS.md`.
 
+T12 (2026-11-20, lane B; part 1 was #45). Every page renders the privacy notice under the nav until acknowledged (`apps/web/app/privacy-banner.tsx`): "Got it" writes `he_privacy_ack=1` (1 year, `SameSite=Lax`, `Secure` on https, readable by page scripts), and the banner also stays hidden for a signed-in account whose `privacyAckAt` is set, writing the cookie into that browser. It reads the cookie in the browser, not in the layout, so `/privacy` and `/about` stay static. The footer links `/privacy` and `/about` on every page. `/profile` (`apps/web/app/profile/`; anonymous visitors go to `/login`; the nav username links to it) shows the account fields, edits the member profile's `publicLogs`, `phone` and `showPhoneOnProfile` (the PUT sends only those three; showing the phone needs a number), and offers "Delete account" behind typing the username, which calls `DELETE /api/users/me` and shows "Account deleted". The policy now points at that button. An acknowledgment given while already signed in reaches `User.privacyAckAt` at the next login, as the design says ("on register or login").
+
 ## Diagrams
 
 See Section 1 above for the request path and the log-and-alert flow. Role model:
@@ -1363,10 +1367,11 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Code Quality — C4 (D12); Scope Challenge — S6
   - Files: packages/shared/src/allergens.seed.ts (was planned as data/allergens.seed.json; a TS module so the API imports it through the shared build), packages/shared/data/PROVENANCE.md, apps/api/src/services/dictionary.ts
   - Verify: unit test: "soy lecithin" in parentheses matches; "parmesan" description matches histamine-rich with matchKind description
-- [ ] **T12 (P2, human: ~1 day / CC: ~30 min)** — apps/web — Privacy banner + ack cookie, Delete account action, policy text, active-role view semantics, phone field
+- [x] **T12 (P2, human: ~1 day / CC: ~30 min)** — apps/web — Privacy banner + ack cookie, Delete account action, policy text, active-role view semantics, phone field
   - Surfaced by: Code Quality — C5 (R3-7, R3-9, R3-11, R3-14), C3 (D11)
-  - Files: apps/web/app/layout.tsx, apps/web/app/profile/page.tsx, apps/web/app/privacy/page.tsx
+  - Files: apps/web/app/layout.tsx, apps/web/app/privacy-banner.tsx, apps/web/app/profile/page.tsx, apps/web/app/profile/profile-view.tsx, apps/web/app/lib/account.ts, apps/web/app/privacy/page.tsx, e2e/privacy-about.spec.ts, e2e/privacy-banner.spec.ts, e2e/profile.spec.ts
   - Verify: Playwright: banner gone after ack and after login on a fresh context; delete account flow refuses login
+  - Done 2026-11-20 in two PRs (#45 `/privacy` and `/about`; then the banner, footer and `/profile`). Not in it: the nav's active-role switch (lands with T21's Curator and Admin Home pages, the first views it changes) and the rest of the member profile form (body details, calorie band, time zone; with the Member Home widgets)
 - [ ] **T13 (P2, human: ~1 day / CC: ~30 min)** — apps/api + apps/web — Vision route hardening: atomic counter, failures not charged, 60 s timeout, fallbacks default, Try again UI
   - Surfaced by: Code Quality — C5 (R3-17, R3-29)
   - Files: apps/api/src/routes/vision.ts, apps/api/src/services/vision.ts, apps/web/app/log/[date]/PhotoConfirm.tsx
@@ -1435,6 +1440,11 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: issue #39; eng review 2026-11-18 (D6)
   - Files: apps/api/src/services/foodStats.ts, apps/api/src/routes/foods.ts, apps/api/src/models/LogEntry.ts, packages/shared/src/foods.ts
   - Verify: anonymous sees counts only; a suspended account's session sees the anonymous view
+- [ ] **T29 (#68, P1, human: ~1 day / CC: ~40 min)** — apps/web + e2e — Day log `/log/[date]`: the day's entries by meal, edit grams and meal (`PUT /api/logs/:id`), delete with confirmation, previous/next day and a date picker bounded by today in the member's time zone, and "Add food" that carries the date through `/search` to Details so "Log this" backfills that day (lane B item 4, day log half; number proposed 2026-11-20, owner to confirm)
+  - Surfaced by: Implementation Tasks: order and dependencies, Lane B item 4
+  - Files: apps/web/app/log/page.tsx, apps/web/app/log/today-redirect.tsx, apps/web/app/log/[date]/page.tsx, apps/web/app/log/[date]/day-log.tsx, apps/web/app/lib/logs.ts, apps/web/app/lib/foods.ts, apps/web/app/search/*, apps/web/app/food/[fdcId]/*, apps/web/app/nav.tsx, e2e/day-log.spec.ts
+  - Verify: Playwright: signed-out redirect; malformed date 404; `/log` opens today; entries grouped by meal with photo confidence; edit moves an entry to its new meal; delete after confirming; a 404 on delete counts as deleted; Add food on a past day posts that `date`; edit and delete against the real routes; no horizontal scroll at 360 px
+  - Not yet: the photo confirm step (T13 web half, #11); Member Home widgets (the next lane B task)
 
 - [ ] **T30 (#70, P1, human: ~1.5 days / CC: ~1 hr)** — apps/web + e2e — Home at `/`: anonymous feed (this week's most-logged foods, most-detected allergens, newest public profiles, one labelled "example week" band, a way in) and Member Home in the wireframe's order (today's hard alert strip, calorie meter or a profile prompt, the 7-day bands, exposure meter, close the gap for any low band, log bar), with T19's band rendering (lane B item 4, Member Home half; T19 folded in)
   - Surfaced by: Implementation Tasks: order and dependencies, Lane B items 4 and 5
@@ -1442,7 +1452,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Verify: Playwright: anonymous feed from the real API, populated, empty and failed feeds from mocks; a new member's Home from the real API (empty bands, profile prompt, log bar into `/search`); the 4-of-7 fixture (T19: header, urgency order, seven dots per row, hatched/plain/outlined read from computed styles); alert strip, calorie meter and exposure meter; close the gap switching between low bands; summary error with Try again
   - Not yet: Curator and Admin Homes (T21 web half, #19; until then they see Member Home, since every account is a member); the photo button in the log bar (T13 web half, #11); an allergen-settings page for the exposure meter; links from public profiles (no `/profile/[username]` page yet)
 
-_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23 and T24 are lane B GitHub issues with no entry here)._
+_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24 and T29 are lane B GitHub issues; their entries above were added by their PRs)._
 
 ## Implementation Tasks: order and dependencies
 
@@ -1463,10 +1473,10 @@ Lane A (owner: `apps/api`, `packages/shared`), in order:
 Update 2026-11-18 (eng review of the lane A finish plan): the remaining lane A order is **T27** (account and profiles), **T25** (summary), **T26** (close the gap), **T10**, **T28**, **T22** (API half), **T15/T16** close-out, **T13** (API half), **T18**. T27 goes first so members can set the body details the summary uses. The web halves of T13 and T22 stay with lane B.
 
 Lane B (teammate: `apps/web`), in order:
-1. **T12, web-only part**: privacy banner and acknowledgment cookie, `/privacy`, `/about`, footer, nav shell. No API needed. First task.
+1. **T12, web-only part**: privacy banner and acknowledgment cookie, `/privacy`, `/about`, footer, nav shell. No API needed. First task. (Done 2026-11-20, with the Delete account action on `/profile`.)
 2. **T23** Login and Register pages and the signed-in nav, against the `/api/auth/*` contract, as soon as T9 is on `main` (mock the API locally before that).
 3. **T24** Search and Results page with URL state, then Details with local data, against T3.
-4. Member Home widgets and the day log page against T6 and T10 (phase 1 bands follow with the summary service).
+4. Member Home widgets and the day log page against T6 and T10 (phase 1 bands follow with the summary service). Split 2026-11-20: the day log is **T29** (#68); the Member Home widgets follow as their own task.
 5. **T19** band rendering spec and **T21**'s Curator and Admin pages once their APIs exist. T19 shipped with the Member Home task, **T30** (#70), 2026-11-22.
 6. **T17** Playwright flows grow alongside each page.
 

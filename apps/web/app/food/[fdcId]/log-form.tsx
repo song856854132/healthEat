@@ -6,15 +6,9 @@ import type { FormEvent } from "react";
 import { LogEntryCreateInput, MAX_LOG_GRAMS, MEALS } from "@healtheat/shared";
 import type { AllergenAlert, LogEntryView, Meal } from "@healtheat/shared";
 import { logFood } from "../../lib/foods";
+import { MEAL_LABELS, formatLogDate } from "../../lib/logs";
 import { formatAmount } from "../../lib/nutrients";
 import styles from "../../foods.module.css";
-
-const MEAL_LABELS: Record<Meal, string> = {
-  breakfast: "Breakfast",
-  lunch: "Lunch",
-  dinner: "Dinner",
-  snack: "Snack",
-};
 
 /** The smallest amount the form logs (matches the custom amount input's min). */
 const MIN_GRAMS = 0.1;
@@ -43,9 +37,10 @@ type Outcome =
  * "Log this" on Details (design doc, Pages table: member column "log and portion"). Anyone sees the
  * form; identity is asked for only on submit (design doc: "Identity is requested only at the moment
  * it is needed"), so a signed-out visitor gets a log-in prompt instead of a hidden button. Logs to
- * today in the member's time zone (the API's default).
+ * today in the member's time zone (the API's default), or to `date` when the visit started from that
+ * day's log (backfill; a date after today is refused by the API with date_in_future).
  */
-export function LogForm({ fdcId, grams }: { fdcId: number; grams: number }) {
+export function LogForm({ fdcId, grams, date }: { fdcId: number; grams: number; date?: string }) {
   const [meal, setMeal] = useState<Meal>(() => mealForHour(new Date().getHours()));
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
@@ -55,7 +50,7 @@ export function LogForm({ fdcId, grams }: { fdcId: number; grams: number }) {
   const requestId = useRef<string | undefined>(undefined);
   useEffect(() => {
     requestId.current = undefined;
-  }, [fdcId, grams, meal]);
+  }, [fdcId, grams, meal, date]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -72,6 +67,7 @@ export function LogForm({ fdcId, grams }: { fdcId: number; grams: number }) {
       fdcId,
       grams,
       meal,
+      ...(date ? { date } : {}),
       ...(requestId.current ? { requestId: requestId.current } : {}),
     });
     if (!parsed.success) {
@@ -102,6 +98,11 @@ export function LogForm({ fdcId, grams }: { fdcId: number; grams: number }) {
 
   return (
     <form id="log" className={styles.logForm} onSubmit={onSubmit} noValidate>
+      {date ? (
+        <p className={styles.logDateNote} data-testid="log-date">
+          Logs to <strong>{formatLogDate(date)}</strong>
+        </p>
+      ) : null}
       <label htmlFor="log-meal">Meal</label>
       <select id="log-meal" value={meal} onChange={(e) => setMeal(e.target.value as Meal)}>
         {MEALS.map((m) => (
@@ -152,7 +153,7 @@ function OutcomeView({ outcome }: { outcome: Outcome }) {
       ) : null}
       <p data-testid="log-done">
         Logged {formatAmount(entry.grams)} g to {MEAL_LABELS[entry.meal].toLowerCase()} on{" "}
-        {entry.date}.
+        {entry.date}. <Link href={`/log/${entry.date}`}>See the day log</Link>
       </p>
     </>
   );
