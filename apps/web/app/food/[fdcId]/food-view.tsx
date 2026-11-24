@@ -16,7 +16,7 @@ type State =
 
 const PER_100G: ServingSize = { label: "100 g", grams: 100 };
 
-export function FoodView({ fdcId }: { fdcId: number }) {
+export function FoodView({ fdcId, date }: { fdcId: number; date?: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
 
@@ -65,10 +65,10 @@ export function FoodView({ fdcId }: { fdcId: number }) {
       </div>
     );
   }
-  return <FoodDetailsView food={state.food} />;
+  return <FoodDetailsView food={state.food} date={date} />;
 }
 
-function FoodDetailsView({ food }: { food: FoodDetails }) {
+function FoodDetailsView({ food, date }: { food: FoodDetails; date?: string }) {
   const portions = [PER_100G, ...food.servingSizes.filter((s) => s.label !== PER_100G.label)];
   // The label serving of a branded food is the usual portion; otherwise start from 100 g.
   const [portion, setPortion] = useState<ServingSize>(food.servingSizes[0] ?? PER_100G);
@@ -142,7 +142,7 @@ function FoodDetailsView({ food }: { food: FoodDetails }) {
             </>
           ) : null}
         </div>
-        <LogForm fdcId={food.fdcId} grams={grams} />
+        <LogForm fdcId={food.fdcId} grams={grams} date={date} />
       </section>
 
       <section aria-labelledby="nutrients-heading">

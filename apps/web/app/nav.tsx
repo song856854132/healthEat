@@ -48,6 +48,9 @@ export function Nav() {
             ) : null
           ) : me ? (
             <>
+              <Link href="/log" data-testid="nav-day-log">
+                Day log
+              </Link>
               <Link href="/profile" data-testid="nav-username" className="nav-user">
                 {me.user.username}
               </Link>
