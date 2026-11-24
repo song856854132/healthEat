@@ -1400,6 +1400,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Code Quality — C5 (R3-12, R3-13)
   - Files: apps/web/components/NutrientBand.tsx
   - Verify: Playwright visual check on a 4-of-7 fixture
+  - Built with T30 (#70) at the owner's request, so the bands are drawn once: `apps/web/components/NutrientBand.tsx`; the "visual check" reads the rendered fill and dot styles on the fixture rather than comparing screenshots, which differ between the VM and the CI runner
 - [x] **T20 (P3, human: ~1 hr / CC: ~10 min)** — docs — Fold the Working plan amendments into the plan body (versions, caches, cascade, open questions 4 and 5 closed, 430 MB reword) before sharing with the instructor
   - Surfaced by: Scope Challenge — S1, S8; Code Quality — C5 (R3-23)
   - Files: docs/designs/healtheat-nutrient-coach.md
@@ -1445,6 +1446,12 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Verify: Playwright: signed-out redirect; malformed date 404; `/log` opens today; entries grouped by meal with photo confidence; edit moves an entry to its new meal; delete after confirming; a 404 on delete counts as deleted; Add food on a past day posts that `date`; edit and delete against the real routes; no horizontal scroll at 360 px
   - Not yet: the photo confirm step (T13 web half, #11); Member Home widgets (the next lane B task)
 
+- [ ] **T30 (#70, P1, human: ~1.5 days / CC: ~1 hr)** — apps/web + e2e — Home at `/`: anonymous feed (this week's most-logged foods, most-detected allergens, newest public profiles, one labelled "example week" band, a way in) and Member Home in the wireframe's order (today's hard alert strip, calorie meter or a profile prompt, the 7-day bands, exposure meter, close the gap for any low band, log bar), with T19's band rendering (lane B item 4, Member Home half; T19 folded in)
+  - Surfaced by: Implementation Tasks: order and dependencies, Lane B items 4 and 5
+  - Files: apps/web/app/page.tsx, apps/web/app/home-view.tsx, apps/web/app/home.module.css, apps/web/app/lib/home.ts, apps/web/app/lib/example-week.ts, apps/web/app/lib/foods.ts, apps/web/components/NutrientBand.tsx, apps/web/components/NutrientBand.module.css, e2e/home.spec.ts
+  - Verify: Playwright: anonymous feed from the real API, populated, empty and failed feeds from mocks; a new member's Home from the real API (empty bands, profile prompt, log bar into `/search`); the 4-of-7 fixture (T19: header, urgency order, seven dots per row, hatched/plain/outlined read from computed styles); alert strip, calorie meter and exposure meter; close the gap switching between low bands; summary error with Try again
+  - Not yet: Curator and Admin Homes (T21 web half, #19; until then they see Member Home, since every account is a member); the photo button in the log bar (T13 web half, #11); an allergen-settings page for the exposure meter; links from public profiles (no `/profile/[username]` page yet)
+
 _No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24 and T29 are lane B GitHub issues; their entries above were added by their PRs)._
 
 ## Implementation Tasks: order and dependencies
@@ -1470,7 +1477,7 @@ Lane B (teammate: `apps/web`), in order:
 2. **T23** Login and Register pages and the signed-in nav, against the `/api/auth/*` contract, as soon as T9 is on `main` (mock the API locally before that).
 3. **T24** Search and Results page with URL state, then Details with local data, against T3.
 4. Member Home widgets and the day log page against T6 and T10 (phase 1 bands follow with the summary service). Split 2026-11-20: the day log is **T29** (#68); the Member Home widgets follow as their own task.
-5. **T19** band rendering spec and **T21**'s Curator and Admin pages once their APIs exist.
+5. **T19** band rendering spec and **T21**'s Curator and Admin pages once their APIs exist. T19 shipped with the Member Home task, **T30** (#70), 2026-11-22.
 6. **T17** Playwright flows grow alongside each page.
 
 Lane C (whoever is free): **T14** remaining pieces (mongodb-memory-server setup for API tests; the rest of the test stack is already wired), **T8** (done by the CI workflows, verify only), **T15** and **T16** tests travel with the PRs that add the code, **T18** vision eval (phase 2), **T22** unmatched-ingredient queue (phase 3).

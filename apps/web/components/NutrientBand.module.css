@@ -1,0 +1,179 @@
+/* The 7-day nutrient bands (T19). Colours come from the tokens in globals.css (--ink, --paper, --line);
+   the band classes are told apart by texture and outline, not hue (wireframe: "rendered as hatch
+   density, not hue"), so they read the same in dark mode and for colour-blind members. */
+
+.bands {
+  --dot: 9px;
+  --dot-gap: 3px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.header {
+  margin: 0 0 8px;
+}
+.empty {
+  margin: 8px 0 0;
+  opacity: 0.8;
+}
+
+.columns,
+.row {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 9rem) auto minmax(0, 1fr) 5.5rem;
+  align-items: center;
+  gap: 4px 12px;
+}
+.columns {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-bottom: 2px;
+}
+.scale {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.row {
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.name {
+  font-weight: 600;
+}
+
+.dots {
+  display: inline-flex;
+  gap: var(--dot-gap);
+}
+.dayLetter {
+  width: var(--dot);
+  text-align: center;
+}
+.dot {
+  display: inline-block;
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.searched {
+  background: var(--ink);
+}
+.photo {
+  border: 1.5px solid var(--ink);
+}
+.unlogged {
+  background: transparent;
+}
+
+.track {
+  position: relative;
+  display: block;
+  height: 16px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 2px;
+  border-radius: 2px;
+}
+.tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 0;
+  border-left: 1px dashed var(--line);
+}
+.tick.target {
+  border-left: 2px solid var(--ink);
+}
+
+/* Band classes (Working plan amendments, C5): hatched = low, plain = ok, outlined = high. */
+.low {
+  background: repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 5px);
+  border: 1px solid var(--ink);
+}
+.ok {
+  background: var(--ink);
+}
+.high {
+  background: transparent;
+  border: 2px solid var(--ink);
+}
+
+.value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.status {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.note {
+  grid-column: 3 / 5;
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+.toggle {
+  margin-top: 8px;
+}
+.legend {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin: 12px 0 0;
+}
+.swatch {
+  display: inline-block;
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.legend .dot {
+  --dot: 9px;
+}
+
+/* Phone widths: name and figure on one line, dots and bar below. */
+@media (max-width: 520px) {
+  .columns {
+    display: none;
+  }
+  .row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name name value"
+      "dots bar bar";
+  }
+  .name {
+    grid-area: name;
+  }
+  .row > .dots {
+    grid-area: dots;
+  }
+  .track {
+    grid-area: bar;
+  }
+  .value {
+    grid-area: value;
+  }
+  .note {
+    grid-area: bar;
+  }
+}
