@@ -413,3 +413,37 @@ test("Member Home offers Try again when the summary fails", async ({ page }) => 
   await error.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByTestId("band-header")).toContainText("4 of 7 days logged");
 });
+
+test("Member Home refreshes the week when the tab comes back, and keeps it if that fails", async ({
+  page,
+}) => {
+  await signUp(page, "hback");
+  // First visit: no alert yet. Meanwhile (another tab) the member logs a food they avoid.
+  let answer: "quiet" | "alert" | "fail" = "quiet";
+  await page.route("**/api/users/me/summary*", (route) =>
+    answer === "fail"
+      ? route.fulfill({ status: 503, json: { error: "database_unavailable" } })
+      : route.fulfill({ json: answer === "quiet" ? { ...SUMMARY, alerts: [] } : SUMMARY }),
+  );
+  const returnToTab = () =>
+    page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await page.goto("/");
+  await expect(page.getByTestId("band-header")).toContainText("4 of 7 days logged", {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId("alert-strip")).toHaveCount(0);
+
+  answer = "alert";
+  await returnToTab();
+  await expect(page.getByTestId("alert-strip")).toContainText("Soy detected today", {
+    timeout: 30_000,
+  });
+
+  // A refresh that fails leaves the week on screen instead of an error.
+  answer = "fail";
+  const failed = page.waitForResponse((r) => r.url().includes("/api/users/me/summary"));
+  await returnToTab();
+  await failed;
+  await expect(page.getByTestId("alert-strip")).toBeVisible();
+  await expect(page.getByTestId("summary-error")).toHaveCount(0);
+});

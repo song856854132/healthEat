@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { BAND_HIGH, BAND_LOW } from "@healtheat/shared";
 import type { NutrientBand as Band, SummaryResponse } from "@healtheat/shared";
 import { formatAmount } from "../app/lib/nutrients";
 import styles from "./NutrientBand.module.css";
@@ -42,6 +43,11 @@ export function sortBands(bands: readonly Band[]): Band[] {
       (a.status === "high" ? -1 : 1) * ((a.coverage ?? 0) - (b.coverage ?? 0)),
   );
 }
+
+// The band edges come from the shared thresholds the API classifies with, so ticks, legend and
+// `status` cannot disagree.
+const LOW_PCT = Math.round(BAND_LOW * 100);
+const HIGH_PCT = Math.round(BAND_HIGH * 100);
 
 const percent = (share: number) => `${Math.round(share * 100)}%`;
 
@@ -90,9 +96,9 @@ function BandRow({ band, days }: { band: Band; days: readonly Day[] }) {
               className={`${styles.fill} ${styles[band.status]}`}
               style={{ width: at(coverage) }}
             />
-            <span className={styles.tick} style={{ left: at(0.7) }} />
+            <span className={styles.tick} style={{ left: at(BAND_LOW) }} />
             <span className={`${styles.tick} ${styles.target}`} style={{ left: at(1) }} />
-            <span className={styles.tick} style={{ left: at(1.3) }} />
+            <span className={styles.tick} style={{ left: at(BAND_HIGH) }} />
           </span>
           <span className={styles.value} data-testid="band-value">
             {percent(coverage)} <span className={styles.status}>{band.status}</span>
@@ -179,10 +185,11 @@ export function NutrientBands({
           ) : null}
           <p className={styles.legend}>
             <span className={`${styles.swatch} ${styles.low}`} aria-hidden="true" /> hatched: below
-            70% of target · <span className={`${styles.swatch} ${styles.ok}`} aria-hidden="true" />{" "}
-            plain: 70 to 130% ·{" "}
+            {LOW_PCT}% of target ·{" "}
+            <span className={`${styles.swatch} ${styles.ok}`} aria-hidden="true" /> plain: {LOW_PCT}{" "}
+            to {HIGH_PCT}% ·{" "}
             <span className={`${styles.swatch} ${styles.high}`} aria-hidden="true" /> outlined:
-            above 130% or past the upper limit.{" "}
+            above {HIGH_PCT}% or past the upper limit.{" "}
             <span className={`${styles.dot} ${styles.searched}`} /> mostly searched day ·{" "}
             <span className={`${styles.dot} ${styles.photo}`} /> mostly photo-estimated · no dot:
             not logged.

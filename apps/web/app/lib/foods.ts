@@ -45,7 +45,7 @@ export type Failure = { status: number; error: string; message: string };
 
 type ErrorBody = { error?: unknown; details?: unknown };
 
-const NETWORK: Failure = {
+export const NETWORK: Failure = {
   status: 0,
   error: "network",
   message: "Could not reach the server. Check your connection and try again.",

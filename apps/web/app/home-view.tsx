@@ -13,7 +13,7 @@ import type {
 } from "@healtheat/shared";
 import { NutrientBands } from "../components/NutrientBand";
 import { useAuth } from "./auth-context";
-import { searchHref } from "./lib/foods";
+import { NETWORK, searchHref } from "./lib/foods";
 import type { Failure } from "./lib/foods";
 import { getGapFoods, getPublicHome, getSummary, nutrientIdFor, shortDate } from "./lib/home";
 import { EXAMPLE_WEEK } from "./lib/example-week";
@@ -29,19 +29,41 @@ import styles from "./home.module.css";
 type Load<T> =
   { kind: "loading" } | { kind: "error"; failure: Failure } | { kind: "done"; data: T };
 
-/** Runs `load` on mount and whenever `retry` is called; a newer run aborts the older one. */
+/**
+ * Runs `load` on mount and whenever `retry` is called; a newer run aborts the older one. With
+ * `refreshOnReturn`, it also runs again, without going back to "Loading…", when the tab becomes
+ * visible again, so a page left open does not keep showing yesterday's alerts or meter.
+ */
 function useLoad<T>(
   load: (signal: AbortSignal) => Promise<{ ok: true; data: T } | { ok: false; failure: Failure }>,
   key: unknown = null,
+  refreshOnReturn = false,
 ): [Load<T>, () => void] {
   const [state, setState] = useState<Load<T>>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (!refreshOnReturn) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") setAttempt((n) => n + 1);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refreshOnReturn]);
+  useEffect(() => {
     const controller = new AbortController();
     load(controller.signal).then(
-      (r) =>
-        setState(r.ok ? { kind: "done", data: r.data } : { kind: "error", failure: r.failure }),
-      () => undefined, // aborted: a newer request replaced this one
+      (r) => {
+        // A background refresh that fails keeps what is on screen rather than replacing it.
+        if (r.ok) setState({ kind: "done", data: r.data });
+        else
+          setState((s) =>
+            s.kind === "done" && refreshOnReturn ? s : { kind: "error", failure: r.failure },
+          );
+      },
+      () => {
+        // Aborted: a newer request replaced this one. Anything else must not spin forever.
+        if (!controller.signal.aborted) setState({ kind: "error", failure: NETWORK });
+      },
     );
     return () => controller.abort();
     // Not on `load`'s identity: callers pass a module-level function, or an inline one plus the `key`
@@ -210,7 +232,7 @@ function PublicFeed({ data }: { data: PublicHomeResponse }) {
 // ---- Member Home ---------------------------------------------------------------------------------
 
 function MemberHome() {
-  const [summary, retry] = useLoad(getSummary);
+  const [summary, retry] = useLoad(getSummary, null, true);
   return (
     <div className={styles.home} data-testid="member-home">
       {summary.kind === "loading" ? (
@@ -290,7 +312,8 @@ const METER_WORDS: Record<Meter["status"], string> = {
 };
 
 function CalorieMeter({ meter }: { meter: Meter }) {
-  const max = Math.max(meter.high * 1.25, meter.kcal * 1.05);
+  // At least 1, so a 0 to 0 band the member set never divides by zero.
+  const max = Math.max(meter.high * 1.25, meter.kcal * 1.05, 1);
   const pos = (v: number) => `${(Math.min(v, max) / max) * 100}%`;
   const kcal = (v: number) => Math.round(v).toLocaleString("en-US");
   return (
