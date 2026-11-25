@@ -1453,9 +1453,15 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Surfaced by: Implementation Tasks: order and dependencies, Lane B items 4 and 5
   - Files: apps/web/app/page.tsx, apps/web/app/home-view.tsx, apps/web/app/home.module.css, apps/web/app/lib/home.ts, apps/web/app/lib/example-week.ts, apps/web/app/lib/foods.ts, apps/web/components/NutrientBand.tsx, apps/web/components/NutrientBand.module.css, e2e/home.spec.ts
   - Verify: Playwright: anonymous feed from the real API, populated, empty and failed feeds from mocks; a new member's Home from the real API (empty bands, profile prompt, log bar into `/search`); the 4-of-7 fixture (T19: header, urgency order, seven dots per row, hatched/plain/outlined read from computed styles); alert strip, calorie meter and exposure meter; close the gap switching between low bands; summary error with Try again
-  - Not yet: the photo button in the log bar (T13 web half, #11); an allergen-settings page for the exposure meter; links from public profiles (no `/profile/[username]` page yet). Curator and Admin Homes followed with T21's web half (2026-11-24)
+  - Not yet: the photo button in the log bar (T13 web half, #11); an allergen-settings page for the exposure meter (T31, #74); links from public profiles (no `/profile/[username]` page yet). Curator and Admin Homes followed with T21's web half (2026-11-24)
 
-_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24 and T29 are lane B GitHub issues; their entries above were added by their PRs)._
+- [ ] **T31 (#74, P1, human: ~1 day / CC: ~40 min)** — apps/web + e2e — Member settings on `/profile`: allergens to avoid or track with weekly thresholds (`GET/PUT /api/users/me/allergens`, the complete list), and body details, activity level, the member's own calorie band and time zone (`PUT /api/users/me/profiles/member`, only those fields); Member Home's calorie, target and exposure prompts link to `/profile#body` and `/profile#allergens` (T12's and T30's "Not yet"; number proposed 2026-11-25, owner to confirm)
+  - Surfaced by: T12 and T30 "Not yet" lines; Member Home's meters stay empty without these settings
+  - Files: apps/web/app/profile/allergen-settings.tsx, apps/web/app/profile/body-section.tsx, apps/web/app/profile/session.ts, apps/web/app/profile/profile-view.tsx, apps/web/app/lib/settings.ts, apps/web/app/home-view.tsx, e2e/settings.spec.ts
+  - Verify: Playwright on the real stack: avoid one allergen and track one with a threshold, reload, see it on Home's exposure meter, then unset it; body details validated before any request, then Home's calorie meter replaces the prompt; an own band wins and clearing it goes back to the computed one; an unknown time zone is refused and the browser's is one click away
+  - Not yet: imperial units (the API stores cm and kg); the public profile page `/profile/[username]`
+
+_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24, T29, T30 and T31 are lane B GitHub issues; their entries above were added by their PRs)._
 
 ## Implementation Tasks: order and dependencies
 

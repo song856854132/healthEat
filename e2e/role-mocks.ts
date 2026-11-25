@@ -7,6 +7,7 @@ import {
   CuratorProfileView,
   MeResponse,
   MemberProfileView,
+  UserAllergensResponse,
 } from "../packages/shared/src/index";
 import type { Role } from "../packages/shared/src/index";
 
@@ -64,9 +65,12 @@ export async function mockSession(
     session.activeRole = body.role;
     return route.fulfill({ json: meFor(session) });
   });
-  // The member profile, for /profile (every account is a member).
+  // The member profile and allergen list, for /profile (every account is a member).
   await page.route("**/api/users/me/profiles/member", (route) =>
     route.fulfill({ json: MEMBER_PROFILE }),
+  );
+  await page.route("**/api/users/me/allergens", (route) =>
+    route.fulfill({ json: UserAllergensResponse.parse({ allergens: [] }) }),
   );
   return session;
 }

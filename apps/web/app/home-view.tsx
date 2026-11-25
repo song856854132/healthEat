@@ -210,7 +210,7 @@ function MemberWeek({ data }: { data: SummaryResponse }) {
         ) : (
           <p className={styles.muted} data-testid="calorie-incomplete">
             Add your sex, birth year, height and weight, or set your own calorie band, in your{" "}
-            <Link href="/profile">profile</Link> to see today’s meter.
+            <Link href="/profile#body">profile</Link> to see today’s meter.
           </p>
         )}
       </section>
@@ -224,7 +224,7 @@ function MemberWeek({ data }: { data: SummaryResponse }) {
           ) : (
             <>
               Targets from an adult reference: add your sex and birth year in your{" "}
-              <Link href="/profile">profile</Link> for your own.
+              <Link href="/profile#body">profile</Link> for your own.
             </>
           )}{" "}
           Read the row, not a single day.
@@ -278,7 +278,8 @@ function Exposure({ rows }: { rows: SummaryResponse["exposure"] }) {
   if (rows.length === 0) {
     return (
       <p className={styles.muted} data-testid="exposure-empty">
-        You are not tracking any sensitivities yet.
+        You are not tracking any sensitivities yet.{" "}
+        <Link href="/profile#allergens">Choose what to avoid or track</Link>.
       </p>
     );
   }

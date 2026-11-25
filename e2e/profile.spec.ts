@@ -34,15 +34,15 @@ test("the nav opens the profile, and sharing choices and the phone are saved", a
 
   // A phone to show is required, and its format is checked before the API is called.
   await showPhone.check();
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.locator("#field-phone-error")).toContainText("Add a phone number");
   await page.getByLabel("Phone number (optional)").fill("call me");
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.locator("#field-phone-error")).toContainText("digits");
 
   await page.getByLabel("Phone number (optional)").fill("+1 (617) 555-0100");
   await publicLogs.check();
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible({
     timeout: 30_000,
   });
@@ -59,7 +59,7 @@ test("the nav opens the profile, and sharing choices and the phone are saved", a
 
   // Hiding it again takes the phone off the public profile.
   await page.getByRole("checkbox", { name: /Show my phone number/ }).uncheck();
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible({
     timeout: 30_000,
   });
