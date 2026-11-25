@@ -101,6 +101,21 @@ a {
   border: 1px solid var(--line);
   border-radius: 999px;
 }
+/* "View as" (nav.tsx): the active-role switch for an account holding more than one role. */
+.role-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+.role-switch select {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: inherit;
+}
 .button-link {
   padding: 6px 12px;
   border: 1px solid var(--line);
@@ -122,7 +137,9 @@ a {
 .field label {
   font-weight: 600;
 }
-.field input {
+.field input,
+.field textarea,
+.field select {
   font: inherit;
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -131,7 +148,16 @@ a {
   color: inherit;
   width: 100%;
 }
-.field input[aria-invalid="true"] {
+.field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+.field select {
+  background: var(--paper);
+}
+.field input[aria-invalid="true"],
+.field textarea[aria-invalid="true"],
+.field select[aria-invalid="true"] {
   border-color: var(--danger);
 }
 .hint,

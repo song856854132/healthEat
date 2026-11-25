@@ -41,3 +41,12 @@ export function shortDate(date: string): string {
     timeZone: "UTC",
   });
 }
+
+/** "2026-11-24T18:00:00.000Z" -> "Nov 24, 2026": a moment, shown as its day in the viewer's time zone. */
+export function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
