@@ -178,6 +178,8 @@ function Roles({
       if (!sameRoles(fresh.data.user.roles, detail.user.roles)) {
         onWritten(fresh.data);
         setError(ROLES_MOVED);
+        // Another Admin changed your own roles: the nav's view switch must follow.
+        if (self) void recheck();
         return;
       }
       const result = await setRoles(detail.user.username, orderedRoles(["member", ...chosen]));

@@ -202,7 +202,13 @@ function Editor({ allergenKey, added }: { allergenKey: string; added: boolean })
               setCurrent(written);
               setRematch({ run: runRef.current, progress });
             }}
-            onStale={(stored) => setCurrent(stored)}
+            onStale={(stored) => {
+              // The stored copy decides the re-match status now: restart the control without the
+              // progress an earlier save of this page answered.
+              runRef.current += 1;
+              setCurrent(stored);
+              setRematch({ run: runRef.current });
+            }}
           />
           <DeleteAllergen allergen={allergen} onDeleted={() => setDeleted(allergen.displayName)} />
         </>
@@ -274,7 +280,7 @@ function AllergenForm({
       const split = body[field].find((phrase) => SPLIT_PUNCTUATION.test(phrase));
       if (split)
         found[field] ??=
-          `“${split}” has punctuation that ingredient labels are split at (; : . or brackets), so it could never match. Write the words without it.`;
+          `“${split}” has punctuation that ingredient labels are split at (; : . or brackets), so it cannot match inside one ingredient. Write the words without it.`;
     }
     if (body.synonyms.length === 0 && body.descriptionKeywords.length === 0)
       found.synonyms ??= "Add at least one synonym or description keyword, or nothing will match.";

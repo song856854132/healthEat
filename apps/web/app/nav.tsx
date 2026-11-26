@@ -46,8 +46,9 @@ function RoleSwitch({ me }: { me: MeResponse }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const roles = orderedRoles(me.user.roles);
-  // The view changed elsewhere (another tab, a recheck): the choice follows it.
-  if (shownFor !== active) {
+  // The view changed elsewhere (another tab, a recheck), or the chosen role was revoked meanwhile: the
+  // choice follows the active view, so the select never shows one role while Switch would send another.
+  if (shownFor !== active || !roles.includes(choice)) {
     setShownFor(active);
     setChoice(active);
   }
