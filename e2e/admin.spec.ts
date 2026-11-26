@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { AdminUserDetail, AdminUserListResponse } from "../packages/shared/src/index";
 import type { AdminUserView, Role } from "../packages/shared/src/index";
+import { AdminProfileView } from "../packages/shared/src/index";
 import { ADMIN_PROFILE, mockSession } from "./role-mocks";
 
 // Lane B (T21 web half): Admin Home and the account pages, /admin/users and /admin/users/[username]
@@ -229,4 +230,59 @@ test("delete an account after typing its username; an unknown account says so", 
   await expect(page.getByTestId("user-missing")).toContainText("nobody_here", { timeout: 30_000 });
   const res = await page.goto("/admin/users/Not%20A%20Name");
   expect(res?.status()).toBe(404);
+});
+
+test("Save roles never undoes a role change another Admin made after the page opened", async ({
+  page,
+}) => {
+  const { accounts } = await asAdmin(page);
+  const writes = await mockAccountRoutes(page, accounts);
+  await page.goto("/admin/users/dana_rd");
+  await expect(page.getByTestId("user-roles")).toHaveText("Member, Curator", { timeout: 30_000 });
+
+  // Meanwhile another Admin revokes Curator from dana_rd.
+  accounts.find((a) => a.username === "dana_rd")!.roles = ["member"];
+  await page.getByRole("checkbox", { name: /Admin: manages accounts/ }).check();
+  await page.getByRole("button", { name: "Save roles" }).click();
+  await expect(page.getByTestId("user-role-form").getByRole("alert")).toContainText(
+    "Another Admin changed this account",
+  );
+  expect(writes).toEqual([]);
+  // The page now shows the roles as stored, so a second save cannot bring Curator back.
+  await expect(page.getByTestId("user-roles")).toHaveText("Member");
+  await expect(page.getByRole("checkbox", { name: /Curator/ })).not.toBeChecked();
+});
+
+test("the Admin profile on /profile: counters shown, the note saved, never to another account", async ({
+  page,
+}) => {
+  const session = await mockSession(page, {
+    username: ADMIN,
+    roles: ["member", "admin"],
+    activeRole: "admin",
+  });
+  const puts: unknown[] = [];
+  await page.route("**/api/users/me/profiles/admin", (route) => {
+    if (route.request().method() !== "PUT") return route.fulfill({ json: ADMIN_PROFILE });
+    const body = route.request().postDataJSON() as { internalNote: string | null };
+    puts.push(body);
+    return route.fulfill({ json: AdminProfileView.parse({ ...ADMIN_PROFILE, ...body }) });
+  });
+  await page.goto("/profile");
+  const section = page.getByTestId("admin-profile");
+  await expect(section.getByTestId("admin-counters")).toContainText("4 account changes", {
+    timeout: 30_000,
+  });
+  const note = section.getByLabel("Private note (optional)");
+  await note.fill("  Rotate the bootstrap Admin in December ");
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  expect(puts).toEqual([{ internalNote: "Rotate the bootstrap Admin in December" }]);
+
+  // Another tab logs in as a different Admin: this page's note is not written to that account.
+  session.username = "other_admin";
+  await note.fill("A note for mock_admin only");
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("nav-username")).toHaveText("other_admin", { timeout: 30_000 });
+  expect(puts).toHaveLength(1);
 });

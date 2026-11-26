@@ -125,7 +125,18 @@ function Facts({ detail, self }: { detail: AdminUserDetail; self: boolean }) {
   );
 }
 
-/** Grant or revoke Curator and Admin; Member is implicit for every account (RoleUpdateInput). */
+const ROLES_MOVED =
+  "Another Admin changed this account's roles since you opened it. Nothing was saved; the roles below are as stored now. Make your change again.";
+
+const sameRoles = (a: readonly Role[], b: readonly Role[]) =>
+  orderedRoles(a).join() === orderedRoles(b).join();
+
+/**
+ * Grant or revoke Curator and Admin; Member is implicit for every account (RoleUpdateInput). The PUT
+ * replaces the whole role set, and the API only catches a change made during its own request, so the
+ * page reads the account again first: a role another Admin granted or revoked after this page loaded is
+ * never silently undone.
+ */
 function Roles({
   detail,
   self,
@@ -137,6 +148,13 @@ function Roles({
 }) {
   const { recheck } = useAuth();
   const [chosen, setChosen] = useState<Set<Role>>(() => new Set(detail.user.roles));
+  // The stored roles the checkboxes were set from: a newer copy (from a status write, or a refused save)
+  // resets them, so the boxes never offer to undo a change they did not show.
+  const [seededFrom, setSeededFrom] = useState(detail.user.roles);
+  if (!sameRoles(seededFrom, detail.user.roles)) {
+    setSeededFrom(detail.user.roles);
+    setChosen(new Set(detail.user.roles));
+  }
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
@@ -152,6 +170,16 @@ function Roles({
     setError(null);
     setSaved(false);
     try {
+      const fresh = await getUser(detail.user.username);
+      if (!fresh.ok) {
+        setError(fresh.failure.message);
+        return;
+      }
+      if (!sameRoles(fresh.data.user.roles, detail.user.roles)) {
+        onWritten(fresh.data);
+        setError(ROLES_MOVED);
+        return;
+      }
       const result = await setRoles(detail.user.username, orderedRoles(["member", ...chosen]));
       if (result.ok) {
         onWritten(result.data);

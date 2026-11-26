@@ -108,6 +108,9 @@ a {
   gap: 6px;
   font-size: 0.9rem;
 }
+.role-switch button {
+  margin-right: 0;
+}
 .role-switch select {
   font: inherit;
   padding: 4px 8px;

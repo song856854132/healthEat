@@ -124,7 +124,7 @@ function Results({
     <section aria-labelledby="results-heading" data-testid="users-results">
       <h2 id="results-heading">
         {data.total} account{data.total === 1 ? "" : "s"}
-        {query.q || query.role || query.status ? " match" : ""}
+        {query.q || query.role || query.status ? (data.total === 1 ? " matches" : " match") : ""}
       </h2>
       {data.users.length === 0 ? (
         <p className={styles.muted} data-testid="users-empty">

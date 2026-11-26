@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ALLERGEN_TIERS, AllergenCreateInput, AllergenUpdateInput } from "@healtheat/shared";
 import type { AllergenTier, AllergenView, RematchProgress } from "@healtheat/shared";
@@ -34,6 +34,23 @@ const TIER_OPTIONS = ALLERGEN_TIERS.map((t) => ({ value: t, label: TIER_LABELS[t
 const RESERVED_KEYS = new Set(["new"]);
 
 const LIST_FIELDS = ["synonyms", "descriptionKeywords", "excludePhrases"] as const;
+
+/**
+ * The matcher splits a label's ingredients at these (apps/api/src/services/dictionary.ts,
+ * ingredientSegments), so a synonym or exclude phrase holding one can never match a single ingredient.
+ * Commas already separate phrases here. Description keywords are matched against the whole food name,
+ * which is not split, so they may keep punctuation.
+ */
+const SPLIT_PUNCTUATION = /[;:.()[\]{}]/;
+const SPLIT_FIELDS = ["synonyms", "excludePhrases"] as const;
+
+const STALE =
+  "This entry changed since you opened it (another Curator saved it). Nothing was saved; the form now shows it as stored. Make your change again.";
+
+/** The fields a save replaces, compared with the stored entry before writing over it. */
+const sameEntry = (a: AllergenView, b: AllergenView) =>
+  JSON.stringify([a.displayName, a.tier, a.synonyms, a.descriptionKeywords, a.excludePhrases]) ===
+  JSON.stringify([b.displayName, b.tier, b.synonyms, b.descriptionKeywords, b.excludePhrases]);
 type ListField = (typeof LIST_FIELDS)[number];
 
 type Values = {
@@ -91,18 +108,34 @@ export function EditAllergen({ allergenKey, added }: { allergenKey: string; adde
 }
 
 function Editor({ allergenKey, added }: { allergenKey: string; added: boolean }) {
+  const router = useRouter();
   const [dictionary, retry] = useLoad(listAllergens);
+  // "Added to the dictionary" shows once: the ?added=1 the create form sent is dropped from the URL, so
+  // a reload or a shared link does not say it again.
+  const [justAdded] = useState(added);
+  useEffect(() => {
+    if (added) router.replace(allergenHref(allergenKey));
+  }, [added, allergenKey, router]);
   const [deleted, setDeleted] = useState<string | null>(null);
   // The entry as the last save (or finished re-match) left it; the loaded copy until then. Kept here
   // rather than refetched, so finishing a re-match never resets a form with unsaved edits.
   const [current, setCurrent] = useState<AllergenView | null>(null);
-  // The progress the last save answered, for "N foods left"; `run` restarts the control on each save.
-  const [rematch, setRematch] = useState<{ run: number; progress?: RematchProgress }>({ run: 0 });
+  // The progress the last save answered, for "N foods left"; `run` restarts the control on each save, and
+  // `finished` keeps it on screen saying "Re-match done" once a Continue finished it.
+  const [rematch, setRematch] = useState<{
+    run: number;
+    progress?: RematchProgress;
+    finished?: boolean;
+  }>({ run: 0 });
+  // A Continue still running when a save restarted the control must not report into the newer run.
+  const runRef = useRef(0);
   const allergen =
     current ??
     (dictionary.kind === "done"
       ? dictionary.data.allergens.find((a) => a.key === allergenKey)
       : undefined);
+
+  const run = rematch.run;
 
   if (deleted)
     return (
@@ -136,7 +169,7 @@ function Editor({ allergenKey, added }: { allergenKey: string; added: boolean })
         </p>
       ) : (
         <>
-          {added ? (
+          {justAdded ? (
             <p role="status" className="hint" data-testid="allergen-added">
               Added to the dictionary.
             </p>
@@ -145,24 +178,31 @@ function Editor({ allergenKey, added }: { allergenKey: string; added: boolean })
             Key <code>{allergen.key}</code> (its address; it never changes) ·{" "}
             {allergen.source === "curator" ? "edited by a Curator" : "as seeded"}
           </p>
-          {allergen.rematchPending ? (
+          {allergen.rematchPending || rematch.finished ? (
             <p className={styles.progress} data-testid="allergen-rematch">
               <RematchControl
                 key={rematch.run}
                 id={allergen.id}
                 name={allergen.displayName}
                 initial={rematch.progress}
-                onDone={() => setCurrent({ ...allergen, rematchPending: false })}
+                onDone={() => {
+                  if (run !== runRef.current) return;
+                  setCurrent((c) => ({ ...(c ?? allergen), rematchPending: false }));
+                  setRematch((r) => ({ ...r, finished: true }));
+                }}
               />
             </p>
           ) : null}
           <AllergenForm
             key={allergen.id}
             allergen={allergen}
+            rematchPending={allergen.rematchPending}
             onSaved={(written, progress) => {
+              runRef.current += 1;
               setCurrent(written);
-              setRematch((r) => ({ run: r.run + 1, progress }));
+              setRematch({ run: runRef.current, progress });
             }}
+            onStale={(stored) => setCurrent(stored)}
           />
           <DeleteAllergen allergen={allergen} onDeleted={() => setDeleted(allergen.displayName)} />
         </>
@@ -175,14 +215,20 @@ function Editor({ allergenKey, added }: { allergenKey: string; added: boolean })
 
 /**
  * Without `allergen`, a new entry (POST), which then opens its own page; with it, every editable field
- * of that entry (PUT), reported to `onSaved` with the re-match progress the write answered.
+ * of that entry (PUT), reported to `onSaved` with the re-match progress the write answered. The PUT
+ * replaces every field, so the stored entry is read first: if another Curator changed it since this
+ * form was filled from it, nothing is written and `onStale` gets the stored copy.
  */
 function AllergenForm({
   allergen,
+  rematchPending = false,
   onSaved,
+  onStale,
 }: {
   allergen?: AllergenView;
+  rematchPending?: boolean;
   onSaved?: (written: AllergenView, rematch: RematchProgress) => void;
+  onStale?: (stored: AllergenView) => void;
 }) {
   const router = useRouter();
   const [values, setValues] = useState<Values>(() => toValues(allergen));
@@ -224,6 +270,12 @@ function AllergenForm({
       }
     }
     if (creating && RESERVED_KEYS.has(key)) found.key = "That key is reserved. Choose another.";
+    for (const field of SPLIT_FIELDS) {
+      const split = body[field].find((phrase) => SPLIT_PUNCTUATION.test(phrase));
+      if (split)
+        found[field] ??=
+          `“${split}” has punctuation that ingredient labels are split at (; : . or brackets), so it could never match. Write the words without it.`;
+    }
     if (body.synonyms.length === 0 && body.descriptionKeywords.length === 0)
       found.synonyms ??= "Add at least one synonym or description keyword, or nothing will match.";
     if (Object.keys(found).length > 0 || !parsed.success) {
@@ -235,6 +287,26 @@ function AllergenForm({
     setPending(true);
     setErrors({});
     try {
+      if (allergen) {
+        const fresh = await listAllergens();
+        if (!fresh.ok) {
+          setErrors({ form: fresh.failure.message });
+          return;
+        }
+        const stored = fresh.data.allergens.find((a) => a.id === allergen.id);
+        if (!stored) {
+          setErrors({
+            form: "This allergen no longer exists; another Curator may have deleted it.",
+          });
+          return;
+        }
+        if (!sameEntry(stored, allergen)) {
+          setValues(toValues(stored));
+          onStale?.(stored);
+          setErrors({ form: STALE });
+          return;
+        }
+      }
       const result = allergen
         ? await updateAllergen(allergen.id, parsed.data as AllergenUpdateInput)
         : await createAllergen(parsed.data as AllergenCreateInput);
@@ -335,7 +407,9 @@ function AllergenForm({
             <span role="status" className="hint" data-testid="allergen-saved">
               {saved.done
                 ? `Saved. Re-matched ${saved.processed} cached food${saved.processed === 1 ? "" : "s"}.`
-                : "Saved. The re-match ran out of time with foods left: continue it above."}
+                : rematchPending
+                  ? "Saved. The re-match ran out of time with foods left: continue it above."
+                  : "Saved, and the re-match has finished."}
             </span>
           ) : null}
         </div>

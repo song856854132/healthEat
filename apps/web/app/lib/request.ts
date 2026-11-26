@@ -28,7 +28,7 @@ const COMMON: Record<string, string> = {
   unauthenticated: "Your session has ended. Log in again.",
   forbidden: "This account does not hold the role this needs.",
   account_suspended: "This account is suspended.",
-  account_deletion_pending: "This account is being deleted.",
+  account_deletion_pending: "This account is being deleted. Log in again to finish deleting it.",
   validation_error: "Some fields are not valid.",
   database_unavailable: "The database is not answering right now. Try again in a moment.",
 };

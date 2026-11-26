@@ -220,8 +220,121 @@ test("Edit: every field but the key is sent, and a re-match that ran out of time
   // Typing on while continuing: the finished re-match does not reset the form.
   await page.getByLabel("Exclude phrases").fill("buckwheat\nunsaved");
   await progress.getByRole("button", { name: /Continue re-match/ }).click();
-  await expect(progress).toHaveCount(0);
+  await expect(progress).toContainText("Re-match done");
   await expect(page.getByLabel("Exclude phrases")).toHaveValue("buckwheat\nunsaved");
+});
+
+test("a finished re-match says so, on the entry and in the list, and the form stops asking to continue it", async ({
+  page,
+}) => {
+  await asCurator(page);
+  await page.route(`**/api/allergens/${GLUTEN_ID}`, (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    const body = route.request().postDataJSON() as Partial<AllergenView>;
+    return route.fulfill({
+      status: 202,
+      json: AllergenWriteResponse.parse({
+        allergen: { ...DICTIONARY.allergens[0], ...body, rematchPending: true },
+        rematch: { done: false, processed: 50, remaining: 20 },
+      }),
+    });
+  });
+  await page.route(`**/api/curate/allergens/${GLUTEN_ID}/rematch`, (route) =>
+    route.fulfill({ json: { done: true, processed: 20, remaining: 0 } }),
+  );
+
+  await page.goto("/curate/allergens/gluten");
+  await page.getByRole("button", { name: "Save and re-match" }).click({ timeout: 30_000 });
+  const saved = page.getByTestId("allergen-saved");
+  await expect(saved).toContainText("continue it above");
+  const progress = page.getByTestId("allergen-rematch");
+  await progress.getByRole("button", { name: /Continue re-match/ }).click();
+  await expect(progress).toContainText("Re-match done");
+  await expect(saved).not.toContainText("continue it above");
+  await expect(saved).toContainText("re-match has finished");
+
+  // The list keeps its table: only that row changes, and it says it is done.
+  await page.goto("/curate/allergens");
+  const row = page.getByTestId("allergen-row").first();
+  await row
+    .getByRole("button", { name: "Continue re-match for Gluten" })
+    .click({ timeout: 30_000 });
+  await expect(row).toContainText("Re-match done");
+  await expect(page.getByTestId("allergen-table")).toBeVisible();
+});
+
+test("Save never writes back an entry another Curator changed after the page opened", async ({
+  page,
+}) => {
+  const dictionary = await asCurator(page);
+  const puts: unknown[] = [];
+  await page.route(`**/api/allergens/${MILK_ID}`, (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    puts.push(route.request().postDataJSON());
+    return route.fulfill({
+      json: AllergenWriteResponse.parse({
+        allergen: dictionary.allergens[1],
+        rematch: { done: true, processed: 0, remaining: 0 },
+      }),
+    });
+  });
+
+  await page.goto("/curate/allergens/milk");
+  await expect(page.getByLabel("Synonyms (ingredient text)")).toHaveValue("whey\ncasein", {
+    timeout: 30_000,
+  });
+  // Meanwhile another Curator adds a synonym to the same entry.
+  dictionary.allergens[1].synonyms.push("lactose");
+  await page.getByLabel("Name").fill("Milk (dairy)");
+  await page.getByRole("button", { name: "Save and re-match" }).click();
+  await expect(page.getByTestId("allergen-form").getByRole("alert")).toContainText(
+    "changed since you opened it",
+  );
+  expect(puts).toEqual([]);
+  // The form now shows the entry as stored, so saving again keeps the other Curator's synonym.
+  await expect(page.getByLabel("Synonyms (ingredient text)")).toHaveValue("whey\ncasein\nlactose");
+});
+
+test("a phrase with punctuation the matcher splits ingredients on is refused, and so is the key new", async ({
+  page,
+}) => {
+  await asCurator(page);
+  const posted: unknown[] = [];
+  await page.route("**/api/allergens", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    posted.push(route.request().postDataJSON());
+    return route.fulfill({ status: 500, json: { error: "unexpected" } });
+  });
+  await page.goto("/curate/allergens/new");
+  const form = page.getByTestId("allergen-form");
+  await page.getByLabel("Key", { exact: true }).fill("vitamin-d", { timeout: 30_000 });
+  await page.getByLabel("Name").fill("Vitamin D");
+  await page.getByLabel("Synonyms (ingredient text)").fill("vit. d");
+  await page.getByLabel("Exclude phrases").fill("vitamin (d2)");
+  await form.getByRole("button", { name: "Add allergen" }).click();
+  await expect(page.locator("#field-synonyms-error")).toContainText("vit. d");
+  await expect(page.locator("#field-excludePhrases-error")).toContainText("vitamin (d2)");
+
+  await page.getByLabel("Key", { exact: true }).fill("new");
+  await page.getByLabel("Synonyms (ingredient text)").fill("vitamin d");
+  await page.getByLabel("Exclude phrases").fill("");
+  await form.getByRole("button", { name: "Add allergen" }).click();
+  await expect(page.locator("#field-key-error")).toContainText("reserved");
+  expect(posted).toEqual([]);
+});
+
+test("a Curator viewing as Member still opens the dictionary: pages admit by roles, not the view", async ({
+  page,
+}) => {
+  await mockSession(page, {
+    username: "mock_curator",
+    roles: ["member", "curator"],
+    activeRole: "member",
+  });
+  await page.route("**/api/allergens", (route) => route.fulfill({ json: DICTIONARY }));
+  await page.goto("/curate/allergens");
+  await expect(page.getByTestId("allergen-row")).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.getByTestId("role-required")).toHaveCount(0);
 });
 
 test("Delete is refused while members avoid the allergen, then goes through", async ({ page }) => {
@@ -283,4 +396,33 @@ test("the Curator profile on /profile: counters shown, details saved", async ({ 
     { credentials: "RD", bio: null, specialties: ["dairy", "FODMAP"], publicListing: true },
   ]);
   await expect(page.getByTestId("admin-profile")).toHaveCount(0);
+});
+
+test("the Curator profile is never saved to an account another tab signed in to meanwhile", async ({
+  page,
+}) => {
+  const session = await mockSession(page, {
+    username: "mock_curator",
+    roles: ["member", "curator"],
+    activeRole: "curator",
+  });
+  const puts: unknown[] = [];
+  await page.route("**/api/users/me/profiles/curator", (route) => {
+    if (route.request().method() === "PUT") puts.push(route.request().postDataJSON());
+    return route.fulfill({ json: CURATOR_PROFILE });
+  });
+  await page.goto("/profile");
+  const section = page.getByTestId("curator-profile");
+  await expect(section.getByTestId("curator-counters")).toBeVisible({ timeout: 30_000 });
+  // Bio and specialties are public whatever the listing box says; the form says so.
+  await expect(page.locator("#field-bio-hint")).toContainText("public profile");
+  await expect(page.locator("#field-specialties-hint")).toContainText("public profile");
+  await section.getByLabel("Bio (optional)").fill("Meant for mock_curator");
+  await section.getByRole("checkbox", { name: /newest public profiles/ }).check();
+
+  // Another tab logs in as a different Curator; this page still shows mock_curator.
+  session.username = "other_curator";
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("nav-username")).toHaveText("other_curator", { timeout: 30_000 });
+  expect(puts).toEqual([]);
 });

@@ -17,11 +17,11 @@ import styles from "./manage.module.css";
 
 const ALL: UsersQuery = { q: "", page: 1 };
 const COUNTS = [
-  { id: "accounts", label: "accounts", query: ALL },
-  { id: "curators", label: "Curators", query: { ...ALL, role: "curator" } },
-  { id: "admins", label: "Admins", query: { ...ALL, role: "admin" } },
-  { id: "suspended", label: "suspended", query: { ...ALL, status: "suspended" } },
-] as const satisfies readonly { id: string; label: string; query: UsersQuery }[];
+  { id: "accounts", one: "account", many: "accounts", query: ALL },
+  { id: "curators", one: "Curator", many: "Curators", query: { ...ALL, role: "curator" } },
+  { id: "admins", one: "Admin", many: "Admins", query: { ...ALL, role: "admin" } },
+  { id: "suspended", one: "suspended", many: "suspended", query: { ...ALL, status: "suspended" } },
+] as const satisfies readonly { id: string; one: string; many: string; query: UsersQuery }[];
 
 type Overview = { users: AdminUserListResponse; totals: number[] };
 
@@ -65,7 +65,8 @@ function Accounts({ data, self }: { data: Overview; self: string }) {
         <ul className={styles.tiles}>
           {COUNTS.map((c, i) => (
             <li key={c.id} className={styles.tile} data-testid={`count-${c.id}`}>
-              <strong>{totals[i]}</strong> <Link href={usersHref(c.query)}>{c.label}</Link>
+              <strong>{totals[i]}</strong>{" "}
+              <Link href={usersHref(c.query)}>{totals[i] === 1 ? c.one : c.many}</Link>
             </li>
           ))}
         </ul>
