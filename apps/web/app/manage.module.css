@@ -215,3 +215,73 @@
   border-color: var(--danger);
   color: var(--paper);
 }
+
+/* /curate/unmatched (T22): status tabs, then one card per phrase with its map and ignore actions. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 16px 0 8px;
+  border-bottom: 1px solid var(--line);
+}
+.tabs a {
+  padding: 6px 2px;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+.tabs a[aria-current="page"] {
+  font-weight: 600;
+  border-bottom-color: var(--ink);
+}
+.queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.queueItem {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.queueHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.queuePhrase {
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+.queueOutcome {
+  margin: 8px 0 0;
+}
+.queueActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 8px;
+}
+.queueActions button {
+  margin-right: 0;
+}
+.mapForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.mapForm select {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: inherit;
+  min-width: 0;
+  max-width: 100%;
+}
+.mapForm button {
+  margin-right: 0;
+}
