@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { APP_NAME } from "@healtheat/shared";
 import type { MeResponse, Role } from "@healtheat/shared";
 import { useAuth } from "./auth-context";
@@ -32,31 +33,47 @@ function ViewLinks({ me }: { me: MeResponse }) {
 
 /**
  * The active role (design doc R3-7): a badge for a member-only account, and a "View as" switch for an
- * account holding more roles. Switching calls PUT /api/users/me/active-role and opens that view's Home.
+ * account holding more roles. Choosing a view only picks it; Switch calls PUT /api/users/me/active-role
+ * and opens that view's Home. (A select that switched on change would leave the page while a keyboard
+ * user arrows through the options: WCAG 3.2.2.)
  */
 function RoleSwitch({ me }: { me: MeResponse }) {
   const { setMe } = useAuth();
   const router = useRouter();
+  const active = me.user.activeRole;
+  const [choice, setChoice] = useState<Role>(active);
+  const [shownFor, setShownFor] = useState<Role>(active);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const roles = orderedRoles(me.user.roles);
+  // The view changed elsewhere (another tab, a recheck), or the chosen role was revoked meanwhile: the
+  // choice follows the active view, so the select never shows one role while Switch would send another.
+  if (shownFor !== active || !roles.includes(choice)) {
+    setShownFor(active);
+    setChoice(active);
+  }
 
   if (roles.length < 2)
     return (
       <span data-testid="nav-role" className="role-badge">
-        {ROLE_LABELS[me.user.activeRole]}
+        {ROLE_LABELS[active]}
       </span>
     );
 
-  async function onChange(role: Role) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (pending || choice === active) return;
     setPending(true);
     setError(null);
     try {
-      const result = await setActiveRole(role);
+      const result = await setActiveRole(choice);
       if (result.ok) {
         setMe(result.data);
         router.push("/");
-      } else setError(result.failure.message);
+      } else {
+        setError(result.failure.message);
+        setChoice(active);
+      }
     } finally {
       setPending(false);
     }
@@ -64,14 +81,16 @@ function RoleSwitch({ me }: { me: MeResponse }) {
 
   return (
     <>
-      <label className="role-switch">
-        <span>View as</span>
+      <form className="role-switch" onSubmit={onSubmit} aria-label="View as">
+        <label htmlFor="nav-view">View as</label>
         <select
+          id="nav-view"
           data-testid="nav-view"
-          value={me.user.activeRole}
-          disabled={pending}
-          aria-busy={pending || undefined}
-          onChange={(e) => void onChange(e.target.value as Role)}
+          value={choice}
+          onChange={(e) => {
+            setChoice(e.target.value as Role);
+            setError(null);
+          }}
         >
           {roles.map((r) => (
             <option key={r} value={r}>
@@ -79,7 +98,15 @@ function RoleSwitch({ me }: { me: MeResponse }) {
             </option>
           ))}
         </select>
-      </label>
+        <button
+          type="submit"
+          data-testid="nav-view-switch"
+          disabled={pending || choice === active}
+          aria-busy={pending || undefined}
+        >
+          {pending ? "Switching…" : "Switch"}
+        </button>
+      </form>
       {error ? (
         <span data-testid="nav-view-error" className="field-error" role="alert">
           {error}

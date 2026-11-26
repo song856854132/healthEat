@@ -65,10 +65,10 @@ export function ProfileView() {
       <AllergenSettingsSection key={`allergens|${me.user.username}`} username={me.user.username} />
       <SharingSection key={`sharing|${me.user.username}`} username={me.user.username} />
       {me.user.roles.includes("curator") ? (
-        <CuratorProfileSection key={`curator|${me.user.username}`} />
+        <CuratorProfileSection key={`curator|${me.user.username}`} username={me.user.username} />
       ) : null}
       {me.user.roles.includes("admin") ? (
-        <AdminProfileSection key={`admin|${me.user.username}`} />
+        <AdminProfileSection key={`admin|${me.user.username}`} username={me.user.username} />
       ) : null}
       <DeleteSection
         key={`delete|${me.user.username}`}

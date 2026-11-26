@@ -38,13 +38,15 @@ function Dictionary() {
       ) : dictionary.kind === "error" ? (
         <LoadError failure={dictionary.failure} retry={retry} testId="dictionary-error" />
       ) : (
-        <Table allergens={dictionary.data.allergens} onRematched={retry} />
+        <Table allergens={dictionary.data.allergens} />
       )}
     </main>
   );
 }
 
-function Table({ allergens, onRematched }: { allergens: AllergenView[]; onRematched: () => void }) {
+// A finished "Continue re-match" stays in its row saying "Re-match done": the table is not reloaded, so
+// other rows' re-matches still running keep their place (and their buttons stay disabled).
+function Table({ allergens }: { allergens: AllergenView[] }) {
   if (allergens.length === 0)
     return (
       <p className={styles.status}>
@@ -87,11 +89,7 @@ function Table({ allergens, onRematched }: { allergens: AllergenView[]; onRematc
                 <td className={styles.num}>{a.excludePhrases.length}</td>
                 <td>{a.source === "curator" ? "Curator edit" : "Seed"}</td>
                 <td>
-                  {a.rematchPending ? (
-                    <RematchControl id={a.id} name={a.displayName} onDone={onRematched} />
-                  ) : (
-                    "done"
-                  )}
+                  {a.rematchPending ? <RematchControl id={a.id} name={a.displayName} /> : "done"}
                 </td>
               </tr>
             ))}

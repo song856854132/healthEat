@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { AllergenView } from "@healtheat/shared";
 import { RematchControl } from "./curate/rematch";
 import {
@@ -42,22 +43,19 @@ export function CuratorHome() {
       ) : dictionary.kind === "error" ? (
         <LoadError failure={dictionary.failure} retry={retry} testId="dictionary-error" />
       ) : (
-        <Dictionary allergens={dictionary.data.allergens} onRematched={retry} />
+        <Dictionary allergens={dictionary.data.allergens} />
       )}
       <Activity />
     </div>
   );
 }
 
-function Dictionary({
-  allergens,
-  onRematched,
-}: {
-  allergens: AllergenView[];
-  onRematched: () => void;
-}) {
+function Dictionary({ allergens }: { allergens: AllergenView[] }) {
+  // Re-matches finished from this page. The table is not reloaded, so a row whose re-match is still
+  // running keeps its place, and a finished one says "Re-match done".
+  const [finished, setFinished] = useState<ReadonlySet<string>>(() => new Set());
   const synonyms = allergens.reduce((n, a) => n + a.synonyms.length, 0);
-  const pending = allergens.filter((a) => a.rematchPending);
+  const pending = allergens.filter((a) => a.rematchPending && !finished.has(a.id));
   return (
     <>
       <section aria-labelledby="dictionary-heading" data-testid="curator-dictionary">
@@ -109,7 +107,11 @@ function Dictionary({
                     <td className={styles.phrases}>{preview(a.synonyms)}</td>
                     <td>
                       {a.rematchPending ? (
-                        <RematchControl id={a.id} name={a.displayName} onDone={onRematched} />
+                        <RematchControl
+                          id={a.id}
+                          name={a.displayName}
+                          onDone={() => setFinished((f) => new Set(f).add(a.id))}
+                        />
                       ) : (
                         "done"
                       )}
@@ -187,8 +189,11 @@ function Activity() {
             <>
               <strong>{queue.data.total}</strong>{" "}
               <span>
-                ingredient phrase{queue.data.total === 1 ? "" : "s"} matched no synonym and wait for
-                review
+                ingredient phrase
+                {queue.data.total === 1
+                  ? " matched no synonym and waits"
+                  : "s matched no synonym and wait"}{" "}
+                for review
               </span>
             </>
           ) : queue.kind === "error" ? (

@@ -95,6 +95,12 @@ async function mockHomeRoutes(page: Page) {
 
 const HOMES = ["member-home", "curator-home", "admin-home"] as const;
 
+/** "View as": choose a view, then press Switch (choosing alone never switches). */
+async function switchTo(page: Page, role: "member" | "curator" | "admin") {
+  await page.getByTestId("nav-view").selectOption(role);
+  await page.getByTestId("nav-view-switch").click();
+}
+
 async function expectOnlyHome(page: Page, home: (typeof HOMES)[number]) {
   await expect(page.getByTestId(home)).toBeVisible({ timeout: 30_000 });
   for (const other of HOMES.filter((h) => h !== home))
@@ -122,7 +128,7 @@ test("one account holding all three roles: View as switches between three differ
   await expect(page.getByTestId("log-bar")).toBeVisible();
 
   // Curator: dictionary health and the Dictionary link instead of Day log.
-  await view.selectOption("curator");
+  await switchTo(page, "curator");
   await expectOnlyHome(page, "curator-home");
   expect(session.switches).toEqual([{ role: "curator" }]);
   await expect(view).toHaveValue("curator");
@@ -132,14 +138,14 @@ test("one account holding all three roles: View as switches between three differ
   await expect(page.getByTestId("log-bar")).toHaveCount(0);
 
   // Admin: accounts and the Users link.
-  await view.selectOption("admin");
+  await switchTo(page, "admin");
   await expectOnlyHome(page, "admin-home");
   await expect(page.getByTestId("nav-users")).toHaveAttribute("href", "/admin/users");
   await expect(page.getByTestId("nav-dictionary")).toHaveCount(0);
   await expect(page.getByTestId("admin-users")).toContainText("Users (1)");
 
   // And back: the view, not the account, changed.
-  await view.selectOption("member");
+  await switchTo(page, "member");
   await expectOnlyHome(page, "member-home");
   expect(session.switches.map((s) => s.role)).toEqual(["curator", "admin", "member"]);
 });
@@ -159,13 +165,40 @@ test("the switch opens that view's Home from any page, and a refused switch says
   // An account without Admin is not offered it.
   await expect(view.locator("option")).toHaveText(["Member", "Curator"]);
 
-  await view.selectOption("curator");
+  await switchTo(page, "curator");
   await expect(page).toHaveURL(/\/$/);
   await expectOnlyHome(page, "curator-home");
 
   session.failSwitch = { status: 403, error: "forbidden" };
-  await view.selectOption("member");
+  await switchTo(page, "member");
   await expect(page.getByTestId("nav-view-error")).toContainText("does not hold the role");
-  await expect(view).toHaveValue("curator");
+  await expect(view).toHaveValue("curator"); // the choice goes back to the view still active
   await expectOnlyHome(page, "curator-home");
+});
+
+test("choosing a role in View as, by mouse or arrow keys, switches nothing until Switch is pressed", async ({
+  page,
+}) => {
+  const session = await mockSession(page, {
+    username: "mock_all",
+    roles: ["member", "curator", "admin"],
+    activeRole: "member",
+  });
+  await mockHomeRoutes(page);
+  await page.goto("/about");
+  const view = page.getByTestId("nav-view");
+  await expect(view).toHaveValue("member", { timeout: 30_000 });
+  const switchButton = page.getByTestId("nav-view-switch");
+  await expect(switchButton).toBeDisabled(); // the active view is already chosen
+
+  await view.selectOption("curator");
+  await view.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page).toHaveURL(/\/about$/);
+  expect(session.switches).toEqual([]);
+
+  await view.selectOption("admin");
+  await switchButton.click();
+  await expectOnlyHome(page, "admin-home");
+  expect(session.switches).toEqual([{ role: "admin" }]);
 });

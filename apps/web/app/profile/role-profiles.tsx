@@ -4,17 +4,20 @@ import { useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { AdminProfileInput, CuratorProfileInput } from "@healtheat/shared";
 import type { AdminProfileView, CuratorProfileView } from "@healtheat/shared";
+import { useAuth } from "../auth-context";
 import { Field, TextAreaField } from "../field";
 import { getAdminProfile, updateAdminProfile } from "../lib/admin";
 import { getCuratorProfile, updateCuratorProfile } from "../lib/curate";
 import { formatDay } from "../lib/home";
 import type { ApiResult } from "../lib/request";
 import { useLoad } from "../use-load";
+import { confirmSession } from "./session";
 import styles from "./profile.module.css";
 
 // The Curator and Admin profiles on /profile (T21; design doc, Data model: CuratorProfile `credentials`,
 // `bio`, `specialties`, `publicListing`; AdminProfile `internalNote`). The counters (`editsCount`,
-// `lastEditAt`, `grantsCount`, `lastAuditAt`) are written by the server and only shown here.
+// `lastEditAt`, `grantsCount`, `lastAuditAt`) are written by the server and only shown here. Like the
+// member sections, each Save first checks the session is still the account this page shows.
 
 /** Loads a role profile and renders its form, with Try again on a failure. */
 function ProfileSection<T>({
@@ -63,17 +66,18 @@ function SaveRow({ pending, saved }: { pending: boolean; saved: boolean }) {
 
 // ---- Curator -------------------------------------------------------------------------------------
 
-export function CuratorProfileSection() {
+export function CuratorProfileSection({ username }: { username: string }) {
   return (
     <ProfileSection id="curator-profile" title="Curator profile" load={getCuratorProfile}>
-      {(profile) => <CuratorForm initial={profile} />}
+      {(profile) => <CuratorForm initial={profile} username={username} />}
     </ProfileSection>
   );
 }
 
 const textOrNull = (s: string) => (s.trim() === "" ? null : s.trim());
 
-function CuratorForm({ initial }: { initial: CuratorProfileView }) {
+function CuratorForm({ initial, username }: { initial: CuratorProfileView; username: string }) {
+  const { recheck } = useAuth();
   const [profile, setProfile] = useState(initial);
   const [credentials, setCredentials] = useState(initial.credentials ?? "");
   const [bio, setBio] = useState(initial.bio ?? "");
@@ -121,6 +125,11 @@ function CuratorForm({ initial }: { initial: CuratorProfileView }) {
     setPending(true);
     setErrors({});
     try {
+      const switched = await confirmSession(recheck, username);
+      if (switched) {
+        setErrors({ form: switched });
+        return;
+      }
       const result = await updateCuratorProfile(parsed.data);
       if (result.ok) {
         setProfile(result.data);
@@ -158,6 +167,7 @@ function CuratorForm({ initial }: { initial: CuratorProfileView }) {
             name="bio"
             label="Bio (optional)"
             rows={4}
+            hint="Shown on your public profile."
             value={bio}
             onChange={(e) => edited(setBio)(e.target.value)}
             error={errors.bio}
@@ -167,7 +177,7 @@ function CuratorForm({ initial }: { initial: CuratorProfileView }) {
             label="Specialties (optional)"
             value={specialties}
             onChange={(e) => edited(setSpecialties)(e.target.value)}
-            hint="Separated by commas, for example dairy, FODMAP."
+            hint="Separated by commas, for example dairy, FODMAP. Shown on your public profile."
             error={errors.specialties}
           />
           <label className={styles.check}>
@@ -177,7 +187,10 @@ function CuratorForm({ initial }: { initial: CuratorProfileView }) {
               checked={publicListing}
               onChange={(e) => edited(setPublicListing)(e.target.checked)}
             />
-            <span>List me among the newest public profiles on Home</span>
+            <span>
+              List me among the newest public profiles on Home (your public profile shows the fields
+              above either way)
+            </span>
           </label>
           <SaveRow pending={pending} saved={saved} />
         </fieldset>
@@ -188,15 +201,16 @@ function CuratorForm({ initial }: { initial: CuratorProfileView }) {
 
 // ---- Admin ---------------------------------------------------------------------------------------
 
-export function AdminProfileSection() {
+export function AdminProfileSection({ username }: { username: string }) {
   return (
     <ProfileSection id="admin-profile" title="Admin profile" load={getAdminProfile}>
-      {(profile) => <AdminForm initial={profile} />}
+      {(profile) => <AdminForm initial={profile} username={username} />}
     </ProfileSection>
   );
 }
 
-function AdminForm({ initial }: { initial: AdminProfileView }) {
+function AdminForm({ initial, username }: { initial: AdminProfileView; username: string }) {
+  const { recheck } = useAuth();
   const [profile, setProfile] = useState(initial);
   const [note, setNote] = useState(initial.internalNote ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -217,6 +231,11 @@ function AdminForm({ initial }: { initial: AdminProfileView }) {
     setPending(true);
     setError(null);
     try {
+      const switched = await confirmSession(recheck, username);
+      if (switched) {
+        setError(switched);
+        return;
+      }
       const result = await updateAdminProfile(parsed.data);
       if (result.ok) {
         setProfile(result.data);
