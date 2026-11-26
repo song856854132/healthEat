@@ -1,0 +1,217 @@
+/* Curator and Admin pages and Homes (T21). Colours come from the tokens in globals.css (--ink, --paper,
+   --line, --danger). Tables scroll inside their wrapper, so the page itself never scrolls sideways. */
+
+/* The same width as the other wide views (home.module.css, foods.module.css). */
+.wide {
+  max-width: 880px;
+}
+/* The root of each view; it scopes the element selectors below (CSS modules need a class). */
+.view {
+  display: block;
+}
+.view section h2 {
+  font-size: 1.15rem;
+  margin: 0 0 8px;
+}
+
+.status {
+  margin-top: 24px;
+}
+.sub {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin: 0 0 12px;
+}
+.muted {
+  opacity: 0.75;
+  margin: 0;
+}
+.note {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  margin: 12px 0 0;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.table th,
+.table td {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.table th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Buttons in a table keep the global size, so "Continue re-match" stays a full touch target. */
+.table button {
+  margin: 0;
+}
+.phrases {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+  min-width: 160px;
+}
+
+.chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 1px 8px;
+  margin: 0 4px 2px 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.chipWarn {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* At-a-glance counts on the Homes; each is a link into the filtered list. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tile {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+.tile strong {
+  display: block;
+  font-size: 1.6rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.tile a,
+.tile span {
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.actions button {
+  margin-right: 0;
+}
+
+/* /admin/users filters: one row on wide screens, stacked on a phone. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin: 16px 0;
+}
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.filters input,
+.filters select {
+  font: inherit;
+  font-weight: 400;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: inherit;
+}
+.filters input {
+  min-width: 0;
+  width: 220px;
+  max-width: 100%;
+}
+.filters button {
+  margin-right: 0;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+
+/* The allergen editor and the role and profile forms. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+  margin-top: 16px;
+}
+.fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: contents;
+}
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.check input {
+  margin-top: 4px;
+  flex: none;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+.facts dt {
+  font-weight: 600;
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.progress {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+
+.danger {
+  border-color: var(--danger);
+}
+.deleteButton {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--paper);
+}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 import type {
   CalorieMeter as Meter,
@@ -13,89 +13,21 @@ import type {
 } from "@healtheat/shared";
 import { NutrientBands } from "../components/NutrientBand";
 import { useAuth } from "./auth-context";
-import { NETWORK, searchHref } from "./lib/foods";
-import type { Failure } from "./lib/foods";
+import { searchHref } from "./lib/foods";
 import { getGapFoods, getPublicHome, getSummary, nutrientIdFor, shortDate } from "./lib/home";
 import { EXAMPLE_WEEK } from "./lib/example-week";
 import { formatAmount } from "./lib/nutrients";
+import { AdminHome } from "./admin-home";
+import { CuratorHome } from "./curator-home";
+import { LoadError, useLoad } from "./use-load";
 import styles from "./home.module.css";
 
 // Home (T30; design doc, Pages table and the Home wireframe). Anonymous visitors get the live public
 // feed, one labelled example band and a way in; a signed-in account gets Member Home in the wireframe's
 // order: alert strip, today's calorie meter, the 7-day bands, exposure meter, close the gap, log bar.
-// Curator and Admin Homes are T21's web half; every account is a member (D18), so until then they see
-// Member Home.
-
-type Load<T> =
-  { kind: "loading" } | { kind: "error"; failure: Failure } | { kind: "done"; data: T };
-
-/**
- * Runs `load` on mount and whenever `retry` is called; a newer run aborts the older one. With
- * `refreshOnReturn`, it also runs again, without going back to "Loading…", when the tab becomes
- * visible again, so a page left open does not keep showing yesterday's alerts or meter.
- */
-function useLoad<T>(
-  load: (signal: AbortSignal) => Promise<{ ok: true; data: T } | { ok: false; failure: Failure }>,
-  key: unknown = null,
-  refreshOnReturn = false,
-): [Load<T>, () => void] {
-  const [state, setState] = useState<Load<T>>({ kind: "loading" });
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    if (!refreshOnReturn) return;
-    const onVisible = () => {
-      if (document.visibilityState === "visible") setAttempt((n) => n + 1);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [refreshOnReturn]);
-  useEffect(() => {
-    const controller = new AbortController();
-    load(controller.signal).then(
-      (r) => {
-        // A background refresh that fails keeps what is on screen rather than replacing it.
-        if (r.ok) setState({ kind: "done", data: r.data });
-        else
-          setState((s) =>
-            s.kind === "done" && refreshOnReturn ? s : { kind: "error", failure: r.failure },
-          );
-      },
-      () => {
-        // Aborted: a newer request replaced this one. Anything else must not spin forever.
-        if (!controller.signal.aborted) setState({ kind: "error", failure: NETWORK });
-      },
-    );
-    return () => controller.abort();
-    // Not on `load`'s identity: callers pass a module-level function, or an inline one plus the `key`
-    // it depends on, so an inline closure does not refetch on every render.
-  }, [key, attempt]);
-  return [
-    state,
-    () => {
-      setState({ kind: "loading" });
-      setAttempt((n) => n + 1);
-    },
-  ];
-}
-
-function LoadError({
-  failure,
-  retry,
-  testId,
-}: {
-  failure: Failure;
-  retry: () => void;
-  testId: string;
-}) {
-  return (
-    <div className={styles.error} role="alert" data-testid={testId}>
-      <p>{failure.message}</p>
-      <button type="button" onClick={retry}>
-        Try again
-      </button>
-    </div>
-  );
-}
+// A Curator or Admin whose active role is that role gets Curator Home or Admin Home instead (T21; Pages
+// table, Home row). The active role only picks the view: every account is a member (D18), so switching
+// the view to Member in the nav shows Member Home.
 
 export function HomeView() {
   const { me, checkFailed } = useAuth();
@@ -108,7 +40,12 @@ export function HomeView() {
   }
   // A failed session check keeps showing the public page: its data is public either way, and the nav
   // already says the session could not be checked.
-  if (me && me.user.roles.includes("member")) return <MemberHome />;
+  if (me) {
+    const role = me.user.activeRole;
+    if (role === "curator" && me.user.roles.includes("curator")) return <CuratorHome />;
+    if (role === "admin" && me.user.roles.includes("admin")) return <AdminHome me={me} />;
+    if (me.user.roles.includes("member")) return <MemberHome />;
+  }
   return <PublicHome signedIn={!!me} />;
 }
 
