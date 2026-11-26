@@ -46,3 +46,34 @@
   min-width: 0;
   display: contents;
 }
+
+/* Allergen settings (T31): the per-row choice and threshold inputs. */
+.control {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: inherit;
+}
+.control[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.threshold {
+  width: 7em;
+}
+/* Body details (T31): related inputs side by side on wider screens. */
+.pair,
+.triple {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+.triple {
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+}
+/* The allergen table is a member form used on phones: its headings wrap rather than push the
+   threshold input out of view. */
+table.settingsTable th {
+  white-space: normal;
+}

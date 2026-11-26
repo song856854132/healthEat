@@ -4,7 +4,8 @@ import { ProfileView } from "./profile-view";
 
 export const metadata: Metadata = {
   title: `Your profile · ${APP_NAME}`,
-  description: "Your account, your sharing choices and phone number, and deleting your account.",
+  description:
+    "Your account, body details and calorie band, allergens to avoid or track, sharing choices, and deleting your account.",
 };
 
 /**

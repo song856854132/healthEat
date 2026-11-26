@@ -13,6 +13,8 @@ import { firstPerField } from "../lib/form";
 import { ROLE_LABELS, orderedRoles } from "../lib/roles";
 import { AdminProfileSection, CuratorProfileSection } from "./role-profiles";
 import { confirmSession } from "./session";
+import { AllergenSettingsSection } from "./allergen-settings";
+import { BodySection } from "./body-section";
 import styles from "./profile.module.css";
 
 export function ProfileView() {
@@ -59,6 +61,8 @@ export function ProfileView() {
     <main>
       <h1>Your profile</h1>
       <AccountSection me={me} />
+      <BodySection key={`body|${me.user.username}`} username={me.user.username} />
+      <AllergenSettingsSection key={`allergens|${me.user.username}`} username={me.user.username} />
       <SharingSection key={`sharing|${me.user.username}`} username={me.user.username} />
       {me.user.roles.includes("curator") ? (
         <CuratorProfileSection key={`curator|${me.user.username}`} username={me.user.username} />
