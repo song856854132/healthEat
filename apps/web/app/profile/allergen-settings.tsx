@@ -22,8 +22,7 @@ import styles from "./profile.module.css";
 // this page loaded (a new Avoid, say) is never silently dropped.
 
 type Choice = "" | AllergenMode;
-/** `unreadable`: the threshold's text is not a number the browser can read (it reports ""). */
-type Row = { mode: Choice; threshold: string; unreadable?: boolean };
+type Row = { mode: Choice; threshold: string };
 type Loaded = { dictionary: AllergenView[]; mine: UserAllergenView[] };
 
 const THRESHOLD_ERROR = "A whole number from 1 to 1,000, or leave it empty.";
@@ -65,8 +64,11 @@ function rowsFrom(dictionary: AllergenView[], mine: UserAllergenView[]): Record<
 
 export function AllergenSettingsSection({ username }: { username: string }) {
   const [state, retry] = useLoad(loadSettings);
+  const scrolled = useRef(false);
   useEffect(() => {
-    if (state.kind === "done") scrollToProfileAnchor();
+    if (state.kind !== "done" || scrolled.current) return;
+    scrolled.current = true;
+    scrollToProfileAnchor("allergens");
   }, [state.kind]);
   return (
     <section id="allergens" aria-labelledby="allergens-heading" data-testid="allergen-settings">
@@ -145,7 +147,11 @@ function AllergenForm({
       }
       const text = row.threshold.trim();
       const n = Number(text);
-      if (row.unreadable || (text && !(Number.isInteger(n) && n >= 1 && n <= 1000))) {
+      // Text the browser cannot read reports "" with validity.badInput (read now: React sends no
+      // change event while the value stays ""); sent as "", it would drop the stored threshold.
+      const input = e.currentTarget.elements.namedItem(`threshold-${a.key}`);
+      const unreadable = input instanceof HTMLInputElement && input.validity.badInput;
+      if (unreadable || (text && !(Number.isInteger(n) && n >= 1 && n <= 1000))) {
         found[a.key] = THRESHOLD_ERROR;
         continue;
       }
@@ -153,6 +159,15 @@ function AllergenForm({
         text ? { key: a.key, mode: "track", weeklyThreshold: n } : { key: a.key, mode: "track" },
       );
     }
+    // Entries this page does not list (an allergen a Curator added after it loaded, chosen on another
+    // device) stay as stored: the PUT replaces the whole list, so leaving them out would delete them.
+    for (const m of base)
+      if (!dictionary.some((a) => a.key === m.key))
+        allergens.push(
+          m.mode === "track" && m.weeklyThreshold
+            ? { key: m.key, mode: "track", weeklyThreshold: m.weeklyThreshold }
+            : { key: m.key, mode: m.mode },
+        );
     const parsed = UserAllergensInput.safeParse({ allergens });
     if (Object.keys(found).length || !parsed.success) {
       setErrors(found);
@@ -258,12 +273,8 @@ function AllergenForm({
                             aria-invalid={errors[a.key] ? true : undefined}
                             aria-describedby={errors[a.key] ? errorId : undefined}
                             value={row.threshold}
-                            onChange={(e) =>
-                              update(a.key, {
-                                threshold: e.target.value,
-                                unreadable: e.target.validity.badInput,
-                              })
-                            }
+                            name={`threshold-${a.key}`}
+                            onChange={(e) => update(a.key, { threshold: e.target.value })}
                           />
                           {errors[a.key] ? (
                             <p id={errorId} className="field-error">

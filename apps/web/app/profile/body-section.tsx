@@ -70,7 +70,6 @@ const toValues = (p: MemberProfileView): Values => ({
 const numberOrNull = (text: string) => (text.trim() === "" ? null : Number(text.trim()));
 
 const NUMBER_FIELDS = ["birthYear", "heightCm", "weightKg", "bandLow", "bandHigh"] as const;
-type NumberField = (typeof NUMBER_FIELDS)[number];
 
 /** Two zone names for the same place ("Asia/Kolkata", "Asia/Calcutta") count as the same zone. */
 const sameZone = (a: string, b: string) =>
@@ -118,8 +117,11 @@ function knownTimeZones(): string[] {
 
 export function BodySection({ username }: { username: string }) {
   const [state, retry] = useLoad(getMemberProfile);
+  const scrolled = useRef(false);
   useEffect(() => {
-    if (state.kind === "done") scrollToProfileAnchor();
+    if (state.kind !== "done" || scrolled.current) return;
+    scrolled.current = true;
+    scrollToProfileAnchor("body");
   }, [state.kind]);
   return (
     <section id="body" aria-labelledby="body-heading" data-testid="body-settings">
@@ -145,11 +147,8 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
   const { recheck } = useAuth();
   const [profile, setProfile] = useState(initial);
   const [values, setValues] = useState<Values>(() => toValues(initial));
-  // A number field whose text the browser cannot read reports "" (validity.badInput): without this it
-  // would be sent as null and clear the stored value.
-  const [unreadable, setUnreadable] = useState<Partial<Record<NumberField, boolean>>>({});
   const [errors, setErrors] = useState<Errors>({});
-  const [saved, setSaved] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
   const [zones] = useState(knownTimeZones);
@@ -157,22 +156,23 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
 
   const set = (field: keyof Values) => (value: string) => {
     setValues((v) => ({ ...v, [field]: value }));
-    setSaved(false);
-  };
-  const setNumber = (field: NumberField) => (e: { target: HTMLInputElement }) => {
-    setUnreadable((u) => ({ ...u, [field]: e.target.validity.badInput }));
-    set(field)(e.target.value);
+    setStatus(null);
   };
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy.current) return;
-    setSaved(false);
+    setStatus(null);
     const found: Errors = {};
-    for (const field of NUMBER_FIELDS)
-      if (unreadable[field])
+    // A number field whose text the browser cannot read ("6e", "73,5", a lone "-") reports "" and sets
+    // validity.badInput. Read it from the inputs now: React sends no change event while the value stays
+    // "", so state cannot track it. Sent as "", it would clear the stored value.
+    for (const field of NUMBER_FIELDS) {
+      const input = e.currentTarget.elements.namedItem(field);
+      if (input instanceof HTMLInputElement && input.validity.badInput)
         found[field] =
           field === "heightCm" || field === "weightKg" ? "Enter a number." : "Use a whole number.";
+    }
     const low = numberOrNull(values.bandLow);
     const high = numberOrNull(values.bandHigh);
     if ((low === null) !== (high === null)) {
@@ -210,7 +210,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
 
     if (Object.keys(parsed.data).length === 0) {
       setErrors({});
-      setSaved(true); // nothing changed: the form already matches what is stored
+      setStatus("No changes to save.");
       return;
     }
 
@@ -227,8 +227,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
       if (result.ok) {
         setProfile(result.data);
         setValues(toValues(result.data));
-        setUnreadable({});
-        setSaved(true);
+        setStatus("Saved.");
       } else setErrors({ form: result.failure.message });
     } finally {
       busy.current = false;
@@ -260,7 +259,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
             type="number"
             inputMode="numeric"
             value={values.birthYear}
-            onChange={setNumber("birthYear")}
+            onChange={(e) => set("birthYear")(e.target.value)}
             error={errors.birthYear}
           />
           <Field
@@ -269,7 +268,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
             type="number"
             inputMode="decimal"
             value={values.heightCm}
-            onChange={setNumber("heightCm")}
+            onChange={(e) => set("heightCm")(e.target.value)}
             error={errors.heightCm}
           />
           <Field
@@ -278,7 +277,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
             type="number"
             inputMode="decimal"
             value={values.weightKg}
-            onChange={setNumber("weightKg")}
+            onChange={(e) => set("weightKg")(e.target.value)}
             error={errors.weightKg}
           />
         </div>
@@ -297,7 +296,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
             type="number"
             inputMode="numeric"
             value={values.bandLow}
-            onChange={setNumber("bandLow")}
+            onChange={(e) => set("bandLow")(e.target.value)}
             error={errors.bandLow}
           />
           <Field
@@ -306,7 +305,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
             type="number"
             inputMode="numeric"
             value={values.bandHigh}
-            onChange={setNumber("bandHigh")}
+            onChange={(e) => set("bandHigh")(e.target.value)}
             error={errors.bandHigh}
           />
         </div>
@@ -348,9 +347,9 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
           >
             {pending ? "Saving…" : "Save details"}
           </button>
-          {saved ? (
+          {status ? (
             <span role="status" className="hint">
-              Saved.
+              {status}
             </span>
           ) : null}
         </div>

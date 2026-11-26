@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { makeAccount } from "./helpers";
-import { MEMBER_PROFILE, mockSession } from "./role-mocks";
+import type { UserAllergenView } from "../packages/shared/src/index";
+import { DICTIONARY, MEMBER_PROFILE, mockSession } from "./role-mocks";
 
 // Lane B (T31): the member's settings on /profile, against the real stack. Allergens to avoid or track
 // (GET/PUT /api/users/me/allergens) and body details, calorie band and time zone (PUT
@@ -286,6 +287,98 @@ test("Save details sends only what changed, so a time zone set elsewhere stays",
   });
   const profile = await page.request.get("/api/users/me/profiles/member");
   expect(await profile.json()).toMatchObject({ weightKg: 70, timezone: "Europe/Paris" });
+
+  // Saving again with nothing changed sends nothing, and says so rather than "Saved.".
+  await form.getByRole("button", { name: "Save details" }).click();
+  await expect(form.getByRole("status")).toHaveText("No changes to save.");
+});
+
+test("an unreadable number typed into an emptied field is refused too, and clearing it lifts the error", async ({
+  page,
+}) => {
+  await signUp(page, "sc");
+  const allergenPuts = countPuts(page, "/api/users/me/allergens");
+  await page.goto("/profile#body");
+  const form = page.getByTestId("body-form");
+  const weight = form.getByLabel("Weight (kg)");
+  await weight.fill("60", { timeout: 30_000 });
+  await form.getByRole("button", { name: "Save details" }).click();
+  await expect(form.getByRole("status").filter({ hasText: "Saved." })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // Emptied, then "-": the field's value stays "" throughout, so React sends no change for it.
+  await weight.clear();
+  await weight.pressSequentially("-");
+  await form.getByRole("button", { name: "Save details" }).click();
+  await expect(page.locator("#field-weightKg-error")).toContainText("Enter a number");
+  let profile = await page.request.get("/api/users/me/profiles/member");
+  expect(((await profile.json()) as { weightKg: number | null }).weightKg).toBe(60);
+
+  // Deleting the unreadable text and typing a number saves it: the refusal does not stick.
+  await weight.press("Backspace");
+  await weight.pressSequentially("61");
+  await form.getByRole("button", { name: "Save details" }).click();
+  await expect(form.getByRole("status").filter({ hasText: "Saved." })).toBeVisible({
+    timeout: 30_000,
+  });
+  profile = await page.request.get("/api/users/me/profiles/member");
+  expect(((await profile.json()) as { weightKg: number | null }).weightKg).toBe(61);
+
+  // A threshold box starts empty: an unreadable first key is refused, not saved as no threshold.
+  const section = page.getByTestId("allergen-settings");
+  await section.getByRole("combobox", { name: "Your choice for Lactose" }).selectOption("track");
+  await section
+    .getByRole("spinbutton", { name: "Weekly threshold for Lactose" })
+    .pressSequentially("e");
+  await section.getByRole("button", { name: "Save allergens" }).click();
+  await expect(section.locator("#threshold-lactose-error")).toContainText("whole number");
+  expect(allergenPuts()).toBe(0);
+});
+
+test("a stale refresh keeps an allergen this page does not list, so the next save keeps it", async ({
+  page,
+}) => {
+  await mockSession(page, { username: "mock_member", roles: ["member"], activeRole: "member" });
+  await page.route("**/api/allergens", (route) => route.fulfill({ json: DICTIONARY }));
+  let stored: UserAllergenView[] = [];
+  const puts: unknown[] = [];
+  await page.route("**/api/users/me/allergens", (route) => {
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON() as {
+        allergens: { key: string; mode: "avoid" | "track"; weeklyThreshold?: number }[];
+      };
+      puts.push(body);
+      stored = body.allergens.map((a) => ({
+        key: a.key,
+        displayName: a.key,
+        mode: a.mode,
+        weeklyThreshold: a.weeklyThreshold ?? null,
+      }));
+    }
+    return route.fulfill({ json: { allergens: stored } });
+  });
+
+  await page.goto("/profile");
+  const section = page.getByTestId("allergen-settings");
+  const milk = section.getByRole("combobox", { name: "Your choice for Milk" });
+  await expect(milk).toHaveValue("", { timeout: 30_000 });
+  // After this page loaded, a Curator added Sesame and another device avoids it.
+  stored = [{ key: "sesame", displayName: "Sesame", mode: "avoid", weeklyThreshold: null }];
+  await milk.selectOption("avoid");
+  await section.getByRole("button", { name: "Save allergens" }).click();
+  await expect(section.getByRole("alert")).toContainText("changed in another tab");
+  await milk.selectOption("avoid");
+  await section.getByRole("button", { name: "Save allergens" }).click();
+  await expect(section.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  expect(puts).toEqual([
+    {
+      allergens: [
+        { key: "milk", mode: "avoid" },
+        { key: "sesame", mode: "avoid" },
+      ],
+    },
+  ]);
 });
 
 test("a link to /profile#allergens opens at the allergen section, even on a full page load", async ({
