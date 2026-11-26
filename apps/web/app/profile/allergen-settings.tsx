@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { UserAllergensInput } from "@healtheat/shared";
 import type { AllergenMode, AllergenTier, AllergenView, UserAllergenView } from "@healtheat/shared";
@@ -9,6 +9,7 @@ import { listAllergens } from "../lib/curate";
 import { allergenSaveError, getMyAllergens, setMyAllergens } from "../lib/settings";
 import type { Result } from "../lib/foods";
 import { useLoad } from "../use-load";
+import { scrollToProfileAnchor } from "./anchor";
 import { confirmSession } from "./session";
 import manage from "../manage.module.css";
 import styles from "./profile.module.css";
@@ -17,11 +18,26 @@ import styles from "./profile.module.css";
 // `weeklyThreshold`; the wireframe: "Thresholds are yours to set in Profile"). Avoid raises the hard
 // alert strip on Member Home when today's log contains the allergen; Track counts hits toward the weekly
 // exposure meter, against an optional threshold. Saving sends the complete list, which replaces the
-// stored one.
+// stored one, so the stored list is read again first: a choice saved from another tab or device after
+// this page loaded (a new Avoid, say) is never silently dropped.
 
 type Choice = "" | AllergenMode;
-type Row = { mode: Choice; threshold: string };
+/** `unreadable`: the threshold's text is not a number the browser can read (it reports ""). */
+type Row = { mode: Choice; threshold: string; unreadable?: boolean };
 type Loaded = { dictionary: AllergenView[]; mine: UserAllergenView[] };
+
+const THRESHOLD_ERROR = "A whole number from 1 to 1,000, or leave it empty.";
+
+const STALE =
+  "Your allergen choices changed in another tab or device since this page loaded. Nothing was saved; the list below is as stored now. Make your change again.";
+
+/** The stored list as a comparable string: key, mode and threshold of each entry, by key. */
+const listKey = (list: UserAllergenView[]) =>
+  JSON.stringify(
+    [...list]
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map((a) => [a.key, a.mode, a.weeklyThreshold]),
+  );
 
 const TIER_HINT: Record<AllergenTier, string> = {
   allergy: "usually avoided",
@@ -49,6 +65,9 @@ function rowsFrom(dictionary: AllergenView[], mine: UserAllergenView[]): Record<
 
 export function AllergenSettingsSection({ username }: { username: string }) {
   const [state, retry] = useLoad(loadSettings);
+  useEffect(() => {
+    if (state.kind === "done") scrollToProfileAnchor();
+  }, [state.kind]);
   return (
     <section id="allergens" aria-labelledby="allergens-heading" data-testid="allergen-settings">
       <h2 id="allergens-heading">Allergens and sensitivities</h2>
@@ -88,6 +107,8 @@ function AllergenForm({
 }) {
   const { recheck } = useAuth();
   const [rows, setRows] = useState(() => rowsFrom(dictionary, mine));
+  // The stored list the rows were last filled from; a save first checks it is still what is stored.
+  const [base, setBase] = useState(mine);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -124,8 +145,8 @@ function AllergenForm({
       }
       const text = row.threshold.trim();
       const n = Number(text);
-      if (text && !(Number.isInteger(n) && n >= 1 && n <= 1000)) {
-        found[a.key] = "A whole number from 1 to 1,000, or leave it empty.";
+      if (row.unreadable || (text && !(Number.isInteger(n) && n >= 1 && n <= 1000))) {
+        found[a.key] = THRESHOLD_ERROR;
         continue;
       }
       allergens.push(
@@ -146,8 +167,21 @@ function AllergenForm({
         setFormError(switched);
         return;
       }
+      const fresh = await getMyAllergens();
+      if (!fresh.ok) {
+        setFormError(fresh.failure.message);
+        return;
+      }
+      if (listKey(fresh.data.allergens) !== listKey(base)) {
+        setBase(fresh.data.allergens);
+        setRows(rowsFrom(dictionary, fresh.data.allergens));
+        setErrors({});
+        setFormError(STALE);
+        return;
+      }
       const result = await setMyAllergens(parsed.data);
       if (result.ok) {
+        setBase(result.data.allergens);
         setRows(rowsFrom(dictionary, result.data.allergens));
         setSaved(true);
       } else setFormError(allergenSaveError(result.failure));
@@ -163,7 +197,12 @@ function AllergenForm({
     );
 
   return (
-    <form onSubmit={onSubmit} noValidate data-testid="allergen-settings-form">
+    <form
+      className={manage.form}
+      onSubmit={onSubmit}
+      noValidate
+      data-testid="allergen-settings-form"
+    >
       <fieldset disabled={pending} className={styles.fieldset}>
         {formError ? (
           <p role="alert" className="form-error">
@@ -174,7 +213,7 @@ function AllergenForm({
           Avoiding {avoiding} · tracking {tracking}
         </p>
         <div className={manage.tableWrap}>
-          <table className={manage.table}>
+          <table className={`${manage.table} ${styles.settingsTable}`}>
             <thead>
               <tr>
                 <th scope="col">Allergen</th>
@@ -219,7 +258,12 @@ function AllergenForm({
                             aria-invalid={errors[a.key] ? true : undefined}
                             aria-describedby={errors[a.key] ? errorId : undefined}
                             value={row.threshold}
-                            onChange={(e) => update(a.key, { threshold: e.target.value })}
+                            onChange={(e) =>
+                              update(a.key, {
+                                threshold: e.target.value,
+                                unreadable: e.target.validity.badInput,
+                              })
+                            }
                           />
                           {errors[a.key] ? (
                             <p id={errorId} className="field-error">

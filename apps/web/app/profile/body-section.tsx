@@ -1,14 +1,21 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { ACTIVITY_LEVELS, MemberProfileInput, SEXES } from "@healtheat/shared";
+import {
+  ACTIVITY_LEVELS,
+  MemberProfileInput,
+  SEXES,
+  canonicalTimeZone,
+  isValidTimeZone,
+} from "@healtheat/shared";
 import type { MemberProfileView } from "@healtheat/shared";
 import { useAuth } from "../auth-context";
 import { Field, SelectField } from "../field";
 import { getMemberProfile, updateMemberProfile } from "../lib/account";
 import { browserTimeZone } from "../lib/form";
 import { useLoad } from "../use-load";
+import { scrollToProfileAnchor } from "./anchor";
 import { confirmSession } from "./session";
 import styles from "./profile.module.css";
 
@@ -16,7 +23,8 @@ import styles from "./profile.module.css";
 // MemberProfile; D4). Member Home's calorie meter uses the member's own band when set, else one computed
 // from sex, birth year, height, weight and activity (Mifflin-St Jeor x activity, plus or minus 10%), and
 // shows a prompt when neither is possible. The time zone decides what "today" is for logs and the meter.
-// The PUT sends only these fields, so the sharing choices are left as they are.
+// The PUT sends only the fields changed since the form was filled (the API leaves absent fields as they
+// are), so neither the sharing choices nor a field another tab or device saved meanwhile is written over.
 
 type Sex = (typeof SEXES)[number];
 type Activity = (typeof ACTIVITY_LEVELS)[number];
@@ -61,13 +69,20 @@ const toValues = (p: MemberProfileView): Values => ({
 /** "" -> null, a number -> that number, anything else -> NaN (reported as "enter a number"). */
 const numberOrNull = (text: string) => (text.trim() === "" ? null : Number(text.trim()));
 
+const NUMBER_FIELDS = ["birthYear", "heightCm", "weightKg", "bandLow", "bandHigh"] as const;
+type NumberField = (typeof NUMBER_FIELDS)[number];
+
+/** Two zone names for the same place ("Asia/Kolkata", "Asia/Calcutta") count as the same zone. */
+const sameZone = (a: string, b: string) =>
+  isValidTimeZone(a) && isValidTimeZone(b) && canonicalTimeZone(a) === canonicalTimeZone(b);
+
 /** zod's wording for a body field, said in the units the form shows. */
 function friendly(field: keyof Errors, code: string, whole: boolean, message: string): string {
   const integer = field === "birthYear" || field === "bandLow" || field === "bandHigh";
   if (code === "invalid_type") return integer ? "Use a whole number." : "Enter a number.";
   switch (field) {
     case "birthYear":
-      return `A year from 1900 to ${new Date().getFullYear()}.`;
+      return `A year from 1900 to ${new Date().getUTCFullYear()}.`;
     case "heightCm":
       return "From 50 to 272 cm.";
     case "weightKg":
@@ -103,6 +118,9 @@ function knownTimeZones(): string[] {
 
 export function BodySection({ username }: { username: string }) {
   const [state, retry] = useLoad(getMemberProfile);
+  useEffect(() => {
+    if (state.kind === "done") scrollToProfileAnchor();
+  }, [state.kind]);
   return (
     <section id="body" aria-labelledby="body-heading" data-testid="body-settings">
       <h2 id="body-heading">Body details and calorie band</h2>
@@ -127,6 +145,9 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
   const { recheck } = useAuth();
   const [profile, setProfile] = useState(initial);
   const [values, setValues] = useState<Values>(() => toValues(initial));
+  // A number field whose text the browser cannot read reports "" (validity.badInput): without this it
+  // would be sent as null and clear the stored value.
+  const [unreadable, setUnreadable] = useState<Partial<Record<NumberField, boolean>>>({});
   const [errors, setErrors] = useState<Errors>({});
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
@@ -138,26 +159,37 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
     setValues((v) => ({ ...v, [field]: value }));
     setSaved(false);
   };
+  const setNumber = (field: NumberField) => (e: { target: HTMLInputElement }) => {
+    setUnreadable((u) => ({ ...u, [field]: e.target.validity.badInput }));
+    set(field)(e.target.value);
+  };
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy.current) return;
     setSaved(false);
     const found: Errors = {};
+    for (const field of NUMBER_FIELDS)
+      if (unreadable[field])
+        found[field] =
+          field === "heightCm" || field === "weightKg" ? "Enter a number." : "Use a whole number.";
     const low = numberOrNull(values.bandLow);
     const high = numberOrNull(values.bandHigh);
     if ((low === null) !== (high === null)) {
-      found[low === null ? "bandLow" : "bandHigh"] = "Set both ends of the band, or clear both.";
+      found[low === null ? "bandLow" : "bandHigh"] ??= "Set both ends of the band, or clear both.";
     }
-    const body = {
-      sex: values.sex,
-      birthYear: numberOrNull(values.birthYear),
-      heightCm: numberOrNull(values.heightCm),
-      weightKg: numberOrNull(values.weightKg),
-      activityLevel: values.activityLevel,
-      calorieBand: low !== null && high !== null ? { low, high } : null,
-      timezone: values.timezone,
-    };
+    // Only what changed since the form was filled: the rest stays as stored, whatever saved it.
+    const before = toValues(profile);
+    const changed = (field: keyof Values) => values[field].trim() !== before[field].trim();
+    const body: MemberProfileInput = {};
+    if (changed("sex")) body.sex = values.sex;
+    if (changed("birthYear")) body.birthYear = numberOrNull(values.birthYear);
+    if (changed("heightCm")) body.heightCm = numberOrNull(values.heightCm);
+    if (changed("weightKg")) body.weightKg = numberOrNull(values.weightKg);
+    if (changed("activityLevel")) body.activityLevel = values.activityLevel;
+    if (changed("bandLow") || changed("bandHigh"))
+      body.calorieBand = low !== null && high !== null ? { low, high } : null;
+    if (changed("timezone")) body.timezone = values.timezone;
     const parsed = MemberProfileInput.safeParse(body);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
@@ -176,6 +208,12 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
       return;
     }
 
+    if (Object.keys(parsed.data).length === 0) {
+      setErrors({});
+      setSaved(true); // nothing changed: the form already matches what is stored
+      return;
+    }
+
     busy.current = true;
     setPending(true);
     setErrors({});
@@ -189,6 +227,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
       if (result.ok) {
         setProfile(result.data);
         setValues(toValues(result.data));
+        setUnreadable({});
         setSaved(true);
       } else setErrors({ form: result.failure.message });
     } finally {
@@ -214,14 +253,14 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
           hint="Picks your nutrient targets. Without female or male, targets use an adult reference and the calorie band cannot be computed."
           error={errors.sex}
         />
-        <div className={styles.pair}>
+        <div className={styles.triple}>
           <Field
             name="birthYear"
             label="Birth year"
             type="number"
             inputMode="numeric"
             value={values.birthYear}
-            onChange={(e) => set("birthYear")(e.target.value)}
+            onChange={setNumber("birthYear")}
             error={errors.birthYear}
           />
           <Field
@@ -230,7 +269,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
             type="number"
             inputMode="decimal"
             value={values.heightCm}
-            onChange={(e) => set("heightCm")(e.target.value)}
+            onChange={setNumber("heightCm")}
             error={errors.heightCm}
           />
           <Field
@@ -239,7 +278,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
             type="number"
             inputMode="decimal"
             value={values.weightKg}
-            onChange={(e) => set("weightKg")(e.target.value)}
+            onChange={setNumber("weightKg")}
             error={errors.weightKg}
           />
         </div>
@@ -258,16 +297,16 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
             type="number"
             inputMode="numeric"
             value={values.bandLow}
-            onChange={(e) => set("bandLow")(e.target.value)}
+            onChange={setNumber("bandLow")}
             error={errors.bandLow}
           />
           <Field
             name="bandHigh"
-            label="to (kcal)"
+            label="Your own calorie band: to (kcal)"
             type="number"
             inputMode="numeric"
             value={values.bandHigh}
-            onChange={(e) => set("bandHigh")(e.target.value)}
+            onChange={setNumber("bandHigh")}
             error={errors.bandHigh}
           />
         </div>
@@ -293,7 +332,7 @@ function BodyForm({ username, initial }: { username: string; initial: MemberProf
             ))}
           </datalist>
         ) : null}
-        {values.timezone !== here ? (
+        {!sameZone(values.timezone, here) ? (
           <p>
             <button type="button" onClick={() => set("timezone")(here)}>
               Use this browser’s time zone ({here})

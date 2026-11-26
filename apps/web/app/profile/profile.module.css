@@ -62,9 +62,20 @@
 .threshold {
   width: 7em;
 }
-/* Body details (T31): two inputs side by side on wider screens. */
-.pair {
+/* Body details (T31): related inputs side by side on wider screens, their inputs on one line even when
+   one label wraps. */
+.pair,
+.triple {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 16px;
+  align-items: end;
+}
+.triple {
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+}
+/* The allergen table is a member form used on phones: its headings wrap rather than push the
+   threshold input out of view. */
+table.settingsTable th {
+  white-space: normal;
 }

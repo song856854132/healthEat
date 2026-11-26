@@ -154,8 +154,11 @@ test("Add allergen: checked before sending, a taken key is refused, and the new 
     .fill("sesame oil, tahini\n  Sesame \nTAHINI\n");
   await page.getByLabel("Description keywords").fill("halva");
   await form.getByRole("button", { name: "Add allergen" }).click();
-  await expect(page).toHaveURL(/\/curate\/allergens\/sesame\?added=1$/, { timeout: 30_000 });
-  await expect(page.getByTestId("allergen-added")).toContainText("Added to the dictionary");
+  // The create form opens the entry with ?added=1, which the page drops once the banner shows.
+  await expect(page.getByTestId("allergen-added")).toContainText("Added to the dictionary", {
+    timeout: 30_000,
+  });
+  await expect(page).toHaveURL(/\/curate\/allergens\/sesame$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sesame");
   expect(posted.at(-1)).toEqual({
     key: "sesame",

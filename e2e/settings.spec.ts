@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { makeAccount } from "./helpers";
+import { MEMBER_PROFILE, mockSession } from "./role-mocks";
 
 // Lane B (T31): the member's settings on /profile, against the real stack. Allergens to avoid or track
 // (GET/PUT /api/users/me/allergens) and body details, calorie band and time zone (PUT
@@ -205,4 +206,134 @@ test.describe("time zone", () => {
     const profile = await page.request.get("/api/users/me/profiles/member");
     expect(((await profile.json()) as { timezone: string }).timezone).toBe("America/New_York");
   });
+});
+
+test("a number the browser cannot read is refused, never saved as a cleared value", async ({
+  page,
+}) => {
+  await signUp(page, "sn");
+  const allergenPuts = countPuts(page, "/api/users/me/allergens");
+  await page.goto("/profile#body");
+  const form = page.getByTestId("body-form");
+  const weight = form.getByLabel("Weight (kg)");
+  await weight.fill("60", { timeout: 30_000 });
+  await form.getByRole("button", { name: "Save details" }).click();
+  await expect(form.getByRole("status").filter({ hasText: "Saved." })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // "6e" is not a number: the input reports "" for it, which must not clear the stored weight.
+  await weight.clear();
+  await weight.pressSequentially("6e");
+  await form.getByRole("button", { name: "Save details" }).click();
+  await expect(page.locator("#field-weightKg-error")).toContainText("Enter a number");
+  const profile = await page.request.get("/api/users/me/profiles/member");
+  expect(((await profile.json()) as { weightKg: number | null }).weightKg).toBe(60);
+
+  // The same for a weekly threshold: it is refused, not saved as "no threshold".
+  const section = page.getByTestId("allergen-settings");
+  await section.getByRole("combobox", { name: "Your choice for Lactose" }).selectOption("track");
+  await section
+    .getByRole("spinbutton", { name: "Weekly threshold for Lactose" })
+    .pressSequentially("5e");
+  await section.getByRole("button", { name: "Save allergens" }).click();
+  await expect(section.locator("#threshold-lactose-error")).toContainText("whole number");
+  expect(allergenPuts()).toBe(0);
+});
+
+test("a stale tab never drops an allergen saved elsewhere", async ({ page }) => {
+  await signUp(page, "ss");
+  await page.goto("/profile#allergens");
+  const section = page.getByTestId("allergen-settings");
+  const peanuts = section.getByRole("combobox", { name: "Your choice for Peanuts" });
+  await expect(peanuts).toHaveValue("", { timeout: 30_000 });
+
+  // Another tab or device avoids peanuts after this page loaded.
+  const elsewhere = await page.request.put("/api/users/me/allergens", {
+    data: { allergens: [{ key: "peanuts", mode: "avoid" }] },
+  });
+  expect(elsewhere.ok()).toBe(true);
+
+  await section.getByRole("combobox", { name: "Your choice for Lactose" }).selectOption("track");
+  await section.getByRole("button", { name: "Save allergens" }).click();
+  await expect(section.getByRole("alert")).toContainText("changed in another tab");
+  const stored = await page.request.get("/api/users/me/allergens");
+  expect(
+    ((await stored.json()) as { allergens: { key: string }[] }).allergens.map((a) => a.key),
+  ).toEqual(["peanuts"]);
+  // The form now shows the list as stored.
+  await expect(peanuts).toHaveValue("avoid");
+});
+
+test("Save details sends only what changed, so a time zone set elsewhere stays", async ({
+  page,
+}) => {
+  await signUp(page, "sd");
+  await page.goto("/profile#body");
+  const form = page.getByTestId("body-form");
+  await expect(form.getByLabel("Time zone")).toHaveValue("UTC", { timeout: 30_000 });
+
+  // Another device moves the member to Paris after this page loaded.
+  const elsewhere = await page.request.put("/api/users/me/profiles/member", {
+    data: { timezone: "Europe/Paris" },
+  });
+  expect(elsewhere.ok()).toBe(true);
+
+  await form.getByLabel("Weight (kg)").fill("70");
+  await form.getByRole("button", { name: "Save details" }).click();
+  await expect(form.getByRole("status").filter({ hasText: "Saved." })).toBeVisible({
+    timeout: 30_000,
+  });
+  const profile = await page.request.get("/api/users/me/profiles/member");
+  expect(await profile.json()).toMatchObject({ weightKg: 70, timezone: "Europe/Paris" });
+});
+
+test("a link to /profile#allergens opens at the allergen section, even on a full page load", async ({
+  page,
+}) => {
+  await signUp(page, "sh");
+  await page.goto("/profile#allergens");
+  await expect(page.getByTestId("allergen-settings-form")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("body-form")).toBeVisible();
+  await expect(page.locator("#allergens-heading")).toBeInViewport();
+});
+
+test("the new sections never save to an account another tab signed in to, and a vanished allergen is explained", async ({
+  page,
+}) => {
+  const session = await mockSession(page, {
+    username: "mock_member",
+    roles: ["member"],
+    activeRole: "member",
+  });
+  const puts: string[] = [];
+  await page.route("**/api/users/me/allergens", (route) => {
+    if (route.request().method() !== "PUT") return route.fulfill({ json: { allergens: [] } });
+    puts.push("allergens");
+    return route.fulfill({
+      status: 400,
+      json: { error: "unknown_allergen", details: { keys: ["peanuts"] } },
+    });
+  });
+  await page.route("**/api/users/me/profiles/member", (route) => {
+    if (route.request().method() === "PUT") puts.push("member");
+    return route.fulfill({ json: MEMBER_PROFILE });
+  });
+
+  await page.goto("/profile");
+  const section = page.getByTestId("allergen-settings");
+  await section
+    .getByRole("combobox", { name: "Your choice for Peanuts" })
+    .selectOption("avoid", { timeout: 30_000 });
+  await section.getByRole("button", { name: "Save allergens" }).click();
+  await expect(section.getByRole("alert")).toContainText("(peanuts)");
+  await expect(section.getByRole("alert")).toContainText("Nothing was saved");
+  expect(puts).toEqual(["allergens"]);
+
+  // Another tab logs in as someone else: neither new section writes to that account.
+  session.username = "other_member";
+  await page.getByTestId("body-form").getByLabel("Weight (kg)").fill("70");
+  await page.getByRole("button", { name: "Save details" }).click();
+  await expect(page.getByTestId("nav-username")).toHaveText("other_member", { timeout: 30_000 });
+  expect(puts).toEqual(["allergens"]);
 });

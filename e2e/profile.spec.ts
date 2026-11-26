@@ -158,6 +158,9 @@ test("the profile fits a phone screen", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto("/profile");
   await expect(page.getByTestId("profile-username")).toBeVisible({ timeout: 30_000 });
+  // Measured once the settings forms (the widest sections) have loaded, not their "Loading…".
+  await expect(page.getByTestId("body-form")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("allergen-settings-form")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "Delete account…" }).click();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
