@@ -15,6 +15,7 @@ export function RematchControl({
   initial,
   onDone,
   onPending,
+  blocked = false,
 }: {
   id: string;
   /** The allergen's display name, so each button in a table has its own accessible name. */
@@ -24,6 +25,8 @@ export function RematchControl({
   onDone?: () => void;
   /** Told when a Continue starts and ends, so a page can hold other heavy writes meanwhile. */
   onPending?: (pending: boolean) => void;
+  /** Another heavy write on the page is running: Continue waits for it. */
+  blocked?: boolean;
 }) {
   const [progress, setProgress] = useState<RematchProgress | undefined>(initial);
   const [pending, setPending] = useState(false);
@@ -31,7 +34,7 @@ export function RematchControl({
   const busy = useRef(false);
 
   async function onContinue() {
-    if (busy.current) return;
+    if (busy.current || blocked) return;
     busy.current = true;
     setPending(true);
     setError(null);
@@ -67,7 +70,7 @@ export function RematchControl({
       <button
         type="button"
         onClick={() => void onContinue()}
-        disabled={pending}
+        disabled={pending || blocked}
         aria-busy={pending || undefined}
         aria-label={`Continue re-match for ${name}`}
       >

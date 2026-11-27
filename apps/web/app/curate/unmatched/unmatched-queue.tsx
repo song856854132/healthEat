@@ -144,9 +144,10 @@ function Results({
     Math.max(1, Math.ceil(data.total / UNMATCHED_PAGE_SIZE)),
   );
   const mappable = query.status !== "mapped";
-  // One map (or Continue re-match) at a time on this page: each re-matches every cached food for up to
-  // 60 seconds, and two passes over one allergen restart each other.
-  const [mapping, setMapping] = useState<string | null>(null);
+  // One heavy write (a map, or a Continue re-match) at a time on this page: each re-matches every cached
+  // food for up to 60 seconds, and two passes over one allergen restart each other. A set of the rows
+  // running one, so each row clears only its own entry.
+  const [heavy, setHeavy] = useState<ReadonlySet<string>>(() => new Set());
   // Rows with a request in flight: reloading the page meanwhile would drop their answers.
   const [inFlight, setInFlight] = useState(0);
   return (
@@ -180,8 +181,15 @@ function Results({
               token={t}
               allergens={dictionary.kind === "done" ? dictionary.data.allergens : null}
               dictionaryFailed={dictionary.kind === "error"}
-              mapBlocked={mapping !== null && mapping !== t.token}
-              onMapping={(on) => setMapping(on ? t.token : null)}
+              heavyElsewhere={[...heavy].some((k) => k !== t.token)}
+              onHeavy={(on) =>
+                setHeavy((h) => {
+                  const next = new Set(h);
+                  if (on) next.add(t.token);
+                  else next.delete(t.token);
+                  return next;
+                })
+              }
               onInFlight={(on) => setInFlight((n) => n + (on ? 1 : -1))}
               onActed={onActed}
             />
@@ -204,7 +212,9 @@ function Results({
           <span data-testid="unmatched-page">
             Page {query.page} of {pages}
           </span>
-          {acted > 0 ? (
+          {acted > 0 || inFlight > 0 ? (
+            // A request in flight may take its phrase off this page: paging on by offset would skip
+            // the phrase after it, so the pager reloads this page once the requests are done.
             <button type="button" onClick={onReload} disabled={inFlight > 0}>
               Show the next phrases
             </button>
@@ -226,8 +236,8 @@ function TokenRow({
   token,
   allergens,
   dictionaryFailed,
-  mapBlocked,
-  onMapping,
+  heavyElsewhere,
+  onHeavy,
   onInFlight,
   onActed,
 }: {
@@ -235,9 +245,10 @@ function TokenRow({
   /** The dictionary by display name, or null while it loads or after it failed. */
   allergens: AllergenView[] | null;
   dictionaryFailed: boolean;
-  /** Another row's map is running. */
-  mapBlocked: boolean;
-  onMapping: (on: boolean) => void;
+  /** Another row's map or Continue re-match is running. */
+  heavyElsewhere: boolean;
+  /** This row's map or Continue re-match started or ended. */
+  onHeavy: (on: boolean) => void;
   /** A request of this row (map, ignore or Continue re-match) started or ended. */
   onInFlight: (on: boolean) => void;
   /** This row's phrase left its list (mapped or ignored). */
@@ -255,7 +266,9 @@ function TokenRow({
   // on to another row, and must not pull focus (and the scroll) back.
   const focusOutcome = useCallback((el: HTMLElement | null) => {
     const active = document.activeElement;
-    if (el && (!active || active === document.body || rowRef.current?.contains(active))) el.focus();
+    // preventScroll: a late answer must not scroll the page back to this row either.
+    if (el && (!active || active === document.body || rowRef.current?.contains(active)))
+      el.focus({ preventScroll: true });
   }, []);
 
   async function act(input: { action: "map"; allergenId: string } | { action: "ignore" }) {
@@ -263,7 +276,7 @@ function TokenRow({
     busy.current = true;
     setPending(input.action);
     setError(null);
-    if (input.action === "map") onMapping(true);
+    if (input.action === "map") onHeavy(true);
     onInFlight(true);
     try {
       const result = await actOnUnmatched(token.token, input);
@@ -281,7 +294,7 @@ function TokenRow({
     } finally {
       busy.current = false;
       setPending(null);
-      if (input.action === "map") onMapping(false);
+      if (input.action === "map") onHeavy(false);
       onInFlight(false);
     }
   }
@@ -337,8 +350,9 @@ function TokenRow({
               id={outcome.allergen.id}
               name={outcome.allergen.displayName}
               initial={outcome.rematch}
+              blocked={heavyElsewhere}
               onPending={(on) => {
-                onMapping(on);
+                onHeavy(on);
                 onInFlight(on);
               }}
             />
@@ -383,7 +397,7 @@ function TokenRow({
             <button
               type="submit"
               className="primary"
-              disabled={!allergens || pending !== null || mapBlocked}
+              disabled={!allergens || pending !== null || heavyElsewhere}
               aria-busy={pending === "map" || undefined}
               aria-label={`Map “${token.token}”`}
             >

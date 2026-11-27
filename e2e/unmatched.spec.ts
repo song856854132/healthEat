@@ -548,3 +548,52 @@ test("a map that answers late does not pull focus away from another row the Cura
   await expect(rows.nth(0).getByTestId("unmatched-mapped")).toBeVisible();
   await expect(next).toBeFocused();
 });
+
+test("one heavy job at a time: a running Continue holds the other rows' Map, and a running Map holds Continue", async ({
+  page,
+}) => {
+  // Row 0's map answers 202, so it offers Continue re-match; row 1's map is held until released.
+  await asCurator(page, { lists: { new: { tokens: NEW } }, answers: [mapped(MILK_ID, false)] });
+  await page.goto("/curate/unmatched");
+  const rows = page.getByTestId("unmatched-row");
+  await rows.nth(0).getByLabel("Map to").selectOption({ label: "Milk" }, { timeout: 30_000 });
+  await rows.nth(0).getByRole("button", { name: /^Map/ }).click();
+  const resume = rows.nth(0).getByRole("button", { name: /Continue re-match/ });
+  await expect(resume).toBeVisible();
+
+  // A Map elsewhere holds this row's Continue.
+  let releaseMap: () => void = () => {};
+  const mapHeld = new Promise<void>((resolve) => {
+    releaseMap = resolve;
+  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/curate/unmatched/"),
+    async (route) => {
+      await mapHeld;
+      return route.fulfill({ json: mapped(GLUTEN_ID).json });
+    },
+  );
+  await rows.nth(1).getByLabel("Map to").selectOption({ label: "Gluten" });
+  await rows.nth(1).getByRole("button", { name: /^Map/ }).click();
+  await expect(resume).toBeDisabled();
+  releaseMap();
+  await expect(rows.nth(1).getByTestId("unmatched-mapped")).toBeVisible();
+  await expect(resume).toBeEnabled();
+
+  // A running Continue holds the other rows' Map until it ends.
+  let releaseContinue: () => void = () => {};
+  const continueHeld = new Promise<void>((resolve) => {
+    releaseContinue = resolve;
+  });
+  await page.route("**/api/curate/allergens/*/rematch", async (route) => {
+    await continueHeld;
+    return route.fulfill({
+      json: RematchProgress.parse({ done: true, processed: 600, remaining: 0 }),
+    });
+  });
+  await resume.click();
+  await expect(rows.nth(2).getByRole("button", { name: /^Map/ })).toBeDisabled();
+  releaseContinue();
+  await expect(rows.nth(0).getByTestId("rematch-done")).toBeVisible();
+  await expect(rows.nth(2).getByRole("button", { name: /^Map/ })).toBeEnabled();
+});
