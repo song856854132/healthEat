@@ -16,6 +16,9 @@ import { CURATOR_PROFILE, DICTIONARY, GLUTEN_ID, MILK_ID, mockSession } from "./
 // says why: no spec can obtain the Curator role on a preview), each mock parsed with the shared schema;
 // what a member and a signed-out visitor see comes from the real stack.
 
+// Reviewed dates are shown as the viewer's day: a fixed zone keeps the fixtures' days fixed.
+test.use({ timezoneId: "UTC" });
+
 function token(over: Partial<Token> & { token: string }): Token {
   return UnmatchedTokenView.parse({
     count: 1,
@@ -517,4 +520,31 @@ test("the Mapped tab, where nothing can be mapped, does not load the dictionary"
   await page.goto("/curate/unmatched?status=mapped");
   await expect(page.getByTestId("unmatched-row")).toHaveCount(1, { timeout: 30_000 });
   expect(dictionaryGets).toBe(0);
+});
+
+test("a map that answers late does not pull focus away from another row the Curator moved to", async ({
+  page,
+}) => {
+  await asCurator(page, { lists: { new: { tokens: NEW } } });
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/curate/unmatched/"),
+    async (route) => {
+      await held;
+      return route.fulfill({ json: mapped(MILK_ID).json });
+    },
+  );
+  await page.goto("/curate/unmatched");
+  const rows = page.getByTestId("unmatched-row");
+  await rows.nth(0).getByLabel("Map to").selectOption({ label: "Milk" }, { timeout: 30_000 });
+  await rows.nth(0).getByRole("button", { name: /^Map/ }).click();
+  // While it re-matches, the Curator moves on to the next phrase.
+  const next = rows.nth(1).getByLabel("Map to");
+  await next.focus();
+  release();
+  await expect(rows.nth(0).getByTestId("unmatched-mapped")).toBeVisible();
+  await expect(next).toBeFocused();
 });

@@ -144,9 +144,11 @@ function Results({
     Math.max(1, Math.ceil(data.total / UNMATCHED_PAGE_SIZE)),
   );
   const mappable = query.status !== "mapped";
-  // One map at a time on this page: each re-matches every cached food for up to 60 seconds, and two
-  // maps to one allergen restart each other's pass.
+  // One map (or Continue re-match) at a time on this page: each re-matches every cached food for up to
+  // 60 seconds, and two passes over one allergen restart each other.
   const [mapping, setMapping] = useState<string | null>(null);
+  // Rows with a request in flight: reloading the page meanwhile would drop their answers.
+  const [inFlight, setInFlight] = useState(0);
   return (
     <section aria-label={TAB_LABELS[query.status]}>
       <p className={styles.sub} data-testid="unmatched-total">
@@ -180,6 +182,7 @@ function Results({
               dictionaryFailed={dictionary.kind === "error"}
               mapBlocked={mapping !== null && mapping !== t.token}
               onMapping={(on) => setMapping(on ? t.token : null)}
+              onInFlight={(on) => setInFlight((n) => n + (on ? 1 : -1))}
               onActed={onActed}
             />
           ))}
@@ -202,7 +205,7 @@ function Results({
             Page {query.page} of {pages}
           </span>
           {acted > 0 ? (
-            <button type="button" onClick={onReload} disabled={mapping !== null}>
+            <button type="button" onClick={onReload} disabled={inFlight > 0}>
               Show the next phrases
             </button>
           ) : query.page < pages ? (
@@ -225,6 +228,7 @@ function TokenRow({
   dictionaryFailed,
   mapBlocked,
   onMapping,
+  onInFlight,
   onActed,
 }: {
   token: UnmatchedTokenView;
@@ -234,6 +238,8 @@ function TokenRow({
   /** Another row's map is running. */
   mapBlocked: boolean;
   onMapping: (on: boolean) => void;
+  /** A request of this row (map, ignore or Continue re-match) started or ended. */
+  onInFlight: (on: boolean) => void;
   /** This row's phrase left its list (mapped or ignored). */
   onActed: () => void;
 }) {
@@ -242,9 +248,15 @@ function TokenRow({
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const busy = useRef(false);
+  const rowRef = useRef<HTMLLIElement>(null);
   const id = `token-${token.token.replace(/[^a-z0-9]+/gi, "-")}`;
   // The pressed button is replaced by the outcome: focus moves there, not back to the top of the page.
-  const focusOutcome = useCallback((el: HTMLElement | null) => el?.focus(), []);
+  // Only while the Curator is still here: a map can answer up to a minute later, after they have moved
+  // on to another row, and must not pull focus (and the scroll) back.
+  const focusOutcome = useCallback((el: HTMLElement | null) => {
+    const active = document.activeElement;
+    if (el && (!active || active === document.body || rowRef.current?.contains(active))) el.focus();
+  }, []);
 
   async function act(input: { action: "map"; allergenId: string } | { action: "ignore" }) {
     if (busy.current) return;
@@ -252,6 +264,7 @@ function TokenRow({
     setPending(input.action);
     setError(null);
     if (input.action === "map") onMapping(true);
+    onInFlight(true);
     try {
       const result = await actOnUnmatched(token.token, input);
       if (!result.ok) setError(result.failure.message);
@@ -269,6 +282,7 @@ function TokenRow({
       busy.current = false;
       setPending(null);
       if (input.action === "map") onMapping(false);
+      onInFlight(false);
     }
   }
 
@@ -282,7 +296,12 @@ function TokenRow({
   }
 
   return (
-    <li className={styles.queueItem} data-testid="unmatched-row" data-token={token.token}>
+    <li
+      ref={rowRef}
+      className={styles.queueItem}
+      data-testid="unmatched-row"
+      data-token={token.token}
+    >
       <div className={styles.queueHead}>
         <strong className={styles.queuePhrase}>{token.token}</strong>
         <span className={styles.muted}>
@@ -318,6 +337,10 @@ function TokenRow({
               id={outcome.allergen.id}
               name={outcome.allergen.displayName}
               initial={outcome.rematch}
+              onPending={(on) => {
+                onMapping(on);
+                onInFlight(on);
+              }}
             />
           )}
         </div>

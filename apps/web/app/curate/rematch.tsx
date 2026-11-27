@@ -14,6 +14,7 @@ export function RematchControl({
   name,
   initial,
   onDone,
+  onPending,
 }: {
   id: string;
   /** The allergen's display name, so each button in a table has its own accessible name. */
@@ -21,6 +22,8 @@ export function RematchControl({
   /** Progress a write just answered; without it the entry is only known to be unfinished. */
   initial?: RematchProgress;
   onDone?: () => void;
+  /** Told when a Continue starts and ends, so a page can hold other heavy writes meanwhile. */
+  onPending?: (pending: boolean) => void;
 }) {
   const [progress, setProgress] = useState<RematchProgress | undefined>(initial);
   const [pending, setPending] = useState(false);
@@ -32,6 +35,7 @@ export function RematchControl({
     busy.current = true;
     setPending(true);
     setError(null);
+    onPending?.(true);
     try {
       const result = await continueRematch(id);
       if (result.ok) {
@@ -41,6 +45,7 @@ export function RematchControl({
     } finally {
       busy.current = false;
       setPending(false);
+      onPending?.(false);
     }
   }
 
