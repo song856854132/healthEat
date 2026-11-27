@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } finally {
         if (inFlight.current === controller) inFlight.current = null;
       }
-      // A newer check replaced this one (the window took focus, or a 401 arrived): answer with its
+      // A newer check replaced this one (the window took focus or the tab became visible): answer with its
       // result, so a caller that must know the session (confirmSession before a write) is not refused
       // for nothing. After an explicit session change there is no newer check: undefined, as before.
       const newer = latest.current;

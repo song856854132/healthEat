@@ -23,11 +23,15 @@ import { PhotoConfirm } from "./photo-confirm";
 import styles from "./day-log.module.css";
 
 type Load =
-  /** `reloading`: the day was shown before, so the photo panel stays open through the reload. */
-  | { kind: "loading"; reloading?: boolean }
+  | { kind: "loading" }
   | { kind: "error"; message: string }
   | { kind: "future"; today: string }
   | { kind: "ready"; today: string; entries: LogEntryView[] };
+
+/** Adds an entry to a day's list unless it is already there (a replayed log answers the same entry). */
+function withEntry(entries: LogEntryView[], entry: LogEntryView): LogEntryView[] {
+  return entries.some((e) => e.id === entry.id) ? entries : [...entries, entry];
+}
 
 /**
  * One day of the member's log: entries by meal, each editable (grams and meal) and deletable, with
@@ -41,7 +45,16 @@ export function DayLog({ date, photo = false }: { date: string; photo?: boolean 
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [photoOpen, setPhotoOpen] = useState(photo);
   const [attempt, setAttempt] = useState(0);
+  // Once the day has been shown, the photo panel stays open through any reload, failed or not.
+  const [dayShown, setDayShown] = useState(false);
+  // Photo items logged while the list was not shown: merged into the next list, once each.
+  const loggedMeanwhile = useRef<LogEntryView[]>([]);
+  const loadKind = useRef<Load["kind"]>("loading");
   const signedIn = Boolean(me);
+
+  useEffect(() => {
+    loadKind.current = load.kind;
+  }, [load.kind]);
 
   useEffect(() => {
     if (me === null) router.replace("/login");
@@ -56,11 +69,11 @@ export function DayLog({ date, photo = false }: { date: string; photo?: boolean 
       const today = todayIn(tz.data);
       if (date > today) return setLoad({ kind: "future", today });
       const logs = await listLogs({ from: date, to: date }, controller.signal);
-      setLoad(
-        logs.ok
-          ? { kind: "ready", today, entries: logs.data.entries }
-          : { kind: "error", message: logs.failure.message },
-      );
+      if (!logs.ok) return setLoad({ kind: "error", message: logs.failure.message });
+      const meanwhile = loggedMeanwhile.current;
+      loggedMeanwhile.current = [];
+      setLoad({ kind: "ready", today, entries: meanwhile.reduce(withEntry, logs.data.entries) });
+      setDayShown(true);
     })().catch(() => {
       // Aborted: the date changed or the page closed. Anything else (a time zone this browser does
       // not know) must not leave the page on "Loading…".
@@ -84,7 +97,7 @@ export function DayLog({ date, photo = false }: { date: string; photo?: boolean 
 
   const today = load.kind === "ready" || load.kind === "future" ? load.today : undefined;
   const reload = () => {
-    setLoad({ kind: "loading", reloading: true });
+    setLoad({ kind: "loading" });
     setAttempt((n) => n + 1);
   };
 
@@ -116,12 +129,15 @@ export function DayLog({ date, photo = false }: { date: string; photo?: boolean 
           <Link href={`/log/${load.today}`}>Go to today</Link>
         </p>
       ) : null}
-      {photoOpen && (load.kind === "ready" || (load.kind === "loading" && load.reloading)) ? (
+      {photoOpen && dayShown ? (
         <PhotoConfirm
           date={date}
-          onLogged={(entry) =>
-            setLoad((l) => (l.kind === "ready" ? { ...l, entries: [...l.entries, entry] } : l))
-          }
+          onLogged={(entry) => {
+            if (loadKind.current !== "ready") loggedMeanwhile.current.push(entry);
+            setLoad((l) =>
+              l.kind === "ready" ? { ...l, entries: withEntry(l.entries, entry) } : l,
+            );
+          }}
           onClose={() => {
             setPhotoOpen(false);
             if (photo) router.replace(`/log/${date}`, { scroll: false });

@@ -127,13 +127,15 @@ export function PhotoConfirm({
    * an item the member already searched. */
   const searchSeq = useRef(new Map<number, number>());
 
-  useEffect(
-    () => () => {
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false; // the log loop stops: nothing is posted with no panel to show it
       analysis.current?.abort();
       searches.current?.abort();
-    },
-    [],
-  );
+    };
+  }, []);
 
   const patch = (itemId: number, change: Partial<Item>) =>
     setItems((list) => list.map((it) => (it.itemId === itemId ? { ...it, ...change } : it)));
@@ -156,16 +158,15 @@ export function PhotoConfirm({
     }
     const foods = result.data.foods.slice(0, MATCHES_SHOWN);
     setItems((list) =>
-      list.map((it) =>
-        it.itemId === itemId
-          ? {
-              ...it,
-              matches: { kind: "ready", foods },
-              fdcId: foods.some((f) => f.fdcId === it.fdcId) ? it.fdcId : (foods[0]?.fdcId ?? null),
-              requestId: undefined,
-            }
-          : it,
-      ),
+      list.map((it) => {
+        if (it.itemId !== itemId) return it;
+        const fdcId = foods.some((f) => f.fdcId === it.fdcId)
+          ? it.fdcId
+          : (foods[0]?.fdcId ?? null);
+        // A different food is a different entry; the same one keeps its retry id (#51).
+        const requestId = fdcId === it.fdcId ? it.requestId : undefined;
+        return { ...it, matches: { kind: "ready", foods }, fdcId, requestId };
+      }),
     );
   }
 
@@ -319,6 +320,7 @@ export function PhotoConfirm({
       let logged = 0;
       let failed = 0;
       for (const it of checked) {
+        if (!mounted.current) break; // the member left the page: the rest is not sent unseen
         if (!it.include || it.logged || it.fdcId === null) continue;
         const requestId = it.requestId ?? newRequestId();
         patch(it.itemId, { requestId, error: undefined });
@@ -474,7 +476,13 @@ export function PhotoConfirm({
                 key={it.itemId}
                 item={it}
                 disabled={logging}
-                onChange={(change) => patch(it.itemId, { ...change, requestId: undefined })}
+                onChange={(change) =>
+                  // Only a change to what is logged needs a new retry id (#51), as on Details.
+                  patch(it.itemId, {
+                    ...change,
+                    ...("fdcId" in change || "grams" in change ? { requestId: undefined } : {}),
+                  })
+                }
                 onSearch={(query) => {
                   const controller = searches.current ?? new AbortController();
                   searches.current = controller;

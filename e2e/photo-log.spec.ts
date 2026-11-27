@@ -356,6 +356,9 @@ test("Cancel while the photo is analysed, a photo with nothing recognised, and a
   await expect(page.getByTestId("photo-analysing")).toContainText("up to a minute", {
     timeout: 30_000,
   });
+  // Cancel once the photo is with the server (a Cancel during the session check sends nothing, so
+  // the hanging answer would be left for the next photo; that case has its own test).
+  await expect.poll(() => bodies.length, { timeout: 30_000 }).toBe(1);
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByTestId("photo-panel")).toContainText("Cancelled");
   await expect(page.getByTestId("photo-analysing")).toHaveCount(0);
@@ -853,4 +856,254 @@ test("a photo that never comes back stops at the browser's limit and can be trie
     timeout: 30_000,
   });
   expect(bodies[1].image).toBe(bodies[0].image);
+});
+
+// Value: protects=a retry after a lost answer keeps the item's request id through edits that change
+//   nothing logged (search words typed, Remove and Add back, the same search again), so the API writes
+//   the item once; fails_when=any edit clears the id, the retry sends a new one and a lost-but-written
+//   entry is logged twice; why_new=the part-way test retried without touching the item; seam=none;
+//   no_claim=the log POST is mocked (route.abort stands in for an answer lost after the write)
+test("a retry after a lost answer keeps the request id through edits that change nothing logged", async ({
+  page,
+}) => {
+  await signUp(page);
+  await mockVision(page, [analysed([{ query: "banana", grams: 120, confidence: 0.9 }])]);
+  await mockSearch(page);
+  await mockLogPosts(page);
+  const sent: Record<string, unknown>[] = [];
+  let lose = 2; // the first two answers are lost on the way back
+  await page.route("**/api/users/me/logs", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    sent.push(route.request().postDataJSON() as Record<string, unknown>);
+    if (lose > 0) {
+      lose -= 1;
+      return route.abort("internetdisconnected");
+    }
+    return route.fallback();
+  });
+  await openPanel(page);
+  await page.getByTestId("photo-input").setInputFiles(await photoFile(page, 400, 300));
+  const item = page.getByTestId("photo-item");
+  await expect(item.getByRole("radio", { name: "Mock banana", exact: true })).toBeChecked({
+    timeout: 30_000,
+  });
+
+  await page.getByTestId("photo-log").click();
+  await expect.poll(() => sent.length).toBe(1);
+  await expect(page.getByTestId("photo-log")).toHaveText("Log 1 item");
+  // Words typed but not searched, and Remove then Add back: what would be logged is the same.
+  await item.getByLabel("Search for").fill("banana split");
+  await item.getByRole("button", { name: "Remove" }).click();
+  await item.getByRole("button", { name: "Add back" }).click();
+  await page.getByTestId("photo-log").click();
+  await expect.poll(() => sent.length).toBe(2);
+  await expect(page.getByTestId("photo-log")).toHaveText("Log 1 item");
+  // The same search again finds the same food, which stays chosen.
+  await item.getByLabel("Search for").fill("banana");
+  await item.getByRole("button", { name: "Search again" }).click();
+  await expect(item.getByRole("radio", { name: "Mock banana", exact: true })).toBeChecked();
+  await page.getByTestId("photo-log").click();
+  await expect(page.getByTestId("photo-done")).toContainText("Logged 1 item", { timeout: 30_000 });
+  expect(sent).toHaveLength(3);
+  expect(sent[1].requestId).toBe(sent[0].requestId);
+  expect(sent[2].requestId).toBe(sent[0].requestId);
+});
+
+// Value: protects=the reviewed items stay when the day list fails to reload too; fails_when=the panel
+//   is kept only through a reload that succeeds, so a failed one loses an analysis already counted
+//   toward today's photos; why_new=the reload test answers the second list; seam=none; no_claim=the
+//   day list and the entry edit are mocked
+test("the reviewed items stay when the day list fails to reload", async ({ page }) => {
+  await signUp(page);
+  await mockVision(page, [analysed([{ query: "banana", grams: 120, confidence: 0.9 }])]);
+  await mockSearch(page);
+  let failList = false;
+  await page.route("**/api/users/me/logs?*", (route) =>
+    failList
+      ? route.fulfill({ status: 503, json: { error: "database_unavailable" } })
+      : route.fulfill({
+          json: LogListResponse.parse({
+            from: today(),
+            to: today(),
+            entries: [
+              LogEntryView.parse({
+                id: "gone",
+                date: today(),
+                meal: "breakfast",
+                fdcId: 2001,
+                description: "Mock gone",
+                grams: 40,
+                source: "search",
+                confidence: 1,
+                createdAt: "2026-11-27T08:00:00.000Z",
+              }),
+            ],
+          }),
+        }),
+  );
+  await page.route("**/api/logs/gone", (route) =>
+    route.fulfill({ status: 404, json: { error: "log_not_found" } }),
+  );
+  await openPanel(page);
+  await page.getByTestId("photo-input").setInputFiles(await photoFile(page, 400, 300));
+  const banana = page
+    .getByTestId("photo-item")
+    .getByRole("radio", { name: "Mock banana", exact: true });
+  await expect(banana).toBeChecked({ timeout: 30_000 });
+
+  failList = true;
+  await page.getByRole("button", { name: "Edit Mock gone" }).click();
+  await page.getByLabel("Amount (g)").fill("45");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "database" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId("photo-review")).toBeVisible();
+  await expect(banana).toBeChecked();
+});
+
+// Value: protects=leaving the day while items are logged stops the items not yet sent, so nothing is
+//   posted with no panel to show its result or allergen alerts; fails_when=the log loop runs on after
+//   the panel is gone; why_new=only Close was held back during logging; seam=none; no_claim=the log
+//   POST is mocked
+test("leaving the day while items are logged stops the items not yet sent", async ({ page }) => {
+  await signUp(page);
+  await mockVision(page, [
+    analysed([
+      { query: "banana", grams: 120, confidence: 0.9 },
+      { query: "oat milk", grams: 200, confidence: 0.8 },
+    ]),
+  ]);
+  await mockSearch(page);
+  const posts = await mockLogPosts(page);
+  let release: () => void = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let arrived = 0;
+  await page.route("**/api/users/me/logs", async (route) => {
+    if (route.request().method() === "POST") {
+      arrived += 1;
+      await released;
+    }
+    await route.fallback();
+  });
+  await openPanel(page);
+  await page.getByTestId("photo-input").setInputFiles(await photoFile(page, 400, 300));
+  await expect(
+    page.getByTestId("photo-item").nth(1).getByRole("radio", { name: "Mock oat milk" }),
+  ).toBeChecked({ timeout: 30_000 });
+
+  await page.getByTestId("photo-log").click();
+  await expect.poll(() => arrived).toBe(1);
+  await page.getByRole("link", { name: /Previous day/ }).click();
+  await expect(page.getByTestId("photo-panel")).toHaveCount(0);
+  const firstAnswered = page.waitForResponse(
+    (r) => new URL(r.url()).pathname === "/api/users/me/logs" && r.request().method() === "POST",
+  );
+  release();
+  await firstAnswered;
+  // gstack-timing-ok: an absence check; the old loop sent the next item within milliseconds
+  await page.waitForTimeout(1_000);
+  expect(arrived).toBe(1);
+  expect(posts).toHaveLength(1);
+});
+
+// Value: protects=a photo the browser cannot decode is refused with a clear message before anything
+//   is sent; fails_when=the decode failure is shown as another problem, the panel stalls on
+//   "Preparing", or the file is sent anyway; why_new=only a file that is not an image type was tried;
+//   seam=none; no_claim=other browsers' decoders (Chromium only)
+test("a photo the browser cannot open is refused before anything is sent", async ({ page }) => {
+  await signUp(page);
+  const bodies = await mockVision(page, []);
+  await openPanel(page);
+  await page.getByTestId("photo-input").setInputFiles({
+    name: "meal.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from("not really a photo"),
+  });
+  await expect(page.getByTestId("photo-error")).toContainText(
+    "This browser cannot open that photo",
+    {
+      timeout: 30_000,
+    },
+  );
+  await expect(page.getByTestId("photo-retry")).toHaveCount(0);
+  expect(bodies).toHaveLength(0);
+});
+
+// Value: protects=an item logged while the day list reloads still shows in the list afterwards, once;
+//   fails_when=the logged entry is dropped because the list was loading, or shown twice when the
+//   reload already had it; why_new=no test logs while the list reloads; seam=none; no_claim=the day
+//   list, the entry edit and the log POST are mocked
+test("an item logged while the day list reloads still shows in the list", async ({ page }) => {
+  await signUp(page);
+  await mockVision(page, [analysed([{ query: "banana", grams: 120, confidence: 0.9 }])]);
+  await mockSearch(page);
+  await mockLogPosts(page);
+  let releasePost: () => void = () => {};
+  const postReleased = new Promise<void>((resolve) => {
+    releasePost = resolve;
+  });
+  await page.route("**/api/users/me/logs", async (route) => {
+    if (route.request().method() === "POST") await postReleased;
+    await route.fallback();
+  });
+  let holdList = false;
+  let listHeld = false;
+  let releaseList: () => void = () => {};
+  const listReleased = new Promise<void>((resolve) => {
+    releaseList = resolve;
+  });
+  await page.route("**/api/users/me/logs?*", async (route) => {
+    if (holdList) {
+      listHeld = true;
+      await listReleased;
+    }
+    await route
+      .fulfill({
+        json: LogListResponse.parse({
+          from: today(),
+          to: today(),
+          entries: [
+            LogEntryView.parse({
+              id: "gone",
+              date: today(),
+              meal: "breakfast",
+              fdcId: 2001,
+              description: "Mock gone",
+              grams: 40,
+              source: "search",
+              confidence: 1,
+              createdAt: "2026-11-27T08:00:00.000Z",
+            }),
+          ],
+        }),
+      })
+      .catch(() => {});
+  });
+  await page.route("**/api/logs/gone", (route) =>
+    route.fulfill({ status: 404, json: { error: "log_not_found" } }),
+  );
+  await openPanel(page);
+  await page.getByTestId("photo-input").setInputFiles(await photoFile(page, 400, 300));
+  await expect(
+    page.getByTestId("photo-item").getByRole("radio", { name: "Mock banana", exact: true }),
+  ).toBeChecked({ timeout: 30_000 });
+  await page.getByLabel("Meal").selectOption("lunch");
+
+  await page.getByTestId("photo-log").click();
+  await expect(page.getByTestId("photo-log")).toHaveText("Logging…");
+  // The list reloads (an entry another tab deleted) while the photo item is being logged.
+  holdList = true;
+  await page.getByRole("button", { name: "Edit Mock gone" }).click();
+  await page.getByLabel("Amount (g)").fill("45");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect.poll(() => listHeld).toBe(true);
+  releasePost();
+  await expect(page.getByTestId("photo-done")).toContainText("Logged 1 item", { timeout: 30_000 });
+  releaseList();
+  const lunch = page.getByTestId("meal-lunch").getByTestId("log-entry");
+  await expect(lunch).toHaveCount(1, { timeout: 30_000 });
+  await expect(lunch).toContainText("Photo estimate");
 });
