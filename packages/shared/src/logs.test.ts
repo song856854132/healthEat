@@ -25,6 +25,27 @@ describe("log schemas (T6)", () => {
     expect(LogEntryCreateInput.safeParse({ ...ok, requestId: "tap-1" }).success).toBe(false);
   });
 
+  it("a photo item carries its confidence and batch; neither goes with a searched food (T13)", () => {
+    const ok = { fdcId: 1, grams: 1, meal: "snack" };
+    const photoBatchId = "0b7d2c4e-1f3a-4b5c-8d9e-0a1b2c3d4e5f";
+    const photo = { ...ok, source: "photo", confidence: 0.6, photoBatchId };
+    expect(LogEntryCreateInput.parse(photo)).toEqual(photo);
+    expect(LogEntryCreateInput.parse({ ...ok, source: "search" })).toEqual({
+      ...ok,
+      source: "search",
+    });
+    for (const bad of [
+      { ...ok, source: "photo" }, // a photo item without its confidence
+      { ...ok, confidence: 0.6 }, // a confidence without the photo source
+      { ...ok, source: "search", confidence: 1 },
+      { ...ok, source: "photo", confidence: 1.5 },
+      { ...ok, source: "camera", confidence: 0.5 },
+      { ...ok, photoBatchId }, // a batch without the photo source
+      { ...ok, source: "photo", confidence: 0.6, photoBatchId: "batch-1" },
+    ])
+      expect(LogEntryCreateInput.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+  });
+
   it("edits grams and meal only, and at least one of them", () => {
     expect(LogEntryUpdateInput.safeParse({ meal: "lunch" }).success).toBe(true);
     expect(LogEntryUpdateInput.safeParse({}).success).toBe(false);

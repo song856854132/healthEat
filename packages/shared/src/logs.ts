@@ -34,14 +34,30 @@ const Grams = z.number().positive().max(MAX_LOG_GRAMS);
  * and refuses a date after that day (backfilling a past day is allowed). `requestId` is optional: a
  * UUID the client makes once per "log this" tap and resends on a retry, so a double tap or a retried
  * request writes one entry, not two (owner decision #51).
+ *
+ * An item the member confirmed from a meal photo (T13) is sent with `source: "photo"`, the photo
+ * analysis's `confidence` (0 to 1) and one `photoBatchId` shared by the items of that photo; the
+ * summary counts photo grams as estimates. Without `source` an entry is a searched food at confidence 1.
  */
-export const LogEntryCreateInput = z.strictObject({
-  fdcId: FdcIdParam.pipe(z.number()),
-  grams: Grams,
-  meal: Meal,
-  date: LogDate.optional(),
-  requestId: z.uuid().optional(),
-});
+export const LogEntryCreateInput = z
+  .strictObject({
+    fdcId: FdcIdParam.pipe(z.number()),
+    grams: Grams,
+    meal: Meal,
+    date: LogDate.optional(),
+    requestId: z.uuid().optional(),
+    source: LogSource.optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    photoBatchId: z.uuid().optional(),
+  })
+  .refine((v) => (v.source === "photo") === (v.confidence !== undefined), {
+    message: "confidence is sent with source photo, and only then",
+    path: ["confidence"],
+  })
+  .refine((v) => v.photoBatchId === undefined || v.source === "photo", {
+    message: "photoBatchId is sent with source photo only",
+    path: ["photoBatchId"],
+  });
 export type LogEntryCreateInput = z.infer<typeof LogEntryCreateInput>;
 
 /** Body of PUT /api/logs/:id: grams and meal only. The date and the food are fixed once logged (R3-27). */

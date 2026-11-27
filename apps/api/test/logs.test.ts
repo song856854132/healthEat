@@ -159,6 +159,40 @@ describe("POST /api/users/me/logs", () => {
     });
   });
 
+  it("stores an item confirmed from a meal photo as a photo estimate with its confidence and batch (T13)", async () => {
+    const alice = await member("alice");
+    const batch = "0b7d2c4e-1f3a-4b5c-8d9e-0a1b2c3d4e5f";
+    const res = await alice
+      .post("/api/users/me/logs")
+      .send({
+        fdcId: 2095236,
+        grams: 40,
+        meal: "dinner",
+        source: "photo",
+        confidence: 0.55,
+        photoBatchId: batch,
+      })
+      .expect(201);
+    expect(LogEntryCreated.parse(res.body).entry).toMatchObject({
+      source: "photo",
+      confidence: 0.55,
+    });
+    const stored = await LogEntry.findOne().lean();
+    expect(stored).toMatchObject({ source: "photo", confidence: 0.55, photoBatchId: batch });
+    const listed = await alice.get("/api/users/me/logs").expect(200);
+    expect(listed.body.entries[0]).toMatchObject({ source: "photo", confidence: 0.55 });
+    // A searched food stays a search entry at full confidence, with no batch.
+    await alice
+      .post("/api/users/me/logs")
+      .send({ fdcId: 2095236, grams: 10, meal: "dinner", source: "search" })
+      .expect(201);
+    expect(await LogEntry.findOne({ grams: 10 }).lean()).toMatchObject({
+      source: "search",
+      confidence: 1,
+      photoBatchId: null,
+    });
+  });
+
   it("validates the body: impossible dates, grams out of range, unknown meals and extra fields are 400", async () => {
     const alice = await member("alice");
     for (const body of [
@@ -168,7 +202,9 @@ describe("POST /api/users/me/logs", () => {
       { fdcId: 2095236, grams: 5001, meal: "lunch" },
       { fdcId: 2095236, grams: 30, meal: "brunch" },
       { fdcId: -1, grams: 30, meal: "lunch" },
-      { fdcId: 2095236, grams: 30, meal: "lunch", source: "photo" },
+      { fdcId: 2095236, grams: 30, meal: "lunch", source: "photo" }, // a photo item needs its confidence
+      { fdcId: 2095236, grams: 30, meal: "lunch", confidence: 0.5 },
+      { fdcId: 2095236, grams: 30, meal: "lunch", source: "photo", confidence: 2 },
     ])
       expect((await alice.post("/api/users/me/logs").send(body)).status, JSON.stringify(body)).toBe(
         400,
@@ -261,6 +297,26 @@ describe("POST /api/users/me/logs with a requestId (#51)", () => {
       const res = await alice
         .post("/api/users/me/logs")
         .send({ ...body, ...changed })
+        .expect(409);
+      expect(res.body.error).toBe("request_id_conflict");
+    }
+    expect(await LogEntry.countDocuments()).toBe(1);
+  });
+
+  it("refuses the same requestId when only the source, confidence or photo batch differs (409)", async () => {
+    const alice = await member("alice");
+    const batch = "0b7d2c4e-1f3a-4b5c-8d9e-0a1b2c3d4e5f";
+    const photo = { ...body, source: "photo", confidence: 0.6, photoBatchId: batch };
+    await alice.post("/api/users/me/logs").send(photo).expect(201);
+    await alice.post("/api/users/me/logs").send(photo).expect(200);
+    for (const changed of [
+      { source: undefined, confidence: undefined, photoBatchId: undefined },
+      { confidence: 0.7 },
+      { photoBatchId: "1c8e3d5f-2a4b-4c6d-9e0f-1a2b3c4d5e6f" },
+    ]) {
+      const res = await alice
+        .post("/api/users/me/logs")
+        .send({ ...photo, ...changed })
         .expect(409);
       expect(res.body.error).toBe("request_id_conflict");
     }
