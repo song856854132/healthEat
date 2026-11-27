@@ -101,12 +101,14 @@ export type UnmatchedPageQuery = { status: TokenStatus; page: number };
 type Params = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
+/** The last page the API's UnmatchedQuery accepts (`page` max 1000): the pager stops there too. */
+export const UNMATCHED_MAX_PAGE = 1000;
+
 /** Reads the queue's URL leniently: an unknown status or a bad page shows the new phrases, page 1. */
 export function readUnmatchedQuery(params: Params): UnmatchedPageQuery {
   const status = TOKEN_STATUSES.find((s) => s === first(params.status)) ?? "new";
   const n = Number(first(params.page));
-  // The API's UnmatchedQuery allows pages up to 1000.
-  const page = Number.isInteger(n) && n >= 1 ? Math.min(n, 1000) : 1;
+  const page = Number.isInteger(n) && n >= 1 ? Math.min(n, UNMATCHED_MAX_PAGE) : 1;
   return { status, page };
 }
 

@@ -282,6 +282,7 @@
   min-width: 0;
   max-width: 100%;
 }
-.mapForm button {
-  margin-right: 0;
+/* A row's refusal sits under its actions, spaced like its outcome. */
+.queueItem :global(.field-error) {
+  margin-top: 8px;
 }

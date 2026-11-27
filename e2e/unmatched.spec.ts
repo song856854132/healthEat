@@ -296,7 +296,7 @@ test("tabs and pages live in the URL; ignored phrases can still be mapped, mappe
       new: { tokens: many },
       ignored: {
         tokens: [
-          token({ token: "natural flavor", status: "ignored", reviewedAt: "2026-11-24T23:30:00Z" }),
+          token({ token: "natural flavor", status: "ignored", reviewedAt: "2026-11-24T12:00:00Z" }),
         ],
       },
       mapped: {
@@ -358,6 +358,10 @@ test("empty lists say so, and a failed load offers Try again", async ({ page }) 
     { timeout: 30_000 },
   );
   await expect(page.getByTestId("unmatched-row").first().getByLabel("Map to")).toBeDisabled();
+  // It says so, rather than still "Loading allergens…".
+  await expect(page.getByTestId("unmatched-row").first().getByLabel("Map to")).toContainText(
+    "Allergens unavailable",
+  );
   control.failDictionary(false);
   await page.getByTestId("unmatched-dictionary-error").getByRole("button").click();
   await expect(page.getByTestId("unmatched-row").first().getByLabel("Map to")).toBeEnabled();
@@ -367,7 +371,7 @@ test("empty lists say so, and a failed load offers Try again", async ({ page }) 
     "No phrases have been mapped to an allergen yet.",
     { timeout: 30_000 },
   );
-  await page.unroute((url) => url.pathname.startsWith("/api/curate/unmatched"));
+  // Registered last, so it answers before the queue mock.
   await page.route("**/api/curate/unmatched?*", (route) =>
     route.fulfill({ status: 503, json: { error: "database_unavailable" } }),
   );
@@ -419,4 +423,98 @@ test("no horizontal scrolling at phone width", async ({ page }) => {
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("working through a page never skips the phrases after it", async ({ page }) => {
+  const many = Array.from({ length: 21 }, (_, i) =>
+    token({ token: `phrase ${String(i + 1).padStart(2, "0")}`, count: 50 - i }),
+  );
+  await asCurator(page);
+  // A queue the server shrinks as phrases are ignored, as the real one does (registered last, so it
+  // answers before asCurator's static lists).
+  let queue = [...many];
+  await page.route(
+    (url) => url.pathname.startsWith("/api/curate/unmatched"),
+    (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      if (req.method() === "GET") {
+        const pageNo = Number(url.searchParams.get("page") ?? "1");
+        return route.fulfill({
+          json: UnmatchedListResponse.parse({
+            tokens: queue.slice((pageNo - 1) * 20, pageNo * 20),
+            page: pageNo,
+            total: queue.length,
+          }),
+        });
+      }
+      const name = decodeURIComponent(url.pathname.slice("/api/curate/unmatched/".length));
+      queue = queue.filter((t) => t.token !== name);
+      return route.fulfill({
+        json: {
+          token: token({ token: name, status: "ignored", reviewedAt: "2026-11-26T12:00:00.000Z" }),
+          write: null,
+        },
+      });
+    },
+  );
+
+  await page.goto("/curate/unmatched");
+  await expect(page.getByTestId("unmatched-page")).toHaveText("Page 1 of 2", { timeout: 30_000 });
+  await page.getByRole("button", { name: "Ignore “phrase 01”" }).click();
+  await expect(page.getByTestId("unmatched-ignored")).toBeVisible();
+  // Moving on, by whatever the pager offers, shows phrase 21: it moved up into this page.
+  await page
+    .getByRole("link", { name: "Next →" })
+    .or(page.getByRole("button", { name: "Show the next phrases" }))
+    .click();
+  await expect(page.getByTestId("unmatched-row").filter({ hasText: "phrase 21" })).toBeVisible({
+    timeout: 30_000,
+  });
+});
+
+test("one map at a time: the other rows wait while a map re-matches, and focus lands on the outcome", async ({
+  page,
+}) => {
+  await asCurator(page, { lists: { new: { tokens: NEW } } });
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/curate/unmatched/"),
+    async (route) => {
+      await held;
+      return route.fulfill({ json: mapped(MILK_ID).json });
+    },
+  );
+  await page.goto("/curate/unmatched");
+  const rows = page.getByTestId("unmatched-row");
+  await rows.nth(0).getByLabel("Map to").selectOption({ label: "Milk" }, { timeout: 30_000 });
+  await rows.nth(0).getByRole("button", { name: /^Map/ }).click();
+  await expect(rows.nth(1).getByRole("button", { name: /^Map/ })).toBeDisabled();
+  release();
+  await expect(rows.nth(0).getByTestId("unmatched-mapped")).toBeFocused();
+  await expect(rows.nth(1).getByRole("button", { name: /^Map/ })).toBeEnabled();
+});
+
+test("the Mapped tab, where nothing can be mapped, does not load the dictionary", async ({
+  page,
+}) => {
+  await asCurator(page, {
+    lists: {
+      mapped: {
+        tokens: [
+          token({ token: "whey powder", status: "mapped", reviewedAt: "2026-11-20T12:00:00Z" }),
+        ],
+      },
+    },
+  });
+  let dictionaryGets = 0;
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname === "/api/allergens") dictionaryGets += 1;
+  });
+  await page.goto("/curate/unmatched?status=mapped");
+  await expect(page.getByTestId("unmatched-row")).toHaveCount(1, { timeout: 30_000 });
+  expect(dictionaryGets).toBe(0);
 });

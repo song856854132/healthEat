@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { TOKEN_STATUSES, UNMATCHED_PAGE_SIZE } from "@healtheat/shared";
 import type {
@@ -13,6 +13,7 @@ import type {
 } from "@healtheat/shared";
 import { RoleGate } from "../../role-gate";
 import {
+  UNMATCHED_MAX_PAGE,
   actOnUnmatched,
   allergenHref,
   listAllergens,
@@ -21,6 +22,7 @@ import {
 } from "../../lib/curate";
 import type { UnmatchedPageQuery } from "../../lib/curate";
 import { foodHref } from "../../lib/foods";
+import { formatDay } from "../../lib/home";
 import { LoadError, useLoad } from "../../use-load";
 import type { Load } from "../../use-load";
 import { RematchControl } from "../rematch";
@@ -52,9 +54,24 @@ export function UnmatchedQueue({ query }: { query: UnmatchedPageQuery }) {
 }
 
 function Queue({ query }: { query: UnmatchedPageQuery }) {
-  const [list, retry] = useLoad((signal) => listUnmatched(query, signal), query);
-  // The dictionary feeds each row's "Map to" choice; only the new and ignored phrases can be mapped.
-  const [dictionary, retryDictionary] = useLoad(listAllergens);
+  const [list, retry] = useLoad((signal) => listUnmatched(query, signal), unmatchedHref(query));
+  // The dictionary feeds each row's "Map to" choice; only the new and ignored phrases can be mapped, so
+  // the Mapped tab does not load it.
+  const [dictionary, retryDictionary] = useLoad(
+    (signal) =>
+      query.status === "mapped"
+        ? Promise.resolve({ ok: true as const, data: { allergens: [] as AllergenView[] } })
+        : listAllergens(signal),
+    query.status,
+  );
+  // Phrases mapped or ignored on this page have left its list on the server, so the phrases after them
+  // have moved up: paging on by offset would skip them. Once any row has acted, the pager reloads this
+  // page instead of opening the next one.
+  const [acted, setActed] = useState(0);
+  const reload = () => {
+    setActed(0);
+    retry();
+  };
   return (
     <main className={`${styles.wide} ${styles.view}`}>
       <h1>Unmatched ingredients</h1>
@@ -79,6 +96,9 @@ function Queue({ query }: { query: UnmatchedPageQuery }) {
           data={list.data}
           dictionary={dictionary}
           retryDictionary={retryDictionary}
+          acted={acted}
+          onActed={() => setActed((n) => n + 1)}
+          onReload={reload}
         />
       )}
     </main>
@@ -107,14 +127,26 @@ function Results({
   data,
   dictionary,
   retryDictionary,
+  acted,
+  onActed,
+  onReload,
 }: {
   query: UnmatchedPageQuery;
   data: UnmatchedListResponse;
   dictionary: Load<{ allergens: AllergenView[] }>;
   retryDictionary: () => void;
+  acted: number;
+  onActed: () => void;
+  onReload: () => void;
 }) {
-  const pages = Math.max(1, Math.ceil(data.total / UNMATCHED_PAGE_SIZE));
+  const pages = Math.min(
+    UNMATCHED_MAX_PAGE,
+    Math.max(1, Math.ceil(data.total / UNMATCHED_PAGE_SIZE)),
+  );
   const mappable = query.status !== "mapped";
+  // One map at a time on this page: each re-matches every cached food for up to 60 seconds, and two
+  // maps to one allergen restart each other's pass.
+  const [mapping, setMapping] = useState<string | null>(null);
   return (
     <section aria-label={TAB_LABELS[query.status]}>
       <p className={styles.sub} data-testid="unmatched-total">
@@ -145,6 +177,10 @@ function Results({
               key={t.token}
               token={t}
               allergens={dictionary.kind === "done" ? dictionary.data.allergens : null}
+              dictionaryFailed={dictionary.kind === "error"}
+              mapBlocked={mapping !== null && mapping !== t.token}
+              onMapping={(on) => setMapping(on ? t.token : null)}
+              onActed={onActed}
             />
           ))}
         </ul>
@@ -155,7 +191,7 @@ function Results({
           makes matchable stays here until someone reviews it.
         </p>
       ) : null}
-      {pages > 1 || query.page > 1 ? (
+      {pages > 1 || query.page > 1 || acted > 0 ? (
         <nav className={styles.pager} aria-label="Pages">
           {query.page > 1 ? (
             <Link href={unmatchedHref({ ...query, page: query.page - 1 })} rel="prev">
@@ -165,7 +201,11 @@ function Results({
           <span data-testid="unmatched-page">
             Page {query.page} of {pages}
           </span>
-          {query.page < pages ? (
+          {acted > 0 ? (
+            <button type="button" onClick={onReload} disabled={mapping !== null}>
+              Show the next phrases
+            </button>
+          ) : query.page < pages ? (
             <Link href={unmatchedHref({ ...query, page: query.page + 1 })} rel="next">
               Next →
             </Link>
@@ -179,23 +219,23 @@ function Results({
 type Outcome =
   { kind: "mapped"; allergen: AllergenView; rematch: RematchProgress } | { kind: "ignored" };
 
-/** "Nov 24, 2026" in UTC, so every Curator reads the same day. */
-function formatReviewed(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    timeZone: "UTC",
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function TokenRow({
   token,
   allergens,
+  dictionaryFailed,
+  mapBlocked,
+  onMapping,
+  onActed,
 }: {
   token: UnmatchedTokenView;
   /** The dictionary by display name, or null while it loads or after it failed. */
   allergens: AllergenView[] | null;
+  dictionaryFailed: boolean;
+  /** Another row's map is running. */
+  mapBlocked: boolean;
+  onMapping: (on: boolean) => void;
+  /** This row's phrase left its list (mapped or ignored). */
+  onActed: () => void;
 }) {
   const [allergenId, setAllergenId] = useState("");
   const [pending, setPending] = useState<"map" | "ignore" | null>(null);
@@ -203,25 +243,32 @@ function TokenRow({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const busy = useRef(false);
   const id = `token-${token.token.replace(/[^a-z0-9]+/gi, "-")}`;
+  // The pressed button is replaced by the outcome: focus moves there, not back to the top of the page.
+  const focusOutcome = useCallback((el: HTMLElement | null) => el?.focus(), []);
 
   async function act(input: { action: "map"; allergenId: string } | { action: "ignore" }) {
     if (busy.current) return;
     busy.current = true;
     setPending(input.action);
     setError(null);
+    if (input.action === "map") onMapping(true);
     try {
       const result = await actOnUnmatched(token.token, input);
       if (!result.ok) setError(result.failure.message);
-      else if (result.data.write)
-        setOutcome({
-          kind: "mapped",
-          allergen: result.data.write.allergen,
-          rematch: result.data.write.rematch,
-        });
-      else setOutcome({ kind: "ignored" });
+      else {
+        if (result.data.write)
+          setOutcome({
+            kind: "mapped",
+            allergen: result.data.write.allergen,
+            rematch: result.data.write.rematch,
+          });
+        else setOutcome({ kind: "ignored" });
+        onActed();
+      }
     } finally {
       busy.current = false;
       setPending(null);
+      if (input.action === "map") onMapping(false);
     }
   }
 
@@ -243,7 +290,7 @@ function TokenRow({
         </span>
         {token.status !== "new" && token.reviewedAt ? (
           <span className={styles.chip}>
-            {token.status === "mapped" ? "Mapped" : "Ignored"} {formatReviewed(token.reviewedAt)}
+            {token.status === "mapped" ? "Mapped" : "Ignored"} {formatDay(token.reviewedAt)}
           </span>
         ) : null}
       </div>
@@ -260,7 +307,7 @@ function TokenRow({
       ) : null}
 
       {outcome?.kind === "mapped" ? (
-        <div role="status" data-testid="unmatched-mapped">
+        <div role="status" data-testid="unmatched-mapped" tabIndex={-1} ref={focusOutcome}>
           <p className={styles.queueOutcome}>
             Added “{token.token}” to the synonyms of{" "}
             <Link href={allergenHref(outcome.allergen.key)}>{outcome.allergen.displayName}</Link>.
@@ -275,7 +322,13 @@ function TokenRow({
           )}
         </div>
       ) : outcome?.kind === "ignored" ? (
-        <p className={styles.queueOutcome} role="status" data-testid="unmatched-ignored">
+        <p
+          className={styles.queueOutcome}
+          role="status"
+          data-testid="unmatched-ignored"
+          tabIndex={-1}
+          ref={focusOutcome}
+        >
           Ignored. It is listed under Ignored, where it can still be mapped.
         </p>
       ) : token.status === "mapped" ? null : (
@@ -291,7 +344,13 @@ function TokenRow({
               }}
               disabled={!allergens || pending !== null}
             >
-              <option value="">{allergens ? "Choose an allergen" : "Loading allergens…"}</option>
+              <option value="">
+                {allergens
+                  ? "Choose an allergen"
+                  : dictionaryFailed
+                    ? "Allergens unavailable"
+                    : "Loading allergens…"}
+              </option>
               {(allergens ?? []).map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.displayName}
@@ -301,7 +360,7 @@ function TokenRow({
             <button
               type="submit"
               className="primary"
-              disabled={!allergens || pending !== null}
+              disabled={!allergens || pending !== null || mapBlocked}
               aria-busy={pending === "map" || undefined}
               aria-label={`Map “${token.token}”`}
             >
