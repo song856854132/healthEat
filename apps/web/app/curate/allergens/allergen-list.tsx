@@ -30,6 +30,7 @@ function Dictionary() {
         <Link href="/curate/allergens/new" className="button-link">
           Add allergen
         </Link>
+        <Link href="/curate/unmatched">Unmatched ingredients</Link>
       </div>
       {dictionary.kind === "loading" ? (
         <p className={styles.status} role="status">

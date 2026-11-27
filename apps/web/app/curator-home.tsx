@@ -194,7 +194,10 @@ function Activity() {
                   ? " matched no synonym and waits"
                   : "s matched no synonym and wait"}{" "}
                 for review
-              </span>
+              </span>{" "}
+              <Link href="/curate/unmatched" data-testid="unmatched-link">
+                Review them
+              </Link>
             </>
           ) : queue.kind === "error" ? (
             <LoadError failure={queue.failure} retry={retryQueue} testId="unmatched-error" />

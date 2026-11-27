@@ -3,19 +3,23 @@ import {
   AllergenWriteResponse,
   CuratorProfileView,
   RematchProgress,
+  TOKEN_STATUSES,
   UnmatchedListResponse,
+  UnmatchedTokenView,
 } from "@healtheat/shared";
 import type {
   AllergenCreateInput,
   AllergenTier,
   AllergenUpdateInput,
   CuratorProfileInput,
+  TokenStatus,
+  UnmatchedActionInput,
 } from "@healtheat/shared";
 import { NO_BODY, jsonBody, request } from "./request";
 import type { ApiFailure, ApiResult } from "./request";
 
-// Browser-side calls for the Curator pages (T21 web half; apps/api/README.md, REST table): the allergen
-// dictionary, continuing a re-match, the unmatched queue's size and the Curator's own profile.
+// Browser-side calls for the Curator pages (T21 and T22 web halves; apps/api/README.md, REST table): the
+// allergen dictionary, continuing a re-match, the unmatched-ingredient queue and the Curator's own profile.
 
 /** How each tier reads on the pages (design doc, Data model: Allergen; D12). */
 export const TIER_LABELS: Record<AllergenTier, string> = {
@@ -91,9 +95,98 @@ export function continueRematch(id: string): Promise<ApiResult<RematchProgress>>
   );
 }
 
-/** GET /api/curate/unmatched?status=new: the queue's first page; only its `total` is shown before T22's page. */
+/** The unmatched queue's state as /curate/unmatched?status=&page= carries it. */
+export type UnmatchedPageQuery = { status: TokenStatus; page: number };
+
+type Params = Record<string, string | string[] | undefined>;
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+/** The last page the API's UnmatchedQuery accepts (`page` max 1000): the pager stops there too. */
+export const UNMATCHED_MAX_PAGE = 1000;
+
+/** Reads the queue's URL leniently: an unknown status or a bad page shows the new phrases, page 1. */
+export function readUnmatchedQuery(params: Params): UnmatchedPageQuery {
+  const status = TOKEN_STATUSES.find((s) => s === first(params.status)) ?? "new";
+  const n = Number(first(params.page));
+  const page = Number.isInteger(n) && n >= 1 ? Math.min(n, UNMATCHED_MAX_PAGE) : 1;
+  return { status, page };
+}
+
+function unmatchedQs({ status, page }: UnmatchedPageQuery): string {
+  const sp = new URLSearchParams();
+  if (status !== "new") sp.set("status", status);
+  if (page > 1) sp.set("page", String(page));
+  return sp.toString();
+}
+
+/** The /curate/unmatched URL for this state; the new phrases and page 1 are left out. */
+export function unmatchedHref(query: UnmatchedPageQuery): string {
+  const qs = unmatchedQs(query);
+  return qs ? `/curate/unmatched?${qs}` : "/curate/unmatched";
+}
+
+/** GET /api/curate/unmatched?status=&page=: 20 phrases a page, most foods first. */
+export function listUnmatched(
+  query: UnmatchedPageQuery,
+  signal?: AbortSignal,
+): Promise<ApiResult<UnmatchedListResponse>> {
+  const sp = new URLSearchParams({ status: query.status, page: String(query.page) });
+  return request(`/api/curate/unmatched?${sp.toString()}`, UnmatchedListResponse, { signal });
+}
+
+/** GET /api/curate/unmatched?status=new: the queue's first page; Curator Home shows its `total`. */
 export function unmatchedQueue(signal?: AbortSignal): Promise<ApiResult<UnmatchedListResponse>> {
-  return request("/api/curate/unmatched?status=new", UnmatchedListResponse, { signal });
+  return listUnmatched({ status: "new", page: 1 }, signal);
+}
+
+/** Answer of PUT /api/curate/unmatched/:token: the token as stored now, and the allergen write for a map. */
+export type UnmatchedActionResult = {
+  token: UnmatchedTokenView;
+  write: AllergenWriteResponse | null;
+};
+
+// The API's own response schema is not exported from @healtheat/shared, so it is put together here from
+// the two shapes it is made of (apps/api/src/routes/curate.ts, ActionResponse).
+const UnmatchedActionResponse = {
+  safeParse(v: unknown): { success: true; data: UnmatchedActionResult } | { success: false } {
+    const body = (v ?? {}) as { token?: unknown; write?: unknown };
+    const token = UnmatchedTokenView.safeParse(body.token);
+    if (!token.success) return { success: false };
+    if (body.write === null) return { success: true, data: { token: token.data, write: null } };
+    const write = AllergenWriteResponse.safeParse(body.write);
+    return write.success
+      ? { success: true, data: { token: token.data, write: write.data } }
+      : { success: false };
+  },
+};
+
+// apps/api/README.md, error table: the queue action's own errors.
+const UNMATCHED_MESSAGES: Record<string, string> = {
+  token_not_found: "This phrase is no longer in the queue. Reload the list.",
+  allergen_not_found:
+    "That allergen no longer exists; another Curator may have deleted it. Reload the list.",
+  token_excluded:
+    "That allergen’s exclude phrases hide this phrase, so it could never match. Pick another allergen, or edit its exclude phrases first.",
+  synonyms_full:
+    "That allergen already holds 200 synonyms, the most an entry can have. Nothing was changed.",
+  token_mapped: "This phrase is already mapped to an allergen, so it cannot be ignored.",
+  forbidden: "Only Curators can review the unmatched ingredients.",
+};
+
+/**
+ * PUT /api/curate/unmatched/:token: map the phrase to an allergen (a dictionary edit: 200 with its
+ * re-match done, 202 while foods are left) or ignore it (200).
+ */
+export function actOnUnmatched(
+  token: string,
+  input: UnmatchedActionInput,
+): Promise<ApiResult<UnmatchedActionResult>> {
+  return request(
+    `/api/curate/unmatched/${encodeURIComponent(token)}`,
+    UnmatchedActionResponse,
+    jsonBody("PUT", input),
+    UNMATCHED_MESSAGES,
+  );
 }
 
 /** GET /api/users/me/profiles/curator. */
