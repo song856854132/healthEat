@@ -428,6 +428,9 @@ function LogBar() {
         maxLength={200}
       />
       <button type="submit">Search</button>
+      <Link href="/log?photo=1" data-testid="log-bar-photo">
+        Log by photo
+      </Link>
       <Link href="/log">Today’s log</Link>
     </form>
   );

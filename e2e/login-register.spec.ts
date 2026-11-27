@@ -200,6 +200,20 @@ test("a logout in another tab shows as signed out when this tab is used again", 
   await holdsFor(() => expect(page).toHaveURL(/\/login$/, { timeout: 100 }), 1_000);
 });
 
+// Value: protects=a signed-in visitor who opens /login or /register is sent Home, as the form intends;
+//   fails_when=the form's own session check is answered undefined because the app's first check
+//   overtook it (so it was before T13), and a signed-in member is shown the form; why_new=no test opens
+//   these pages while signed in; seam=none; no_claim=a session that expires while the page loads
+for (const path of ["/login", "/register"]) {
+  test(`a signed-in visitor who opens ${path} is sent Home`, async ({ page }) => {
+    const res = await page.request.post("/api/auth/register", { data: makeAccount("si") });
+    expect(res.status(), await res.text()).toBe(201);
+    await page.goto(path);
+    await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
+    await expect(page.getByTestId("nav-username")).toBeVisible();
+  });
+}
+
 test("a 2xx login answer that is not an account shows an error instead of crashing", async ({
   page,
 }) => {

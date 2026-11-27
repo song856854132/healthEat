@@ -19,23 +19,27 @@ import {
   updateLog,
 } from "../../lib/logs";
 import { foodHref } from "../../lib/foods";
+import { PhotoConfirm } from "./photo-confirm";
 import styles from "./day-log.module.css";
 
 type Load =
-  | { kind: "loading" }
+  /** `reloading`: the day was shown before, so the photo panel stays open through the reload. */
+  | { kind: "loading"; reloading?: boolean }
   | { kind: "error"; message: string }
   | { kind: "future"; today: string }
   | { kind: "ready"; today: string; entries: LogEntryView[] };
 
 /**
  * One day of the member's log: entries by meal, each editable (grams and meal) and deletable, with
- * previous/next day, a date picker and "Add food", which carries the date through search to Details
- * so a past day can be backfilled. "Today" is the member's time zone's, as on the API.
+ * previous/next day, a date picker, "Add food", which carries the date through search to Details
+ * so a past day can be backfilled, and "Log by photo" (T13), which opens the photo panel (also opened
+ * by ?photo=1, Home's link). "Today" is the member's time zone's, as on the API.
  */
-export function DayLog({ date }: { date: string }) {
+export function DayLog({ date, photo = false }: { date: string; photo?: boolean }) {
   const { me } = useAuth();
   const router = useRouter();
   const [load, setLoad] = useState<Load>({ kind: "loading" });
+  const [photoOpen, setPhotoOpen] = useState(photo);
   const [attempt, setAttempt] = useState(0);
   const signedIn = Boolean(me);
 
@@ -80,7 +84,7 @@ export function DayLog({ date }: { date: string }) {
 
   const today = load.kind === "ready" || load.kind === "future" ? load.today : undefined;
   const reload = () => {
-    setLoad({ kind: "loading" });
+    setLoad({ kind: "loading", reloading: true });
     setAttempt((n) => n + 1);
   };
 
@@ -112,9 +116,23 @@ export function DayLog({ date }: { date: string }) {
           <Link href={`/log/${load.today}`}>Go to today</Link>
         </p>
       ) : null}
+      {photoOpen && (load.kind === "ready" || (load.kind === "loading" && load.reloading)) ? (
+        <PhotoConfirm
+          date={date}
+          onLogged={(entry) =>
+            setLoad((l) => (l.kind === "ready" ? { ...l, entries: [...l.entries, entry] } : l))
+          }
+          onClose={() => {
+            setPhotoOpen(false);
+            if (photo) router.replace(`/log/${date}`, { scroll: false });
+          }}
+        />
+      ) : null}
       {load.kind === "ready" ? (
         <Entries
           date={date}
+          photoOpen={photoOpen}
+          onPhoto={() => setPhotoOpen(true)}
           entries={load.entries}
           // An updater, not a list: two rows can settle in either order, and each must apply to the
           // entries as they are then, not as they were when its request started.
@@ -168,11 +186,15 @@ function DayNav({ date, today }: { date: string; today?: string }) {
 
 function Entries({
   date,
+  photoOpen,
+  onPhoto,
   entries,
   onChange,
   onStale,
 }: {
   date: string;
+  photoOpen: boolean;
+  onPhoto: () => void;
   entries: LogEntryView[];
   onChange: (update: (entries: LogEntryView[]) => LogEntryView[]) => void;
   onStale: () => void;
@@ -190,9 +212,16 @@ function Entries({
             ? "Nothing logged on this day."
             : `${entries.length} ${entries.length === 1 ? "entry" : "entries"} · ${formatGrams(totalGrams)} g in all`}
         </p>
-        <Link href={`/search?date=${date}`} className="button-link" data-testid="day-add-food">
-          Add food
-        </Link>
+        <div className={styles.addActions}>
+          <Link href={`/search?date=${date}`} className="button-link" data-testid="day-add-food">
+            Add food
+          </Link>
+          {photoOpen ? null : (
+            <button type="button" onClick={onPhoto} data-testid="day-add-photo">
+              Log by photo
+            </button>
+          )}
+        </div>
       </div>
       {MEALS.map((meal) => {
         const items = entries.filter((e) => e.meal === meal);

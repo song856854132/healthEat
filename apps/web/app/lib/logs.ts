@@ -7,6 +7,24 @@ import type { Result } from "./foods";
 // Browser-side calls for the day log (apps/api/README.md, REST table: GET /api/users/me/logs,
 // PUT/DELETE /api/logs/:id) and the date helpers /log/[date] uses. Same-origin through the rewrite.
 
+/** A starting meal from the browser's clock; the user can change it. */
+export function mealForHour(hour: number): Meal {
+  if (hour >= 5 && hour < 11) return "breakfast";
+  if (hour >= 11 && hour < 15) return "lunch";
+  if (hour >= 17 && hour < 22) return "dinner";
+  return "snack";
+}
+
+/**
+ * One id per log (#51), resent on a retry so the API writes the entry once. crypto.randomUUID needs a
+ * secure context (https or localhost); without it, log without an id.
+ */
+export function newRequestId(): string | undefined {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : undefined;
+}
+
 export const MEAL_LABELS: Record<Meal, string> = {
   breakfast: "Breakfast",
   lunch: "Lunch",
