@@ -163,9 +163,11 @@ test("a past day lists its entries by meal, with day navigation", async ({ page 
     "href",
     "/food/2001",
   );
-  // A food with no cached name, from a photo: its id, and the confidence (display only).
+  // A food with no cached name, from a photo: its id, and the confidence (display only) in the photo
+  // panel's words: 0.8 is "likely".
   const photo = breakfast.getByTestId("log-entry").filter({ hasText: "Food 3003" });
-  await expect(photo).toContainText("120.5 g · Photo estimate, 80% confidence");
+  await expect(photo.getByTestId("entry-grams")).toHaveText("120.5 g");
+  await expect(photo.getByTestId("entry-photo")).toHaveText("Photo estimate, likely");
   await expect(page.getByTestId("meal-dinner")).toContainText("Mock salmon");
   await expect(page.getByText("Not this day")).toHaveCount(0);
 

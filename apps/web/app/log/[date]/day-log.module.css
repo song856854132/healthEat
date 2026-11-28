@@ -100,6 +100,9 @@
   font-size: 0.9rem;
   opacity: 0.8;
 }
+.entryPhoto {
+  display: block;
+}
 .entryActions {
   display: flex;
   flex-wrap: wrap;
@@ -178,16 +181,51 @@
   margin: 0;
 }
 .photoItems {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   list-style: none;
   margin: 12px 0;
   padding: 0;
 }
+/* Each suggested item is a card (v2 UI design, photo item card); one with a problem gets a danger
+   border, so a failed log is told apart by its outline and words, not by colour alone. */
 .photoItem {
-  padding: 12px 0;
-  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
-.photoItem p {
-  margin: 0 0 8px;
+.photoItemError {
+  border-color: var(--danger);
+}
+/* The card's gap spaces its rows; their own margins would double it. */
+.photoItem p,
+.photoItem .photoActions,
+.photoItem .matchList {
+  margin: 0;
+}
+/* A logged or removed item collapses to one line. */
+.photoItemCollapsed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+/* A text-styled button that is still a 44px target on a phone. */
+.linkButton {
+  min-height: 44px;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  text-decoration: underline;
 }
 .photoItemHead {
   overflow-wrap: anywhere;

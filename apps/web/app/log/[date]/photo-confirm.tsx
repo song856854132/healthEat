@@ -15,7 +15,7 @@ import type {
 import { useAuth } from "../../auth-context";
 import { logFood, searchFoods } from "../../lib/foods";
 import { PhotoPrepError, prepareMealPhoto } from "../../lib/image";
-import { MEAL_LABELS, formatLogDate, mealForHour, newRequestId } from "../../lib/logs";
+import { MEAL_LABELS, formatGrams, formatLogDate, mealForHour, newRequestId } from "../../lib/logs";
 import {
   CLIENT_TIMEOUT,
   analyseMeal,
@@ -24,7 +24,7 @@ import {
   visionProblem,
 } from "../../lib/vision";
 import type { PhotoProblem } from "../../lib/vision";
-import { confirmSession } from "../../profile/session";
+import { SWITCHED, confirmSession } from "../../profile/session";
 import styles from "./day-log.module.css";
 
 // Log by photo (T13; design doc, Photo pipeline): the member picks or takes a photo, the browser makes
@@ -55,6 +55,10 @@ type Item = {
   /** One id per item (#51), kept until it is logged so a retry never logs it twice. */
   requestId?: string;
   logged: boolean;
+  /** "Bananas, raw, 120 g": what was logged, shown once the item collapses. */
+  loggedAs?: string;
+  /** The log request for this item failed (not a check before sending). */
+  failed?: boolean;
   error?: string;
 };
 
@@ -70,6 +74,8 @@ type Phase =
       remaining: number;
       batchId?: string;
       note?: string;
+      /** Another tab changed the session: Log and Start over wait for a reload. */
+      reload?: boolean;
       /** Avoided allergens of the items already logged, kept across a retry after a part-way failure. */
       alerts?: AllergenAlert[];
     }
@@ -80,6 +86,17 @@ function AvoidedAlert({ alerts }: { alerts: AllergenAlert[] }) {
     <p className="form-error" role="alert" data-testid="photo-alerts">
       Contains {alerts.map((a) => a.displayName).join(", ")}, which you avoid.
     </p>
+  );
+}
+
+/** Shown when another tab changed the session: nothing here can go on until the page reloads. */
+function ReloadPage() {
+  return (
+    <div className={styles.photoActions}>
+      <button type="button" onClick={() => window.location.reload()} data-testid="photo-reload">
+        Reload the page
+      </button>
+    </div>
   );
 }
 
@@ -194,9 +211,12 @@ export function PhotoConfirm({
     if (controller.signal.aborted) return; // cancelled or closed meanwhile: the photo is not sent
     if (switched) {
       if (analysis.current === controller) analysis.current = null;
+      // Switched accounts: sending again is refused the same way, so only a reload is offered. A
+      // session that could not be checked can be tried again.
+      const reload = switched === SWITCHED;
       setPhase({
         kind: "error",
-        problem: { message: switched, retry: true, another: false, search: false },
+        problem: { message: switched, retry: !reload, another: false, search: false, reload },
         photo: input,
       });
       return;
@@ -273,7 +293,7 @@ export function PhotoConfirm({
     analysis.current = null;
     setPhase({
       kind: "idle",
-      note: "Cancelled. If the server had already started, the photo may still count toward today’s.",
+      note: `Cancelled. If the server had already started, the photo may still count toward today’s ${VISION_DAILY_LIMIT} photos.`,
     });
   }
 
@@ -303,7 +323,7 @@ export function PhotoConfirm({
               ? "Choose the food it is, or search again."
               : undefined;
       if (error) problems += 1;
-      return { ...it, error };
+      return { ...it, error, failed: false };
     });
     setItems(checked);
     if (problems > 0) return;
@@ -313,7 +333,7 @@ export function PhotoConfirm({
     try {
       const switched = await confirmSession(recheck, username);
       if (switched) {
-        setPhase({ ...phase, note: switched });
+        setPhase({ ...phase, note: switched, reload: switched === SWITCHED });
         return;
       }
       const alerts: AllergenAlert[] = [...(phase.alerts ?? [])];
@@ -323,7 +343,7 @@ export function PhotoConfirm({
         if (!mounted.current) break; // the member left the page: the rest is not sent unseen
         if (!it.include || it.logged || it.fdcId === null) continue;
         const requestId = it.requestId ?? newRequestId();
-        patch(it.itemId, { requestId, error: undefined });
+        patch(it.itemId, { requestId, error: undefined, failed: false });
         const result = await logFood({
           fdcId: it.fdcId,
           grams: Number(it.grams.trim()),
@@ -338,7 +358,15 @@ export function PhotoConfirm({
           logged += 1;
           for (const a of result.data.alerts)
             if (!alerts.some((b) => b.key === a.key)) alerts.push(a);
-          patch(it.itemId, { logged: true, requestId: undefined });
+          const food =
+            it.matches.kind === "ready"
+              ? it.matches.foods.find((f) => f.fdcId === it.fdcId)?.description
+              : undefined;
+          patch(it.itemId, {
+            logged: true,
+            requestId: undefined,
+            loggedAs: `${food ?? it.suggested.query}, ${formatGrams(Number(it.grams.trim()))} g`,
+          });
           onLogged(result.data.entry);
           continue;
         }
@@ -346,9 +374,20 @@ export function PhotoConfirm({
         // A conflict means this id already logged something else: the next try gets a new one.
         patch(it.itemId, {
           error: result.failure.message,
+          failed: true,
           ...(result.failure.error === "request_id_conflict" ? { requestId: undefined } : {}),
         });
-        if (result.failure.status === 401) break; // signed out: the rest would fail the same way
+        if (result.failure.status === 401) {
+          // Signed out: the rest would fail the same way, so they are not sent, and are marked as
+          // not logged rather than left looking untouched.
+          const rest = checked
+            .slice(checked.indexOf(it) + 1)
+            .filter((r) => r.include && !r.logged && r.fdcId !== null);
+          for (const r of rest)
+            patch(r.itemId, { failed: true, error: "Not sent: you are signed out." });
+          failed += rest.length;
+          break;
+        }
       }
       if (failed === 0) {
         const before = items.filter((it) => it.logged).length;
@@ -431,6 +470,7 @@ export function PhotoConfirm({
       {phase.kind === "error" ? (
         <div className={styles.problem} role="alert" data-testid="photo-error">
           <p>{phase.problem.message}</p>
+          {phase.problem.reload ? <ReloadPage /> : null}
           <div className={styles.photoActions}>
             {phase.problem.retry && phase.photo ? (
               <button
@@ -468,6 +508,7 @@ export function PhotoConfirm({
               {phase.note}
             </p>
           ) : null}
+          {phase.reload ? <ReloadPage /> : null}
           {/* Named now: the member may close the panel instead of logging the rest. */}
           {phase.alerts?.length ? <AvoidedAlert alerts={phase.alerts} /> : null}
           <ul className={styles.photoItems}>
@@ -515,13 +556,13 @@ export function PhotoConfirm({
             <button
               type="submit"
               className="primary"
-              disabled={logging || toLog === 0}
+              disabled={logging || toLog === 0 || phase.reload}
               aria-busy={logging || undefined}
               data-testid="photo-log"
             >
               {logging ? "Logging…" : toLog === 1 ? "Log 1 item" : `Log ${toLog} items`}
             </button>
-            <button type="button" onClick={startOver} disabled={logging}>
+            <button type="button" onClick={startOver} disabled={logging || phase.reload}>
               Start over
             </button>
           </div>
@@ -560,25 +601,30 @@ function PhotoItem({
   const id = `photo-item-${item.itemId}`;
   if (item.logged)
     return (
-      <li className={styles.photoItem} data-testid="photo-item">
-        <p>
-          <strong>{item.suggested.query}</strong> · logged
-        </p>
+      <li className={styles.photoItemCollapsed} data-testid="photo-item" data-state="logged">
+        <span>{item.loggedAs ?? item.suggested.query}: logged.</span>
       </li>
     );
   if (!item.include)
     return (
-      <li className={styles.photoItem} data-testid="photo-item">
-        <p className="hint">
-          <strong>{item.suggested.query}</strong> removed.{" "}
-          <button type="button" onClick={() => onChange({ include: true })} disabled={disabled}>
-            Add back
-          </button>
-        </p>
+      <li className={styles.photoItemCollapsed} data-testid="photo-item" data-state="removed">
+        <span className="hint">{item.suggested.query} removed.</span>
+        <button
+          type="button"
+          className={styles.linkButton}
+          onClick={() => onChange({ include: true })}
+          disabled={disabled}
+        >
+          Add back
+        </button>
       </li>
     );
   return (
-    <li className={styles.photoItem} data-testid="photo-item">
+    <li
+      className={item.error ? `${styles.photoItem} ${styles.photoItemError}` : styles.photoItem}
+      data-testid="photo-item"
+      data-state={item.failed ? "failed" : item.error ? "invalid" : "open"}
+    >
       <p className={styles.photoItemHead}>
         <strong>{item.suggested.query}</strong>{" "}
         <span className="hint">({confidenceWord(item.suggested.confidence)})</span>
@@ -646,7 +692,7 @@ function PhotoItem({
       </div>
       {item.error ? (
         <p className="field-error" role="alert">
-          {item.error}
+          {item.failed ? `This item was not logged. ${item.error}` : item.error}
         </p>
       ) : null}
     </li>
