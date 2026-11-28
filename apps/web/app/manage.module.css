@@ -139,7 +139,7 @@
   font: inherit;
   font-weight: 400;
   padding: 6px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 6px;
   background: var(--paper);
   color: inherit;
@@ -275,7 +275,7 @@
 .mapForm select {
   font: inherit;
   padding: 6px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 6px;
   background: var(--paper);
   color: inherit;
@@ -285,4 +285,14 @@
 /* A row's refusal sits under its actions, spaced like its outcome. */
 .queueItem :global(.field-error) {
   margin-top: 8px;
+}
+
+/* Phone widths (T34): tab and pager links are 44px targets. */
+@media (max-width: 600px) {
+  .tabs a,
+  .pager a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }

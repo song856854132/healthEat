@@ -3,6 +3,9 @@
   --ink: #1d1d1f;
   --paper: #fafaf7;
   --line: #c9c9c4;
+  /* Borders of inputs, selects and buttons: 3:1 against the paper (WCAG 2.2, 1.4.11), where --line
+     (#c9c9c4, about 1.6:1) is for rules and section outlines only. */
+  --control-line: #8c8c87;
   --danger: #b3261e;
 }
 @media (prefers-color-scheme: dark) {
@@ -10,6 +13,7 @@
     --ink: #ececea;
     --paper: #141414;
     --line: #3a3a3a;
+    --control-line: #6b6b6b;
     --danger: #f2b8b5;
   }
 }
@@ -228,4 +232,54 @@ button[aria-busy="true"] {
   flex-wrap: wrap;
   gap: 8px 16px;
   font-size: 0.9rem;
+}
+
+/* ---- T34: controls you can see and reach (v2 UI design, change list) ---------------------------- */
+
+/* Control borders: the darker --control-line, so each input, select and button can be told from the
+   paper. Rules and section outlines keep --line. */
+button,
+.button-link,
+.role-switch select,
+.field input,
+.field textarea,
+.field select {
+  border-color: var(--control-line);
+}
+/* An invalid field keeps its danger border. */
+.field input[aria-invalid="true"],
+.field textarea[aria-invalid="true"],
+.field select[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+/* Keyboard focus: a 2px ink outline, 2px out, on every control. Only for keyboard focus
+   (:focus-visible), so a mouse click draws nothing. */
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Phone widths: every control and every link that acts like one is at least 44px tall, and main
+   starts closer to the top so more of each page shows without scrolling. */
+@media (max-width: 600px) {
+  main {
+    padding: 24px 16px 32px;
+  }
+  button,
+  .button-link,
+  select,
+  input:not([type="radio"]):not([type="checkbox"]):not([type="file"]) {
+    min-height: 44px;
+  }
+  .button-link,
+  .site-nav a,
+  .site-footer-inner a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .nav-session {
+    width: 100%;
+  }
 }

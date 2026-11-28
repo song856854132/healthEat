@@ -28,7 +28,7 @@
   font: inherit;
   color: inherit;
   background: transparent;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 6px;
   padding: 6px 10px;
   min-height: 40px;
@@ -294,4 +294,13 @@
   border: 1px solid var(--line);
   border-radius: 6px;
   flex-basis: 100%;
+}
+
+/* Phone widths (T34): pager links are 44px targets. */
+@media (max-width: 600px) {
+  .pager a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }

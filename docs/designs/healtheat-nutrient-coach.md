@@ -1463,7 +1463,12 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Verify: Playwright on the real stack: avoid one allergen and track one with a threshold, reload, see it on Home's exposure meter, then unset it; body details validated before any request, then Home's calorie meter replaces the prompt; an own band wins and clearing it goes back to the computed one; an unknown time zone is refused and the browser's is one click away
   - Not yet: imperial units (the API stores cm and kg); the public profile page `/profile/[username]`
 
-_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24, T29, T30 and T31 are lane B GitHub issues; their entries above were added by their PRs)._
+- [ ] **T34 (P2, human: ~half day / CC: ~30 min)** — apps/web + e2e — Controls you can see and reach, app-wide (v2 UI design's change list, "Departures from the current look" and "One more token"; a reference, not a spec, per the owner, 2026-11-28): a `--control-line` token (#8c8c87 light, #6b6b6b dark, about 3:1 against the paper, WCAG 2.2 1.4.11) for input, select and button borders, while `--line` stays for rules and section outlines; a 2px ink `:focus-visible` outline, 2px out, on every control (there was none); on phones (600px and under) every button, button-link, input and select, the nav and footer links, tab and pager links and the day log's day links are at least 44px tall, and main starts at 24px instead of 48px (number proposed 2026-11-28, owner to confirm)
+  - Surfaced by: the v2 UI design (2026-11-27)
+  - Files: apps/web/app/globals.css (the token, and new blocks at the end), apps/web/app/manage.module.css, apps/web/app/foods.module.css, apps/web/app/log/[date]/day-log.module.css, apps/web/app/profile/profile.module.css, e2e/controls.spec.ts
+  - Verify: Playwright: control borders resolve to --control-line and section outlines do not, an invalid field keeps its danger border; keyboard focus draws the 2px outline and a mouse click on a button draws none; at 360px the login form, nav and footer links and a member's day log controls are at least 44px tall; the full suite still passes (no page scrolls sideways at 360px)
+
+_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24, T29, T30, T31 and T34 are lane B tasks; their entries above were added by their PRs)._
 
 ## Implementation Tasks: order and dependencies
 

@@ -51,7 +51,7 @@
 .control {
   font: inherit;
   padding: 4px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 6px;
   background: var(--paper);
   color: inherit;
