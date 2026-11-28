@@ -59,10 +59,15 @@ test("register, see the nav, log out and log back in through the pages", async (
   }
 
   await page.getByRole("button", { name: "Log out" }).click();
-  await expect(page.getByRole("link", { name: "Log in" })).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Log in" }),
+  ).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("nav-username")).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Log in" }).click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Log in" })
+    .click();
   await expect(page).toHaveURL(/\/login$/);
   await page.getByLabel("Username").fill(account.username);
   await page.getByLabel("Password").fill("wrong password");
@@ -148,7 +153,9 @@ test("a failed logout keeps showing the live session and says so", async ({ page
 
   await page.unroute("**/api/auth/logout");
   await page.getByRole("button", { name: "Log out" }).click();
-  await expect(page.getByRole("link", { name: "Log in" })).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Log in" }),
+  ).toBeVisible({ timeout: 30_000 });
 });
 
 test("a /me error is not shown as signed out, and Retry asks again", async ({ page }) => {
@@ -164,7 +171,9 @@ test("a /me error is not shown as signed out, and Retry asks again", async ({ pa
   await expect(page.getByTestId("nav-error")).toHaveText("Could not check your session.", {
     timeout: 30_000,
   });
-  await expect(page.getByRole("link", { name: "Log in" })).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Log in" }),
+  ).toHaveCount(0);
 
   await page.unroute("**/api/auth/me");
   await page.getByRole("button", { name: "Retry" }).click();
@@ -185,17 +194,24 @@ test("a logout in another tab shows as signed out when this tab is used again", 
   try {
     await tabB.goto("/");
     await tabB.getByRole("button", { name: "Log out" }).click();
-    await expect(tabB.getByRole("link", { name: "Log in" })).toBeVisible({ timeout: 30_000 });
+    await expect(
+      tabB.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Log in" }),
+    ).toBeVisible({ timeout: 30_000 });
   } finally {
     await tabB.close();
   }
 
   // Coming back to tab A (headless Chromium does not move focus between pages by itself).
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(page.getByRole("link", { name: "Log in" })).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Log in" }),
+  ).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("nav-username")).toHaveCount(0);
   // And the login form is reachable without a reload.
-  await page.getByRole("link", { name: "Log in" }).click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Log in" })
+    .click();
   await expect(page).toHaveURL(/\/login$/);
   await holdsFor(() => expect(page).toHaveURL(/\/login$/, { timeout: 100 }), 1_000);
 });

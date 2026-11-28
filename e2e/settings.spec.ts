@@ -157,12 +157,9 @@ test("body details: checked before sending, then Home's calorie meter replaces t
     },
   );
   await page.goto("/");
-  await expect(page.getByTestId("calorie-meter")).toContainText(
-    "1,800 to 2,000 kcal, your own band",
-    {
-      timeout: 30_000,
-    },
-  );
+  await expect(page.getByTestId("calorie-meter")).toContainText("1,800 to 2,000 kcal, set by you", {
+    timeout: 30_000,
+  });
 
   await page.goto("/profile#body");
   await page.getByLabel("Your own calorie band: from (kcal)").fill("");

@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 
 test("home renders and health comes back through the proxy", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("healthEat");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Eat well across the week");
   const health = page.getByTestId("health");
   await expect(health).toContainText('"ok": true', { timeout: 30_000 });
   await expect(health).toContainText("healtheat-api");
