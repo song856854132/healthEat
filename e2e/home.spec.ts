@@ -77,7 +77,7 @@ const FEED = PublicHomeResponse.parse({
     {
       username: "mock_curator",
       badges: ["member", "curator"],
-      memberSince: "2026-11-01T00:00:00.000Z",
+      memberSince: "2026-11-01T12:00:00.000Z",
     },
   ],
 });
@@ -104,7 +104,9 @@ test("anonymous Home lists this week's foods, allergens and profiles, without us
   const profiles = page.getByTestId("feed-profiles");
   await expect(profiles).toContainText("mock_curator");
   await expect(profiles).toContainText("Curator");
-  await expect(profiles).toContainText("joined Nov 1");
+  await expect(profiles).toContainText("joined Nov 1, 2026");
+  // Ranked lists keep their order for screen readers.
+  await expect(foods.locator("ol > li")).toHaveCount(2);
   await expect(page.getByTestId("feed-week")).toContainText("Nov 16 to Nov 22");
   await expect(page.getByTestId("feed-empty")).toHaveCount(0);
 });
@@ -155,7 +157,7 @@ test("a new member's Home, from the real API: empty bands, no meter yet, and a l
     timeout: 30_000,
   });
   await expect(page.getByTestId("bands-empty")).toHaveText(
-    "Nothing logged in the last 7 days. Each day you log fills in a column here.",
+    "Nothing logged in the last 7 days. Each day you log adds a dot and fills in the bars.",
   );
   // Registration asks only for the time zone, so targets use the adult reference and the meter waits.
   await expect(page.getByTestId("target-basis")).toContainText("adult reference");
@@ -177,16 +179,17 @@ test("a new member's Home, from the real API: empty bands, no meter yet, and a l
 });
 
 // T19's fixture: 4 of 7 days logged, one of them mostly photo-estimated (confidence below 0.5).
+// Today (the 22nd) is logged, so the calorie meter reads the kcal so far.
 const DAYS = [
   { date: "2026-11-16", logged: true, confidence: 1 },
   { date: "2026-11-17", logged: false, confidence: null },
   { date: "2026-11-18", logged: true, confidence: 0.25 },
   { date: "2026-11-19", logged: true, confidence: 0.8 },
   { date: "2026-11-20", logged: false, confidence: null },
-  { date: "2026-11-21", logged: true, confidence: 1 },
-  { date: "2026-11-22", logged: false, confidence: null },
+  { date: "2026-11-21", logged: false, confidence: null },
+  { date: "2026-11-22", logged: true, confidence: 1 },
 ];
-const DOTS = ["searched", "unlogged", "photo", "searched", "unlogged", "searched", "unlogged"];
+const DOTS = ["searched", "unlogged", "photo", "searched", "unlogged", "unlogged", "searched"];
 
 const b = (
   key: string,
@@ -415,7 +418,7 @@ test("Member Home: the alert strip, today's calorie meter and the exposure meter
 
   const meter = page.getByTestId("calorie-meter");
   await expect(meter.getByTestId("calorie-status")).toHaveText(
-    "About 2,480 kcal so far. Your band is 1,900 to 2,300 kcal, estimated from your profile.",
+    "About 2,480 kcal so far: over your band of 1,900 to 2,300 kcal, estimated from your profile.",
   );
   await expect(
     meter.getByRole("img", {
@@ -472,6 +475,41 @@ test("close the gap suggests foods for the lowest band, and for any other low ba
   );
   await expect(foods.getByRole("link", { name: "Mock lentils" })).toBeVisible();
   await expect(foods.getByRole("link", { name: "Mock sunflower seeds" })).toHaveCount(0);
+});
+
+test("the calorie meter goes by whether today was logged, not by its total, and draws no fill at 0", async ({
+  page,
+}) => {
+  await signUp(page, "hzero");
+  const at = (kcal: number, todayLogged: boolean) =>
+    SummaryResponse.parse({
+      ...SUMMARY,
+      days: DAYS.map((d) => (d.date === SUMMARY.today ? { ...d, logged: todayLogged } : d)),
+      calorieMeter: { ...SUMMARY.calorieMeter!, kcal, status: "under", basis: "set" },
+      exposure: [{ ...SUMMARY.exposure[0]!, hits: 0, overThreshold: false }],
+    });
+  let answer = at(0, true);
+  await page.route("**/api/users/me/summary*", (route) => route.fulfill({ json: answer }));
+  await page.goto("/");
+  const status = page.getByTestId("calorie-status");
+  // Water or black coffee: logged, 0 kcal.
+  await expect(status).toHaveText(
+    "About 0 kcal so far: under your band of 1,900 to 2,300 kcal, set by you.",
+    { timeout: 30_000 },
+  );
+  const meter = page.getByTestId("calorie-meter").getByRole("img");
+  await expect(meter.locator("span[style*='width: 0']")).toHaveCount(0);
+  // An exposure row with no hits draws its zones but no fill either.
+  await expect(
+    page.getByTestId("exposure-row").first().getByRole("img").locator("span[style*='width']"),
+  ).toHaveCount(0);
+
+  answer = at(0, false);
+  await page.reload();
+  await expect(status).toHaveText(
+    "Nothing logged today yet. Your band is 1,900 to 2,300 kcal, set by you.",
+    { timeout: 30_000 },
+  );
 });
 
 test("Member Home offers Try again when the summary fails", async ({ page }) => {

@@ -13,7 +13,14 @@ import type {
 } from "@healtheat/shared";
 import { NutrientBands } from "../components/NutrientBand";
 import { useAuth } from "./auth-context";
-import { getGapFoods, getPublicHome, getSummary, nutrientIdFor, shortDate } from "./lib/home";
+import {
+  formatDay,
+  getGapFoods,
+  getPublicHome,
+  getSummary,
+  nutrientIdFor,
+  shortDate,
+} from "./lib/home";
 import { EXAMPLE_WEEK } from "./lib/example-week";
 import { formatAmount } from "./lib/nutrients";
 import { AdminHome } from "./admin-home";
@@ -163,7 +170,7 @@ function PublicFeed({ data }: { data: PublicHomeResponse }) {
           {data.foods.length === 0 ? (
             <p className="hint">Nothing logged this week yet.</p>
           ) : (
-            <ul className={styles.rows}>
+            <ol className={styles.rows}>
               {data.foods.map((f) => (
                 <li key={f.fdcId}>
                   <Link href={`/food/${f.fdcId}`}>{f.description ?? `Food ${f.fdcId}`}</Link>
@@ -173,7 +180,7 @@ function PublicFeed({ data }: { data: PublicHomeResponse }) {
                   </span>
                 </li>
               ))}
-            </ul>
+            </ol>
           )}
         </div>
         <div data-testid="feed-allergens">
@@ -181,7 +188,7 @@ function PublicFeed({ data }: { data: PublicHomeResponse }) {
           {data.allergens.length === 0 ? (
             <p className="hint">No allergens detected in this week’s logs.</p>
           ) : (
-            <ul className={styles.rows}>
+            <ol className={styles.rows}>
               {data.allergens.map((a) => (
                 <li key={a.key}>
                   <span>{a.displayName}</span>
@@ -191,7 +198,7 @@ function PublicFeed({ data }: { data: PublicHomeResponse }) {
                   </span>
                 </li>
               ))}
-            </ul>
+            </ol>
           )}
         </div>
         <div data-testid="feed-profiles">
@@ -208,7 +215,7 @@ function PublicFeed({ data }: { data: PublicHomeResponse }) {
                       <span className={`role-badge ${styles.badge}`}>Curator</span>
                     ) : null}
                   </span>
-                  <span className="hint">joined {shortDate(p.memberSince.slice(0, 10))}</span>
+                  <span className="hint">joined {formatDay(p.memberSince)}</span>
                 </li>
               ))}
             </ul>
@@ -268,7 +275,10 @@ function MemberWeek({ data }: { data: SummaryResponse }) {
       <section aria-labelledby="calories-heading" data-testid="calorie-meter">
         <h2 id="calories-heading">Today’s calories</h2>
         {data.calorieMeter ? (
-          <CalorieMeter meter={data.calorieMeter} />
+          <CalorieMeter
+            meter={data.calorieMeter}
+            loggedToday={data.days.some((d) => d.date === data.today && d.logged)}
+          />
         ) : (
           <p data-testid="calorie-incomplete">
             Add your sex, birth year, height and weight, or set your own calorie band, in your{" "}
@@ -315,12 +325,13 @@ const METER_WORDS: Record<Meter["status"], string> = {
   over: "over",
 };
 
-function CalorieMeter({ meter }: { meter: Meter }) {
+function CalorieMeter({ meter, loggedToday }: { meter: Meter; loggedToday: boolean }) {
   // At least 1, so a 0 to 0 band the member set never divides by zero.
   const max = Math.max(meter.high * 1.3, meter.kcal * 1.05, 1);
   const pos = (v: number) => `${(Math.min(v, max) / max) * 100}%`;
   const kcal = (v: number) => Math.round(v).toLocaleString("en-US");
   const band = `${kcal(meter.low)} to ${kcal(meter.high)} kcal`;
+  const basis = meter.basis === "set" ? "set by you" : "estimated from your profile";
   return (
     <>
       <p className="hint">A rough reminder, not a measurement.</p>
@@ -335,15 +346,23 @@ function CalorieMeter({ meter }: { meter: Meter }) {
         >
           <span>your band</span>
         </span>
-        <span className={styles.meterFill} style={{ width: pos(meter.kcal) }} />
-      </div>
-      <p data-testid="calorie-status" data-status={meter.status}>
         {meter.kcal > 0 ? (
-          <strong>About {kcal(meter.kcal)} kcal so far.</strong>
+          <span className={styles.meterFill} style={{ width: pos(meter.kcal) }} />
+        ) : null}
+      </div>
+      {/* Whether anything was logged comes from the day, not the total: water or black coffee
+          logs 0 kcal. */}
+      <p data-testid="calorie-status" data-status={meter.status}>
+        {loggedToday ? (
+          <>
+            <strong>About {kcal(meter.kcal)} kcal so far:</strong> {METER_WORDS[meter.status]} your
+            band of {band}, {basis}.
+          </>
         ) : (
-          <strong>Nothing logged today yet.</strong>
-        )}{" "}
-        Your band is {band}, {meter.basis === "set" ? "set by you" : "estimated from your profile"}.
+          <>
+            <strong>Nothing logged today yet.</strong> Your band is {band}, {basis}.
+          </>
+        )}
       </p>
     </>
   );
@@ -404,10 +423,12 @@ function Exposure({ rows }: { rows: SummaryResponse["exposure"] }) {
                   role="img"
                   aria-label={`${r.displayName} this week: ${ZONES[zone].toLowerCase()}`}
                 >
-                  <span
-                    className={styles.meterFill}
-                    style={{ width: `${Math.min(r.hits / (t * 1.5), 1) * 100}%` }}
-                  />
+                  {r.hits > 0 ? (
+                    <span
+                      className={styles.meterFill}
+                      style={{ width: `${Math.min(r.hits / (t * 1.5), 1) * 100}%` }}
+                    />
+                  ) : null}
                   <span className={styles.meterDiv} style={{ left: "33.333%" }} />
                   <span className={styles.meterDiv} style={{ left: "66.667%" }} />
                 </div>

@@ -65,7 +65,19 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Lists of foods and counts: one row each, the figure on the right, a rule between rows. */
+/* A load that failed (use-load.tsx's LoadError, on every page that loads data): a 1px danger border,
+   then only the actions that help. */
+.error {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+}
+.error p {
+  margin: 0 0 8px;
+}
+
+/* Ranked and plain lists of foods and counts: one row each, the figure on the right, a rule between rows. */
 .feedGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));

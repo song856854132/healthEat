@@ -163,7 +163,7 @@ export function NutrientBands({
       </p>
       {loggedDays === 0 ? (
         <p className={styles.empty} data-testid="bands-empty">
-          Nothing logged in the last 7 days. Each day you log fills in a column here.
+          Nothing logged in the last 7 days. Each day you log adds a dot and fills in the bars.
         </p>
       ) : (
         <>
