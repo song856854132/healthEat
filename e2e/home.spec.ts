@@ -34,25 +34,34 @@ test("anonymous Home: the live feed, the example week and a way in, from the rea
   await page.goto("/");
   const home = page.getByTestId("public-home");
   await expect(home).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("healthEat");
-  await expect(home).toContainText("weekly nutrient-and-sensitivity coach");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Eat well across the week");
+  await expect(home).toContainText("healthEat coaches your week of eating");
 
-  // The feed answers (empty or not, depending on the database), with all three blocks.
+  // The feed answers, empty or not depending on the database: one sentence when the whole week is
+  // empty, else all three blocks.
   await expect(page.getByTestId("feed-week")).toBeVisible({ timeout: 30_000 });
-  for (const id of ["feed-foods", "feed-allergens", "feed-profiles"]) {
-    await expect(page.getByTestId(id)).toBeVisible();
+  if ((await page.getByTestId("feed-empty").count()) === 0) {
+    for (const id of ["feed-foods", "feed-allergens", "feed-profiles"]) {
+      await expect(page.getByTestId(id)).toBeVisible();
+    }
   }
 
-  // One clearly labelled example band, drawn by the member component.
+  // One clearly labelled example band, drawn by the member component, above the feed.
   const example = page.getByTestId("example-week");
-  await expect(example.getByRole("heading", { level: 2 })).toContainText("Example week");
-  await expect(example).toContainText("sample data");
+  await expect(example.getByRole("heading", { level: 2 })).toHaveText("Example week");
+  await expect(example).toContainText("Sample data, not a real member");
   await expect(example.getByTestId("band-header")).toContainText("4 of 7 days logged");
   await expect(example.getByTestId("band-row")).toHaveCount(7);
+  expect(
+    await home.locator("section").evaluateAll((s) => s.map((x) => x.getAttribute("data-testid"))),
+  ).toEqual(["example-week", "public-feed", "start-week"]);
 
-  // No log bar for visitors: an invitation instead.
+  // No log bar for visitors: Register (the one filled button) and Log in, at the top and the end.
   await expect(page.getByTestId("log-bar")).toHaveCount(0);
-  await page.getByRole("link", { name: "Create an account" }).click();
+  await expect(
+    page.getByTestId("start-week").getByRole("link", { name: "Log in" }),
+  ).toHaveAttribute("href", "/login");
+  await home.getByRole("link", { name: "Register" }).first().click();
   await expect(page).toHaveURL(/\/register$/);
 });
 
@@ -87,11 +96,17 @@ test("anonymous Home lists this week's foods, allergens and profiles, without us
   await expect(foods.getByRole("link", { name: "Food 1002" })).toBeVisible();
   await expect(foods).toContainText("1 log");
   await expect(page.getByTestId("feed-allergens")).toContainText("Milk");
-  await expect(page.getByTestId("feed-allergens")).toContainText("in 2 logs");
+  await expect(page.getByTestId("feed-allergens")).toContainText("2 logs");
+  await expect(page.getByTestId("feed-allergens").getByRole("heading")).toHaveText(
+    "Allergens detected most",
+  );
+  await expect(foods.getByRole("heading")).toHaveText("Foods logged most");
   const profiles = page.getByTestId("feed-profiles");
   await expect(profiles).toContainText("mock_curator");
   await expect(profiles).toContainText("Curator");
+  await expect(profiles).toContainText("joined Nov 1");
   await expect(page.getByTestId("feed-week")).toContainText("Nov 16 to Nov 22");
+  await expect(page.getByTestId("feed-empty")).toHaveCount(0);
 });
 
 test("anonymous Home says when the feed is empty, and offers Try again when it fails", async ({
@@ -108,9 +123,21 @@ test("anonymous Home says when the feed is empty, and offers Try again when it f
   await expect(error).toContainText("The database is not answering", { timeout: 30_000 });
   fail = false;
   await error.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByTestId("feed-foods")).toContainText("Nothing logged this week yet.");
+  await expect(page.getByTestId("feed-empty")).toHaveText(
+    "Nothing has been logged on healthEat this week yet.",
+  );
+  await expect(page.getByTestId("feed-foods")).toHaveCount(0);
+});
+
+test("anonymous Home says which feed block is empty when only some are", async ({ page }) => {
+  await page.route("**/api/home/public", (route) =>
+    route.fulfill({ json: { ...FEED, allergens: [], profiles: [] } }),
+  );
+  await page.goto("/");
+  await expect(page.getByTestId("feed-foods")).toContainText("Mock oats", { timeout: 30_000 });
   await expect(page.getByTestId("feed-allergens")).toContainText("No allergens detected");
   await expect(page.getByTestId("feed-profiles")).toContainText("No public profiles yet.");
+  await expect(page.getByTestId("feed-empty")).toHaveCount(0);
 });
 
 // ---- Member Home ---------------------------------------------------------------------------------
@@ -122,23 +149,31 @@ test("a new member's Home, from the real API: empty bands, no meter yet, and a l
   await page.goto("/");
   await expect(page.getByTestId("member-home")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("public-home")).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your week");
 
   await expect(page.getByTestId("band-header")).toContainText("0 of 7 days logged", {
     timeout: 30_000,
   });
-  await expect(page.getByTestId("bands-empty")).toBeVisible();
+  await expect(page.getByTestId("bands-empty")).toHaveText(
+    "Nothing logged in the last 7 days. Each day you log fills in a column here.",
+  );
   // Registration asks only for the time zone, so targets use the adult reference and the meter waits.
   await expect(page.getByTestId("target-basis")).toContainText("adult reference");
   await expect(page.getByTestId("calorie-incomplete")).toBeVisible();
-  await expect(page.getByTestId("exposure-empty")).toBeVisible();
+  await expect(page.getByTestId("exposure-empty")).toHaveText(
+    "You are not tracking any sensitivities. Choose them on your profile.",
+  );
   await expect(page.getByTestId("alert-strip")).toHaveCount(0);
   await expect(page.getByTestId("close-the-gap")).toHaveCount(0);
 
-  const bar = page.getByTestId("log-bar");
-  await expect(bar.getByRole("link", { name: "Today’s log" })).toHaveAttribute("href", "/log");
-  await bar.getByRole("searchbox", { name: "Find a food to log" }).fill("  banana  ");
-  await bar.getByRole("button", { name: "Search" }).click();
-  await expect(page).toHaveURL(/\/search\?q=banana$/);
+  const bar = page.getByRole("region", { name: "Log a meal" });
+  await expect(bar).toHaveAttribute("data-testid", "log-bar");
+  await expect(bar.getByRole("link", { name: "Log by photo" })).toHaveAttribute(
+    "href",
+    "/log?photo=1",
+  );
+  await bar.getByRole("link", { name: "Search food" }).click();
+  await expect(page).toHaveURL(/\/search$/);
 });
 
 // T19's fixture: 4 of 7 days logged, one of them mostly photo-estimated (confidence below 0.5).
@@ -213,6 +248,16 @@ const SUMMARY = SummaryResponse.parse({
       overThreshold: false,
       estimate: true,
     },
+    {
+      key: "lactose",
+      displayName: "Lactose",
+      tier: "sensitivity",
+      hits: 3,
+      weight: 1.1,
+      weeklyThreshold: 4,
+      overThreshold: false,
+      estimate: false,
+    },
   ],
   alerts: [
     {
@@ -255,7 +300,7 @@ async function mockMemberWeek(page: Page) {
   );
 }
 
-test("T19 bands on a 4-of-7 week: header, order, per-day dots and the hatched/plain/outlined encoding", async ({
+test("T19 bands on a 4-of-7 week: header, order, per-day dots and the band encoding", async ({
   page,
 }) => {
   await signUp(page, "hband");
@@ -291,13 +336,18 @@ test("T19 bands on a 4-of-7 week: header, order, per-day dots and the hatched/pl
   for (const row of await rows.all()) expect(await dotStates(row)).toEqual(DOTS);
 
   const row = (key: string) => bands.locator(`[data-testid="band-row"][data-key="${key}"]`);
-  await expect(row("vitaminE").getByTestId("band-value")).toHaveText("41% low");
-  await expect(row("sodium").getByTestId("band-value")).toHaveText("163% high");
-  await expect(row("iron").getByTestId("band-value")).toHaveText("104% ok");
+  await expect(row("vitaminE").getByTestId("band-value")).toHaveText("41%");
+  await expect(row("vitaminE").getByTestId("band-word")).toHaveText("Low this week");
+  await expect(row("sodium").getByTestId("band-value")).toHaveText("163%");
+  await expect(row("sodium").getByTestId("band-word")).toHaveText("High this week");
+  await expect(row("iron").getByTestId("band-value")).toHaveText("104%");
+  await expect(row("iron").getByTestId("band-word")).toHaveText("OK this week");
+  await expect(row("vitaminD").getByTestId("band-word")).toHaveCount(0);
   await expect(row("vitaminD")).toContainText("Not enough data: 30% of logged grams report it");
 
-  // The visual encoding itself, read from the rendered styles: hatched = low, plain = ok,
-  // outlined = high (Working plan amendments, C5).
+  // The visual encoding itself, read from the rendered styles (Working plan amendments, C5, drawn as
+  // the v2 UI design's cells): low = hatch with a dashed outline, ok = plain with a solid outline,
+  // high = cross-hatch with a 2px outline.
   const fill = async (key: string) =>
     row(key)
       .locator("span[style*='width']")
@@ -305,19 +355,18 @@ test("T19 bands on a 4-of-7 week: header, order, per-day dots and the hatched/pl
         const s = getComputedStyle(el);
         return {
           image: s.backgroundImage,
-          color: s.backgroundColor,
           border: s.borderTopWidth,
+          style: s.borderTopStyle,
         };
       });
   const low = await fill("vitaminE");
   expect(low.image).toContain("repeating-linear-gradient");
+  expect(low).toMatchObject({ border: "1px", style: "dashed" });
   const ok = await fill("iron");
-  expect(ok.image).toBe("none");
-  expect(ok.color).not.toBe("rgba(0, 0, 0, 0)");
+  expect(ok).toEqual({ image: "none", border: "1px", style: "solid" });
   const high = await fill("sodium");
-  expect(high.image).toBe("none");
-  expect(high.color).toBe("rgba(0, 0, 0, 0)");
-  expect(high.border).toBe("2px");
+  expect(high.image.match(/repeating-linear-gradient/g)).toHaveLength(2);
+  expect(high).toMatchObject({ border: "2px", style: "solid" });
   // Dots: a filled disc, a hollow ring, and nothing for an unlogged day.
   const dot = (i: number) =>
     row("iron")
@@ -327,9 +376,12 @@ test("T19 bands on a 4-of-7 week: header, order, per-day dots and the hatched/pl
         const s = getComputedStyle(el);
         return { bg: s.backgroundColor, border: s.borderTopWidth };
       });
-  expect((await dot(0)).bg).not.toBe("rgba(0, 0, 0, 0)");
-  expect((await dot(2)).bg).toBe("rgba(0, 0, 0, 0)");
-  expect((await dot(2)).border).not.toBe("0px");
+  const searched = await dot(0);
+  const photo = await dot(2);
+  expect(searched.border).toBe("0px");
+  expect(searched.bg).not.toBe("rgba(0, 0, 0, 0)");
+  expect(photo.border).toBe("2px");
+  expect(photo.bg).not.toBe(searched.bg);
   expect(await dot(1)).toEqual({ bg: "rgba(0, 0, 0, 0)", border: "0px" });
 });
 
@@ -344,6 +396,17 @@ test("Member Home: the alert strip, today's calorie meter and the exposure meter
   await expect(alert).toContainText("Soy detected today in Mock dark chocolate", {
     timeout: 30_000,
   });
+  await expect(alert.locator("p").first()).toHaveText("Allergy alert");
+  await expect(alert.getByRole("link", { name: "Open today’s log" })).toHaveAttribute(
+    "href",
+    "/log",
+  );
+  // The strip comes first, above the page's h1.
+  expect(
+    await page
+      .getByTestId("member-home")
+      .evaluate((el) => [...el.children].slice(0, 2).map((c) => c.tagName)),
+  ).toEqual(["DIV", "H1"]);
   await expect(alert).toContainText("Soy is on your avoid list.");
   await expect(alert.getByRole("link", { name: "Mock dark chocolate" })).toHaveAttribute(
     "href",
@@ -351,18 +414,31 @@ test("Member Home: the alert strip, today's calorie meter and the exposure meter
   );
 
   const meter = page.getByTestId("calorie-meter");
-  await expect(meter).toContainText("Target 1,900 to 2,300 kcal, estimated from your profile");
   await expect(meter.getByTestId("calorie-status")).toHaveText(
-    "About 2,480 kcal so far today · over target",
+    "About 2,480 kcal so far. Your band is 1,900 to 2,300 kcal, estimated from your profile.",
   );
+  await expect(
+    meter.getByRole("img", {
+      name: "About 2,480 kcal so far, over your band of 1,900 to 2,300 kcal",
+    }),
+  ).toBeVisible();
+  await expect(meter).toContainText("your band");
 
   const exposure = page.getByTestId("exposure-row");
-  await expect(exposure).toHaveCount(2);
+  await expect(exposure).toHaveCount(3);
   await expect(exposure.nth(0)).toContainText("Gluten");
-  await expect(exposure.nth(0)).toContainText("above (6 a week)");
+  await expect(exposure.nth(0)).toContainText(
+    "9 logged entries this week; your threshold is 6 a week, and this week is above it.",
+  );
   await expect(exposure.nth(0)).toHaveAttribute("data-over", "true");
+  await expect(exposure.nth(0)).toHaveAttribute("data-zone", "heavy");
+  await expect(exposure.nth(0).getByRole("img", { name: "Gluten this week: heavy" })).toBeVisible();
   await expect(exposure.nth(1)).toContainText("food-category estimate");
-  await expect(exposure.nth(1)).toContainText("no threshold set");
+  await expect(exposure.nth(1)).toContainText("2 logged entries this week. No threshold set");
+  await expect(exposure.nth(1).getByRole("img")).toHaveCount(0);
+  // Light up to half the threshold, Moderate up to it, Heavy past it.
+  await expect(exposure.nth(2)).toHaveAttribute("data-zone", "moderate");
+  await expect(exposure.nth(2).locator("strong")).toHaveText("Moderate");
 });
 
 test("close the gap suggests foods for the lowest band, and for any other low band on request", async ({
@@ -373,24 +449,26 @@ test("close the gap suggests foods for the lowest band, and for any other low ba
   await page.goto("/");
 
   const gapSection = page.getByTestId("close-the-gap");
-  await expect(gapSection.getByRole("heading", { level: 2 })).toHaveText(
-    "Close the gap: Vitamin E (41%)",
-    { timeout: 30_000 },
+  await expect(gapSection.getByRole("heading", { level: 2 })).toHaveText("Close the gap", {
+    timeout: 30_000,
+  });
+  await expect(gapSection.getByTestId("gap-lead")).toHaveText(
+    "Vitamin E was low this week, at 41% of your target. These foods add the most vitamin E per calorie and contain nothing you avoid.",
   );
   const foods = gapSection.getByTestId("gap-foods");
   await expect(foods.getByRole("link", { name: "Mock sunflower seeds" })).toHaveAttribute(
     "href",
     "/food/3001",
   );
-  await expect(foods).toContainText("28 g · 7.4 mg");
+  await expect(foods).toContainText("28 g, about 7.4 mg vitamin E");
   await expect(gapSection.getByRole("button", { name: "Vitamin E" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
 
   await gapSection.getByRole("button", { name: "Fiber" }).click();
-  await expect(gapSection.getByRole("heading", { level: 2 })).toHaveText(
-    "Close the gap: Fiber (62%)",
+  await expect(gapSection.getByTestId("gap-lead")).toContainText(
+    "Fiber was low this week, at 62% of your target.",
   );
   await expect(foods.getByRole("link", { name: "Mock lentils" })).toBeVisible();
   await expect(foods.getByRole("link", { name: "Mock sunflower seeds" })).toHaveCount(0);

@@ -79,7 +79,9 @@ test("an acknowledgment follows the account to a fresh browser at login", async 
     // The login answer set the cookie, so the banner stays away after logout and reload too.
     expect((await fresh.cookies()).map((c) => c.name)).toContain(PRIVACY_ACK_COOKIE);
     await other.getByRole("button", { name: "Log out" }).click();
-    await expect(other.getByRole("link", { name: "Log in" })).toBeVisible({ timeout: 30_000 });
+    await expect(
+      other.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Log in" }),
+    ).toBeVisible({ timeout: 30_000 });
     await other.reload();
     await expect(other.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(banner(other)).toHaveCount(0);

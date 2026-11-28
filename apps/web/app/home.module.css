@@ -1,5 +1,11 @@
-/* Home (T30). Colours come from the tokens in globals.css (--ink, --paper, --line, --danger). */
+/* Home (T30), laid out as the v2 UI design's visitor and Member Home artboards (T32; the design's
+   healtheat.css, its "NEW" blocks, scoped here). Colours come from the tokens in globals.css (--ink,
+   --paper, --line, --danger); nothing is told apart by hue alone. */
 
+/* Visitor and Member Home use the 720px column of globals.css; Curator and Admin Home keep 880px. */
+.main {
+  display: block;
+}
 .wide {
   max-width: 880px;
 }
@@ -8,169 +14,158 @@
   display: block;
 }
 
-.srOnly {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.status {
-  margin-top: 24px;
-}
-.muted {
-  opacity: 0.75;
+.home h2 {
+  font-size: 1.25rem;
+  line-height: 1.3;
   margin: 0;
 }
-.sub {
-  font-size: 0.9rem;
-  opacity: 0.8;
-  margin: 0 0 12px;
+.home h3 {
+  font-size: 1rem;
+  line-height: 1.4;
+  margin: 0;
 }
-.cta {
+.home section > :first-child {
+  margin-top: 0;
+}
+.home section > :last-child {
+  margin-bottom: 0;
+}
+.home section h2 + p,
+.home section .sectionHead + p {
+  margin-top: 4px;
+}
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
+  gap: 8px 16px;
+}
+
+/* Loading: a dashed box, role="status", no animation. */
+.status {
+  margin: 24px 0 0;
+  padding: 12px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
 }
 .badge {
-  display: inline-block;
-  font-size: 0.75rem;
-  font-weight: 400;
-  padding: 1px 8px;
   margin-left: 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  font-weight: 400;
   vertical-align: middle;
 }
-
-.home section h2 {
-  font-size: 1.15rem;
-  margin: 0 0 8px;
-}
-.home section h3 {
-  font-size: 1rem;
-  margin: 0 0 8px;
+.num {
+  font-variant-numeric: tabular-nums;
 }
 
-.error {
-  margin-top: 16px;
-  padding: 12px 16px;
-  border: 1px solid var(--danger);
-  border-radius: 8px;
+/* Lists of foods and counts: one row each, the figure on the right, a rule between rows. */
+.feedGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  gap: 16px 24px;
+  margin: 12px 0;
 }
-.error p {
-  margin: 0 0 8px;
+.rows {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.rows > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 16px;
+  padding: 10px 0;
+}
+.rows > li + li {
+  border-top: 1px solid var(--line);
 }
 
 /* Hard allergy alert strip: the one loud element on the page, only when an avoided allergen was
-   detected today (wireframe decision 3). */
+   detected today (wireframe decision 3). A 2px danger border, ink text, the title in danger; never a
+   fill. */
 .alert {
-  margin-top: 24px;
+  margin: 0 0 24px;
   padding: 12px 16px;
   border: 2px solid var(--danger);
   border-radius: 8px;
-  font-weight: 600;
 }
 .alert p {
-  margin: 0;
+  margin: 4px 0 0;
 }
-.alert p + p {
-  margin-top: 6px;
+.alert .alertTitle {
+  margin: 0;
+  color: var(--danger);
+  font-weight: 700;
 }
 
-.feedGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px 24px;
-}
-.countList {
-  margin: 0;
-  padding-left: 1.25rem;
-}
-ul.countList {
-  list-style: none;
-  padding-left: 0;
-}
-.countList li {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0 8px;
-  padding: 3px 0;
-}
-ol.countList li {
-  display: list-item;
-}
-ol.countList .count {
-  float: right;
-  margin-left: 8px;
-}
-.count {
-  font-size: 0.85rem;
-  opacity: 0.75;
-  font-variant-numeric: tabular-nums;
-}
-.username {
-  font-weight: 600;
-}
-
-/* Today's calorie meter: coarse on purpose (under, on target, over). */
+/* Meters: today's calories against the member's band, and each sensitivity's three zones. */
 .meter {
   position: relative;
-  height: 18px;
+  height: 24px;
+  margin-top: 30px;
   border: 1px solid var(--ink);
-  border-radius: 3px;
-  margin: 8px 0;
+  border-radius: 4px;
 }
-.meterBand {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-left: 2px solid var(--ink);
-  border-right: 2px solid var(--ink);
-  background: repeating-linear-gradient(90deg, transparent 0 4px, var(--line) 4px 5px);
+.meter.plain {
+  margin-top: 12px;
 }
 .meterFill {
   position: absolute;
-  inset: 3px auto 3px 0;
-  background: var(--ink);
-  opacity: 0.7;
-  border-radius: 2px;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-right: 2px solid var(--ink);
+  background: repeating-linear-gradient(135deg, var(--ink) 0 1px, transparent 1px 5px);
 }
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.95rem;
+.meterBand {
+  position: absolute;
+  top: -7px;
+  bottom: -7px;
+  border-left: 2px solid var(--ink);
+  border-right: 2px solid var(--ink);
 }
-.table th,
-.table td {
-  border-top: 1px solid var(--line);
-  padding: 6px 8px 6px 0;
-  text-align: left;
-  vertical-align: top;
+.meterBand span {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
-.table thead th {
-  border-top: 0;
+.meterDiv {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed var(--ink);
+}
+.meterLabels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 4px;
+  text-align: center;
   font-size: 0.85rem;
-  opacity: 0.8;
 }
-.table tbody th {
-  font-weight: 600;
+.exposureRow {
+  margin-top: 16px;
 }
-.table .num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.exposureRow p {
+  margin: 8px 0 0;
 }
 
 .choices {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 12px;
+  margin: 8px 0;
 }
 .choices button {
   margin-right: 0;
@@ -181,38 +176,43 @@ ol.countList .count {
   border-color: var(--ink);
 }
 
-/* The log bar: always on Member Home; pinned to the bottom on phone widths so logging stays one tap
-   away (wireframe decision 1). */
+/* The log bar: two ways to log. Inline at the end of Member Home on desktop; on phones, sticky at the
+   bottom of main, full width with a rule on top, so it rests above the footer and never covers it. */
 .logBar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
+  gap: 8px;
   margin-top: 24px;
-  padding: 12px;
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  background: var(--paper);
+  border: 0;
+  padding: 0;
 }
-.logBar input {
-  flex: 1 1 200px;
-  min-width: 0;
-  min-height: 40px;
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 10px;
+.logBar :global(.button-link) {
+  min-height: 44px;
+  padding: 6px 16px;
 }
-.logBar button {
-  margin-right: 0;
-  min-height: 40px;
-}
-@media (max-width: 520px) {
+
+/* Phone (under 600px): less padding above the first section so the alert strip and calories show
+   without scrolling, 44px targets, and the pinned log bar. */
+@media (max-width: 600px) {
+  .main {
+    padding: 24px 16px 32px;
+  }
+  .home :global(.button-link),
+  .home button {
+    min-height: 44px;
+  }
   .logBar {
     position: sticky;
     bottom: 0;
-    border-style: solid;
+    z-index: 1;
+    margin: 24px -16px 0;
+    padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    background: var(--paper);
+  }
+  .logBar :global(.button-link) {
+    flex: 1 1 0;
   }
 }

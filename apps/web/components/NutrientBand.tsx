@@ -7,7 +7,8 @@ import { formatAmount } from "../app/lib/nutrients";
 import styles from "./NutrientBand.module.css";
 
 // The 7-day nutrient bands (T19; design doc, Working plan amendments C5, R3-12 and R3-13): one row per
-// tracked nutrient, its fill encoding the band class (hatched = low, plain = ok, outlined = high), seven
+// tracked nutrient, its fill encoding the band class (v2 UI design, T32: sparse hatch with a dashed
+// outline = low, plain with a solid outline = ok, dense cross-hatch with a 2px outline = high), seven
 // per-day dots under the "N of 7 days logged" header (filled = mostly searched, hollow = mostly
 // photo-estimated, absent = unlogged). The classes come from the API (`status`); this only draws them.
 
@@ -53,6 +54,13 @@ const percent = (share: number) => `${Math.round(share * 100)}%`;
 
 const amount = (value: number, unit: string) => `${formatAmount(value)} ${unit}`;
 
+/** The words under a measured nutrient's name (v2 UI design, Member Home). */
+const BAND_WORDS: Partial<Record<Band["status"], string>> = {
+  low: "Low this week",
+  ok: "OK this week",
+  high: "High this week",
+};
+
 function DayDots({ days }: { days: readonly Day[] }) {
   return (
     <span className={styles.dots} aria-hidden="true">
@@ -77,7 +85,14 @@ function BandRow({ band, days }: { band: Band; days: readonly Day[] }) {
   const coverage = band.coverage ?? 0;
   return (
     <li className={styles.row} data-testid="band-row" data-key={band.key} data-status={band.status}>
-      <span className={styles.name}>{band.name}</span>
+      <span className={styles.name}>
+        <span className={styles.bandName}>{band.name}</span>
+        {BAND_WORDS[band.status] ? (
+          <span className={styles.bandWord} data-testid="band-word">
+            {BAND_WORDS[band.status]}
+          </span>
+        ) : null}
+      </span>
       <DayDots days={days} />
       {measured ? (
         <>
@@ -101,7 +116,7 @@ function BandRow({ band, days }: { band: Band; days: readonly Day[] }) {
             <span className={styles.tick} style={{ left: at(BAND_HIGH) }} />
           </span>
           <span className={styles.value} data-testid="band-value">
-            {percent(coverage)} <span className={styles.status}>{band.status}</span>
+            {percent(coverage)}
           </span>
         </>
       ) : (
@@ -148,7 +163,7 @@ export function NutrientBands({
       </p>
       {loggedDays === 0 ? (
         <p className={styles.empty} data-testid="bands-empty">
-          No logs yet this week. Log a meal and your bands start filling in.
+          Nothing logged in the last 7 days. Each day you log fills in a column here.
         </p>
       ) : (
         <>
@@ -183,17 +198,29 @@ export function NutrientBands({
               {expanded ? "Show fewer" : `Show all ${sorted.length} nutrients`}
             </button>
           ) : null}
-          <p className={styles.legend}>
-            <span className={`${styles.swatch} ${styles.low}`} aria-hidden="true" /> hatched: below
-            {LOW_PCT}% of target ·{" "}
-            <span className={`${styles.swatch} ${styles.ok}`} aria-hidden="true" /> plain: {LOW_PCT}{" "}
-            to {HIGH_PCT}% ·{" "}
-            <span className={`${styles.swatch} ${styles.high}`} aria-hidden="true" /> outlined:
-            above {HIGH_PCT}% or past the upper limit.{" "}
-            <span className={`${styles.dot} ${styles.searched}`} /> mostly searched day ·{" "}
-            <span className={`${styles.dot} ${styles.photo}`} /> mostly photo-estimated · no dot:
-            not logged.
-          </p>
+          <ul className={styles.legend} data-testid="band-legend">
+            <li>
+              <span className={`${styles.swatch} ${styles.low}`} aria-hidden="true" />
+              Low: under {LOW_PCT}% of target
+            </li>
+            <li>
+              <span className={`${styles.swatch} ${styles.ok}`} aria-hidden="true" />
+              OK: in range
+            </li>
+            <li>
+              <span className={`${styles.swatch} ${styles.high}`} aria-hidden="true" />
+              High: over {HIGH_PCT}% or the upper limit
+            </li>
+            <li>
+              <span className={`${styles.dot} ${styles.searched}`} aria-hidden="true" />
+              Logged by search
+            </li>
+            <li>
+              <span className={`${styles.dot} ${styles.photo}`} aria-hidden="true" />
+              Mostly a photo estimate
+            </li>
+            <li>No dot: not logged</li>
+          </ul>
         </>
       )}
     </div>

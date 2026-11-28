@@ -27,7 +27,7 @@
 .columns,
 .row {
   display: grid;
-  grid-template-columns: minmax(6.5rem, 9rem) auto minmax(0, 1fr) 5.5rem;
+  grid-template-columns: minmax(7rem, 10rem) auto minmax(0, 1fr) 3.5rem;
   align-items: center;
   gap: 4px 12px;
 }
@@ -52,7 +52,16 @@
   border-top: 1px solid var(--line);
 }
 .name {
+  display: flex;
+  flex-direction: column;
+}
+.bandName {
   font-weight: 600;
+  line-height: 1.3;
+}
+.bandWord {
+  font-size: 0.85rem;
+  line-height: 1.3;
 }
 
 .dots {
@@ -74,7 +83,8 @@
   background: var(--ink);
 }
 .photo {
-  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  border: 2px solid var(--ink);
 }
 .unlogged {
   background: transparent;
@@ -83,7 +93,7 @@
 .track {
   position: relative;
   display: block;
-  height: 16px;
+  height: 24px;
   border: 1px solid var(--line);
   border-radius: 3px;
 }
@@ -104,26 +114,27 @@
   border-left: 2px solid var(--ink);
 }
 
-/* Band classes (Working plan amendments, C5): hatched = low, plain = ok, outlined = high. */
+/* Band classes (Working plan amendments, C5, drawn as the v2 UI design's band cells, T32): low = sparse
+   diagonal hatch with a dashed outline; ok = plain with a solid outline; high = dense cross-hatch with
+   a 2px outline. */
 .low {
-  background: repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 5px);
-  border: 1px solid var(--ink);
+  background: repeating-linear-gradient(45deg, var(--ink) 0 1px, transparent 1px 7px);
+  border: 1px dashed var(--ink);
 }
 .ok {
-  background: var(--ink);
+  background: transparent;
+  border: 1px solid var(--ink);
 }
 .high {
-  background: transparent;
+  background:
+    repeating-linear-gradient(45deg, var(--ink) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(-45deg, var(--ink) 0 1px, transparent 1px 4px);
   border: 2px solid var(--ink);
 }
 
 .value {
   text-align: right;
   font-variant-numeric: tabular-nums;
-}
-.status {
-  font-size: 0.8rem;
-  opacity: 0.75;
 }
 .note {
   grid-column: 3 / 5;
@@ -135,16 +146,24 @@
   margin-top: 8px;
 }
 .legend {
-  font-size: 0.8rem;
-  opacity: 0.8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
   margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .swatch {
   display: inline-block;
-  width: 18px;
-  height: 10px;
-  border-radius: 2px;
-  vertical-align: middle;
+  width: 24px;
+  height: 16px;
+  border-radius: 3px;
 }
 .legend .dot {
   --dot: 9px;
