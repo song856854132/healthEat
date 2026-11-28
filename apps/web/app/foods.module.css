@@ -296,8 +296,18 @@
   flex-basis: 100%;
 }
 
-/* Phone widths (T34): pager links are 44px targets. */
+/* Phone widths (T34): the search, portion and log controls and the pager links are 44px targets
+   (these module rules outrank the global phone rule, so they say it themselves). */
 @media (max-width: 600px) {
+  .searchForm input,
+  .searchForm select,
+  .searchForm button,
+  .portionRow select,
+  .portionRow input,
+  .logForm select,
+  .primary {
+    min-height: 44px;
+  }
   .pager a {
     display: inline-flex;
     align-items: center;

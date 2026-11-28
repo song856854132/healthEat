@@ -16,8 +16,10 @@ const cssVar = (page: Page, name: string) =>
     return value;
   }, name);
 
-const style = (el: Locator, prop: "borderTopColor" | "outlineStyle" | "outlineWidth") =>
-  el.evaluate((node, p) => getComputedStyle(node)[p], prop);
+const style = (
+  el: Locator,
+  prop: "borderTopColor" | "borderBottomColor" | "outlineStyle" | "outlineWidth",
+) => el.evaluate((node, p) => getComputedStyle(node)[p], prop);
 
 const height = async (el: Locator) => (await el.boundingBox())!.height;
 
@@ -36,7 +38,8 @@ test("inputs and buttons have the darker control border; section outlines keep t
   expect(await style(page.getByRole("button", { name: "Create account" }), "borderTopColor")).toBe(
     await cssVar(page, "--ink"),
   );
-  expect(await style(page.locator(".site-header"), "borderTopColor")).not.toBe(control);
+  // The header's rule (its bottom border) keeps the light line.
+  expect(await style(page.locator(".site-header"), "borderBottomColor")).toBe(line);
 
   // An invalid field still shows its danger border.
   await page.getByLabel("Username").fill("No Spaces!");
@@ -95,6 +98,25 @@ test.describe("on a phone", () => {
       page.getByTestId("day-add-photo"),
       page.getByRole("link", { name: "← Previous day" }),
       page.getByRole("button", { name: "Log out" }),
+    ])
+      expect(await height(el)).toBeGreaterThanOrEqual(44);
+
+    // Home's log bar: its own module rules, so measured too.
+    await page.goto("/");
+    const bar = page.getByTestId("log-bar");
+    await expect(bar).toBeVisible({ timeout: 30_000 });
+    for (const el of [bar.getByRole("searchbox"), bar.getByRole("button", { name: "Search" })])
+      expect(await height(el)).toBeGreaterThanOrEqual(44);
+  });
+
+  test("the search form's box, data type and button are at least 44px tall", async ({ page }) => {
+    await page.goto("/search");
+    const box = page.getByRole("searchbox", { name: "Food" });
+    await expect(box).toBeVisible({ timeout: 30_000 });
+    for (const el of [
+      box,
+      page.getByRole("combobox"),
+      page.getByRole("button", { name: "Search" }),
     ])
       expect(await height(el)).toBeGreaterThanOrEqual(44);
   });
