@@ -89,7 +89,12 @@ function Queue({ query }: { query: UnmatchedPageQuery }) {
           Loading the queue…
         </p>
       ) : list.kind === "error" ? (
-        <LoadError failure={list.failure} retry={retry} testId="unmatched-list-error" />
+        <LoadError
+          lead="Could not load the ingredient phrases."
+          failure={list.failure}
+          retry={retry}
+          testId="unmatched-list-error"
+        />
       ) : (
         <Results
           query={query}
@@ -147,7 +152,8 @@ function Results({
   // One heavy write (a map, or a Continue re-match) at a time on this page: each re-matches every cached
   // food for up to 60 seconds, and two passes over one allergen restart each other. A set of the rows
   // running one, so each row clears only its own entry.
-  const [heavy, setHeavy] = useState<ReadonlySet<string>>(() => new Set());
+  // Each running row's allergen name, so a waiting row can say which re-match it waits for.
+  const [heavy, setHeavy] = useState<ReadonlyMap<string, string>>(() => new Map());
   // Rows with a request in flight: reloading the page meanwhile would drop their answers.
   const [inFlight, setInFlight] = useState(0);
   return (
@@ -166,7 +172,7 @@ function Results({
         <p className={styles.status} data-testid="unmatched-empty">
           {data.total > 0 ? (
             <>
-              No phrases on this page.{" "}
+              Page {query.page} is past the end of this list.{" "}
               <Link href={unmatchedHref({ status: query.status, page: 1 })}>Go to page 1</Link>
             </>
           ) : (
@@ -181,12 +187,12 @@ function Results({
               token={t}
               allergens={dictionary.kind === "done" ? dictionary.data.allergens : null}
               dictionaryFailed={dictionary.kind === "error"}
-              heavyElsewhere={[...heavy].some((k) => k !== t.token)}
-              onHeavy={(on) =>
+              heavyElsewhere={[...heavy].find(([k]) => k !== t.token)?.[1] ?? null}
+              onHeavy={(name) =>
                 setHeavy((h) => {
-                  const next = new Set(h);
-                  if (on) next.add(t.token);
-                  else next.delete(t.token);
+                  const next = new Map(h);
+                  if (name === null) next.delete(t.token);
+                  else next.set(t.token, name);
                   return next;
                 })
               }
@@ -245,10 +251,10 @@ function TokenRow({
   /** The dictionary by display name, or null while it loads or after it failed. */
   allergens: AllergenView[] | null;
   dictionaryFailed: boolean;
-  /** Another row's map or Continue re-match is running. */
-  heavyElsewhere: boolean;
-  /** This row's map or Continue re-match started or ended. */
-  onHeavy: (on: boolean) => void;
+  /** The allergen of another row's running map or Continue re-match, or null. */
+  heavyElsewhere: string | null;
+  /** This row's map or Continue re-match started (with its allergen's name) or ended (null). */
+  onHeavy: (name: string | null) => void;
   /** A request of this row (map, ignore or Continue re-match) started or ended. */
   onInFlight: (on: boolean) => void;
   /** This row's phrase left its list (mapped or ignored). */
@@ -276,7 +282,8 @@ function TokenRow({
     busy.current = true;
     setPending(input.action);
     setError(null);
-    if (input.action === "map") onHeavy(true);
+    if (input.action === "map")
+      onHeavy(allergens?.find((a) => a.id === input.allergenId)?.displayName ?? "allergen");
     onInFlight(true);
     try {
       const result = await actOnUnmatched(token.token, input);
@@ -294,7 +301,7 @@ function TokenRow({
     } finally {
       busy.current = false;
       setPending(null);
-      if (input.action === "map") onHeavy(false);
+      if (input.action === "map") onHeavy(null);
       onInFlight(false);
     }
   }
@@ -328,7 +335,7 @@ function TokenRow({
       </div>
       {token.sampleFdcIds.length > 0 ? (
         <p className={styles.muted}>
-          Examples:{" "}
+          For example:{" "}
           {token.sampleFdcIds.map((fdcId, i) => (
             <span key={fdcId}>
               {i > 0 ? ", " : null}
@@ -350,9 +357,9 @@ function TokenRow({
               id={outcome.allergen.id}
               name={outcome.allergen.displayName}
               initial={outcome.rematch}
-              blocked={heavyElsewhere}
+              blocked={heavyElsewhere !== null}
               onPending={(on) => {
-                onHeavy(on);
+                onHeavy(on ? outcome.allergen.displayName : null);
                 onInFlight(on);
               }}
             />
@@ -371,7 +378,9 @@ function TokenRow({
       ) : token.status === "mapped" ? null : (
         <div className={styles.queueActions}>
           <form className={styles.mapForm} onSubmit={onMap} noValidate>
-            <label htmlFor={`${id}-allergen`}>Map to</label>
+            <label htmlFor={`${id}-allergen`}>
+              Allergen<span className={styles.srOnly}> for {token.token}</span>
+            </label>
             <select
               id={`${id}-allergen`}
               value={allergenId}
@@ -397,13 +406,24 @@ function TokenRow({
             <button
               type="submit"
               className="primary"
-              disabled={!allergens || pending !== null || heavyElsewhere}
+              disabled={!allergens || pending !== null || heavyElsewhere !== null}
+              aria-describedby={heavyElsewhere !== null ? `${id}-waits` : undefined}
               aria-busy={pending === "map" || undefined}
               aria-label={`Map “${token.token}”`}
             >
               {pending === "map" ? "Mapping…" : "Map"}
             </button>
           </form>
+          {heavyElsewhere !== null && pending === null ? (
+            // Two re-match passes restart each other, so a second map waits; Ignore does not re-match.
+            <p
+              className={`${styles.note} ${styles.waits}`}
+              id={`${id}-waits`}
+              data-testid="unmatched-map-waits"
+            >
+              Map waits until the {heavyElsewhere} re-match finishes.
+            </p>
+          ) : null}
           {token.status === "new" ? (
             <button
               type="button"

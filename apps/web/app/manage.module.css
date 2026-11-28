@@ -265,6 +265,12 @@
 .queueActions button {
   margin-right: 0;
 }
+/* "Map waits until…": its own line under the row's buttons. */
+.queueActions .waits {
+  flex: 1 1 100%;
+  order: 1;
+  margin: 0;
+}
 .mapForm {
   display: flex;
   flex-wrap: wrap;
@@ -285,4 +291,14 @@
 /* A row's refusal sits under its actions, spaced like its outcome. */
 .queueItem :global(.field-error) {
   margin-top: 8px;
+}
+
+/* Read by screen readers only: gives each row's allergen select a name of its own (T35). */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

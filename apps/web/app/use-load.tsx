@@ -60,16 +60,20 @@ export function useLoad<T>(
 }
 
 export function LoadError({
+  lead,
   failure,
   retry,
   testId,
 }: {
+  /** What could not load, said before the reason, e.g. "Could not load the ingredient phrases." */
+  lead?: string;
   failure: Failure;
   retry: () => void;
   testId: string;
 }) {
   return (
     <div className={styles.error} role="alert" data-testid={testId}>
+      {lead ? <p>{lead}</p> : null}
       <p>{failure.message}</p>
       <button type="button" onClick={retry}>
         Try again

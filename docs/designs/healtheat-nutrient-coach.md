@@ -1463,7 +1463,13 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Verify: Playwright on the real stack: avoid one allergen and track one with a threshold, reload, see it on Home's exposure meter, then unset it; body details validated before any request, then Home's calorie meter replaces the prompt; an own band wins and clearing it goes back to the computed one; an unknown time zone is refused and the browser's is one click away
   - Not yet: imperial units (the API stores cm and kg); the public profile page `/profile/[username]`
 
-_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24, T29, T30 and T31 are lane B GitHub issues; their entries above were added by their PRs)._
+- [ ] **T35 (P3, human: ~2 hrs / CC: ~20 min)** — apps/web + e2e — The unmatched-ingredient queue in the v2 UI design's words (Claude Design canvas "healthEat full UI design", artboard "13. Unmatched ingredients", and its change list; a reference, not a spec, per the owner, 2026-11-28): while another row's map or Continue re-match runs, a row's Map is disabled and says "Map waits until the Milk re-match finishes." (Ignore stays available, since it re-matches nothing); each row's allergen select is labelled "Allergen", its accessible name "Allergen for <phrase>"; sample foods are prefixed "For example:"; a page past the end says "Page 9 is past the end of this list." with Go to page 1; a failed list load leads with "Could not load the ingredient phrases." above the reason and Try again (number proposed 2026-11-28, owner to confirm)
+  - Surfaced by: the v2 UI design (2026-11-27)
+  - Files: apps/web/app/curate/unmatched/unmatched-queue.tsx, apps/web/app/use-load.tsx (`LoadError` takes an optional `lead`), apps/web/app/manage.module.css, e2e/unmatched.spec.ts
+  - Verify: Playwright: the waiting row's note names the re-match and goes when it ends, Ignore stays enabled; each row's select is found by "Allergen for <phrase>"; the "For example:" prefix; the past-the-end line; the list error's lead sentence with the reason and Try again
+  - Not in it: mapped rows reading "A synonym of Milk" and sample foods by name, which need the queue's API to send the mapped allergen and the foods' descriptions (lane A)
+
+_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24, T29, T30, T31 and T35 are lane B tasks; their entries above were added by their PRs)._
 
 ## Implementation Tasks: order and dependencies
 
