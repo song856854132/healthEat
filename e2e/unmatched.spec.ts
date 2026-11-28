@@ -136,13 +136,20 @@ test("Curator Home links to the queue; the queue lists phrases, most foods first
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText("xanthan gum");
   await expect(rows.nth(0)).toContainText("in 14 cached foods");
+  await expect(rows.nth(0)).toContainText("For example:");
+  // Each row's allergen select has a name of its own, for a screen reader moving between rows.
+  await expect(
+    rows.nth(0).getByRole("combobox", {
+      name: `Allergen for ${await rows.nth(0).getAttribute("data-token")}`,
+    }),
+  ).toBeVisible();
   await expect(rows.nth(0).getByRole("link", { name: "food 2002" })).toHaveAttribute(
     "href",
     "/food/2002",
   );
   await expect(rows.nth(2)).toContainText("in 1 cached food");
   // New phrases can be mapped or ignored; the allergens come from the dictionary.
-  await expect(rows.nth(0).getByLabel("Map to")).toContainText("Gluten");
+  await expect(rows.nth(0).getByLabel(/^Allergen for /)).toContainText("Gluten");
   await expect(rows.nth(0).getByRole("button", { name: "Ignore “xanthan gum”" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Allergen dictionary" })).toHaveAttribute(
     "href",
@@ -173,7 +180,7 @@ test("map a phrase to an allergen: nothing is sent until one is chosen, then it 
   );
   expect(puts).toHaveLength(0);
 
-  await row.getByLabel("Map to").selectOption({ label: "Milk" });
+  await row.getByLabel(/^Allergen for /).selectOption({ label: "Milk" });
   await expect(row.getByTestId("unmatched-row-error")).toHaveCount(0);
   await row.getByRole("button", { name: "Map “soy lecithin powder”" }).click();
   const done = row.getByTestId("unmatched-mapped");
@@ -185,8 +192,13 @@ test("map a phrase to an allergen: nothing is sent until one is chosen, then it 
     "/curate/allergens/milk",
   );
   // The actions are gone from that row; the others keep theirs.
-  await expect(row.getByLabel("Map to")).toHaveCount(0);
-  await expect(page.getByTestId("unmatched-row").nth(0).getByLabel("Map to")).toBeVisible();
+  await expect(row.getByLabel(/^Allergen for /)).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("unmatched-row")
+      .nth(0)
+      .getByLabel(/^Allergen for /),
+  ).toBeVisible();
   expect(puts).toEqual([
     {
       token: "soy%20lecithin%20powder",
@@ -208,7 +220,7 @@ test("a map whose re-match ran out of time offers Continue re-match until it is 
   });
   await page.goto("/curate/unmatched");
   const row = page.getByTestId("unmatched-row").first();
-  await row.getByLabel("Map to").selectOption({ label: "Gluten" });
+  await row.getByLabel(/^Allergen for /).selectOption({ label: "Gluten" });
   await row.getByRole("button", { name: "Map “xanthan gum”" }).click();
   await expect(row.getByTestId("unmatched-mapped")).toContainText(
     "Added “xanthan gum” to the synonyms of Gluten.",
@@ -264,7 +276,7 @@ test("the API's refusals are explained on the row and leave its actions in place
   const row = page.getByTestId("unmatched-row").first();
   const error = row.getByTestId("unmatched-row-error");
   const map = row.getByRole("button", { name: "Map “xanthan gum”" });
-  await row.getByLabel("Map to").selectOption({ label: "Gluten" });
+  await row.getByLabel(/^Allergen for /).selectOption({ label: "Gluten" });
 
   await map.click();
   await expect(error).toHaveText(
@@ -324,14 +336,14 @@ test("tabs and pages live in the URL; ignored phrases can still be mapped, mappe
   const ignored = page.getByTestId("unmatched-row");
   await expect(ignored).toHaveCount(1);
   await expect(ignored).toContainText("Ignored Nov 24, 2026");
-  await expect(ignored.getByLabel("Map to")).toBeVisible();
+  await expect(ignored.getByLabel(/^Allergen for /)).toBeVisible();
   await expect(ignored.getByRole("button", { name: /^Ignore/ })).toHaveCount(0);
 
   await page.getByTestId("tab-mapped").click();
   await expect(page).toHaveURL(/\/curate\/unmatched\?status=mapped$/);
   const mappedRow = page.getByTestId("unmatched-row");
   await expect(mappedRow).toContainText("Mapped Nov 20, 2026");
-  await expect(mappedRow.getByLabel("Map to")).toHaveCount(0);
+  await expect(mappedRow.getByLabel(/^Allergen for /)).toHaveCount(0);
   await expect(mappedRow.getByRole("button")).toHaveCount(0);
   // Each tab asks for its own status (repeats collapsed: dev mode runs effects twice).
   const asked = gets.map((g) => g.status).filter((s, i, all) => s !== all[i - 1]);
@@ -345,11 +357,28 @@ test("tabs and pages live in the URL; ignored phrases can still be mapped, mappe
   await expect(page.getByTestId("unmatched-page")).toHaveText("Page 1 of 3");
   // A page past the end says so and links back.
   await page.goto("/curate/unmatched?page=9");
-  await expect(page.getByTestId("unmatched-empty")).toContainText("No phrases on this page.", {
-    timeout: 30_000,
-  });
+  await expect(page.getByTestId("unmatched-empty")).toContainText(
+    "Page 9 is past the end of this list.",
+    { timeout: 30_000 },
+  );
+  // The last page that has phrases is one link away, as well as the first.
+  await expect(page.getByRole("link", { name: "Go to page 3" })).toHaveAttribute(
+    "href",
+    "/curate/unmatched?page=3",
+  );
   await page.getByRole("link", { name: "Go to page 1" }).click();
   await expect(page).toHaveURL(/\/curate\/unmatched$/);
+});
+
+test("a page that exists but comes back empty says so without claiming it is past the end", async ({
+  page,
+}) => {
+  // Phrases reviewed elsewhere between the count and the list: page 1 of 2 holds nothing.
+  await asCurator(page, { lists: { new: { tokens: [], total: 25 } } });
+  await page.goto("/curate/unmatched");
+  const empty = page.getByTestId("unmatched-empty");
+  await expect(empty).toHaveText("No phrases on this page.", { timeout: 30_000 });
+  await expect(empty.getByRole("link")).toHaveCount(0);
 });
 
 test("empty lists say so, and a failed load offers Try again", async ({ page }) => {
@@ -357,17 +386,33 @@ test("empty lists say so, and a failed load offers Try again", async ({ page }) 
   await page.goto("/curate/unmatched");
   // The dictionary failed: the phrases still show, mapping waits for it.
   await expect(page.getByTestId("unmatched-dictionary-error")).toContainText(
-    "The database is not answering right now.",
+    "Could not load the allergens to map to.",
     { timeout: 30_000 },
   );
-  await expect(page.getByTestId("unmatched-row").first().getByLabel("Map to")).toBeDisabled();
-  // It says so, rather than still "Loading allergens…".
-  await expect(page.getByTestId("unmatched-row").first().getByLabel("Map to")).toContainText(
-    "Allergens unavailable",
+  await expect(page.getByTestId("unmatched-dictionary-error")).toContainText(
+    "The database is not answering right now.",
   );
+  await expect(
+    page
+      .getByTestId("unmatched-row")
+      .first()
+      .getByLabel(/^Allergen for /),
+  ).toBeDisabled();
+  // It says so, rather than still "Loading allergens…".
+  await expect(
+    page
+      .getByTestId("unmatched-row")
+      .first()
+      .getByLabel(/^Allergen for /),
+  ).toContainText("Allergens unavailable");
   control.failDictionary(false);
   await page.getByTestId("unmatched-dictionary-error").getByRole("button").click();
-  await expect(page.getByTestId("unmatched-row").first().getByLabel("Map to")).toBeEnabled();
+  await expect(
+    page
+      .getByTestId("unmatched-row")
+      .first()
+      .getByLabel(/^Allergen for /),
+  ).toBeEnabled();
 
   await page.goto("/curate/unmatched?status=mapped");
   await expect(page.getByTestId("unmatched-empty")).toHaveText(
@@ -380,8 +425,14 @@ test("empty lists say so, and a failed load offers Try again", async ({ page }) 
   );
   await page.goto("/curate/unmatched");
   await expect(page.getByTestId("unmatched-list-error")).toContainText(
-    "The database is not answering right now.",
+    "Could not load the ingredient phrases.",
     { timeout: 30_000 },
+  );
+  await expect(page.getByTestId("unmatched-list-error")).toContainText(
+    "The database is not answering right now.",
+  );
+  await expect(page.getByTestId("unmatched-list-error").getByRole("button")).toHaveText(
+    "Try again",
   );
 });
 
@@ -493,12 +544,33 @@ test("one map at a time: the other rows wait while a map re-matches, and focus l
   );
   await page.goto("/curate/unmatched");
   const rows = page.getByTestId("unmatched-row");
-  await rows.nth(0).getByLabel("Map to").selectOption({ label: "Milk" }, { timeout: 30_000 });
+  await rows
+    .nth(0)
+    .getByLabel(/^Allergen for /)
+    .selectOption({ label: "Milk" }, { timeout: 30_000 });
   await rows.nth(0).getByRole("button", { name: /^Map/ }).click();
   await expect(rows.nth(1).getByRole("button", { name: /^Map/ })).toBeDisabled();
+  // The waiting row says which re-match it waits for; Ignore needs no re-match and stays available.
+  await expect(rows.nth(1).getByTestId("unmatched-map-waits")).toHaveText(
+    "Map waits until the Milk re-match finishes.",
+  );
+  await expect(rows.nth(0).getByTestId("unmatched-map-waits")).toHaveCount(0);
+  // The disabled Map is skipped by Tab, so the select, which keeps focus, carries the reason.
+  await expect(rows.nth(1).getByLabel(/^Allergen for /)).toHaveAccessibleDescription(
+    "Map waits until the Milk re-match finishes.",
+  );
+  // One live message says it once for the page, rather than once per waiting row.
+  await expect(page.getByTestId("unmatched-announce")).toHaveText(
+    "Map waits until the Milk re-match finishes.",
+  );
+  await expect(rows.nth(1).getByRole("button", { name: /^Ignore/ })).toBeEnabled();
   release();
   await expect(rows.nth(0).getByTestId("unmatched-mapped")).toBeFocused();
   await expect(rows.nth(1).getByRole("button", { name: /^Map/ })).toBeEnabled();
+  await expect(rows.nth(1).getByTestId("unmatched-map-waits")).toHaveCount(0);
+  await expect(page.getByTestId("unmatched-announce")).toHaveText(
+    "The re-match finished. Map is available again.",
+  );
 });
 
 test("the Mapped tab, where nothing can be mapped, does not load the dictionary", async ({
@@ -539,10 +611,13 @@ test("a map that answers late does not pull focus away from another row the Cura
   );
   await page.goto("/curate/unmatched");
   const rows = page.getByTestId("unmatched-row");
-  await rows.nth(0).getByLabel("Map to").selectOption({ label: "Milk" }, { timeout: 30_000 });
+  await rows
+    .nth(0)
+    .getByLabel(/^Allergen for /)
+    .selectOption({ label: "Milk" }, { timeout: 30_000 });
   await rows.nth(0).getByRole("button", { name: /^Map/ }).click();
   // While it re-matches, the Curator moves on to the next phrase.
-  const next = rows.nth(1).getByLabel("Map to");
+  const next = rows.nth(1).getByLabel(/^Allergen for /);
   await next.focus();
   release();
   await expect(rows.nth(0).getByTestId("unmatched-mapped")).toBeVisible();
@@ -556,7 +631,10 @@ test("one heavy job at a time: a running Continue holds the other rows' Map, and
   await asCurator(page, { lists: { new: { tokens: NEW } }, answers: [mapped(MILK_ID, false)] });
   await page.goto("/curate/unmatched");
   const rows = page.getByTestId("unmatched-row");
-  await rows.nth(0).getByLabel("Map to").selectOption({ label: "Milk" }, { timeout: 30_000 });
+  await rows
+    .nth(0)
+    .getByLabel(/^Allergen for /)
+    .selectOption({ label: "Milk" }, { timeout: 30_000 });
   await rows.nth(0).getByRole("button", { name: /^Map/ }).click();
   const resume = rows.nth(0).getByRole("button", { name: /Continue re-match/ });
   await expect(resume).toBeVisible();
@@ -573,7 +651,10 @@ test("one heavy job at a time: a running Continue holds the other rows' Map, and
       return route.fulfill({ json: mapped(GLUTEN_ID).json });
     },
   );
-  await rows.nth(1).getByLabel("Map to").selectOption({ label: "Gluten" });
+  await rows
+    .nth(1)
+    .getByLabel(/^Allergen for /)
+    .selectOption({ label: "Gluten" });
   await rows.nth(1).getByRole("button", { name: /^Map/ }).click();
   await expect(resume).toBeDisabled();
   releaseMap();
