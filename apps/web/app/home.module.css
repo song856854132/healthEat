@@ -201,13 +201,20 @@ ol.countList .count {
   font: inherit;
   color: inherit;
   background: transparent;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 6px;
   padding: 6px 10px;
 }
 .logBar button {
   margin-right: 0;
   min-height: 40px;
+}
+/* Phone widths (T34): the log bar's search box and button are 44px targets. */
+@media (max-width: 600px) {
+  .logBar input,
+  .logBar button {
+    min-height: 44px;
+  }
 }
 @media (max-width: 520px) {
   .logBar {

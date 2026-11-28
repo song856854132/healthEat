@@ -28,7 +28,7 @@
   font: inherit;
   color: inherit;
   background: transparent;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 6px;
   padding: 6px 10px;
   min-height: 40px;
@@ -294,4 +294,23 @@
   border: 1px solid var(--line);
   border-radius: 6px;
   flex-basis: 100%;
+}
+
+/* Phone widths (T34): the search, portion and log controls and the pager links are 44px targets
+   (these module rules outrank the global phone rule, so they say it themselves). */
+@media (max-width: 600px) {
+  .searchForm input,
+  .searchForm select,
+  .searchForm button,
+  .portionRow select,
+  .portionRow input,
+  .logForm select,
+  .primary {
+    min-height: 44px;
+  }
+  .pager a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }

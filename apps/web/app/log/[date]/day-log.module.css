@@ -38,7 +38,7 @@
 .editForm select {
   font: inherit;
   padding: 6px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 6px;
   background: transparent;
   color: inherit;
@@ -206,7 +206,7 @@
 .photoActions select {
   font: inherit;
   padding: 6px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 6px;
   background: var(--paper);
   color: inherit;
@@ -239,4 +239,13 @@
 }
 .matchOption input {
   margin-top: 4px;
+}
+
+/* Phone widths (T34): the previous and next day links are 44px targets. */
+@media (max-width: 600px) {
+  .dayNav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }
