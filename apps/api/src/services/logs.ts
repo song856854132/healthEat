@@ -51,6 +51,7 @@ type EntryDoc = {
   grams: number;
   source: string;
   confidence: number;
+  photoBatchId?: string | null;
   createdAt: Date;
 };
 
@@ -131,8 +132,9 @@ async function created(
 
 /**
  * The entry an earlier create with this requestId wrote, answered again. A different food, amount,
- * meal or date under the same requestId is a client bug, refused with 409. A repeat without a date
- * keeps the first request's date, so a retry that lands after midnight still matches.
+ * meal, date, source, confidence or photo batch under the same requestId is a client bug, refused with
+ * 409. A repeat without a date keeps the first request's date, so a retry that lands after midnight
+ * still matches.
  */
 async function replay(
   userId: Types.ObjectId,
@@ -148,7 +150,10 @@ async function replay(
     first.fdcId !== input.fdcId ||
     first.grams !== input.grams ||
     first.meal !== input.meal ||
-    (input.date !== undefined && first.date !== input.date)
+    (input.date !== undefined && first.date !== input.date) ||
+    first.source !== (input.source ?? "search") ||
+    first.confidence !== (input.confidence ?? 1) ||
+    (first.photoBatchId ?? null) !== (input.photoBatchId ?? null)
   )
     throw new HttpError(409, "request_id_conflict", "this requestId already logged another entry");
   const food = await getFood(first.fdcId, now);
@@ -186,8 +191,10 @@ export async function createLog(
       meal: input.meal,
       fdcId: food.fdcId,
       grams: input.grams,
-      source: "search",
-      confidence: 1,
+      // A photo item (T13) is an estimate at the analysis's confidence; anything else a searched food.
+      source: input.source ?? "search",
+      confidence: input.confidence ?? 1,
+      photoBatchId: input.photoBatchId ?? null,
       createdAt: now,
       ...(input.requestId ? { requestId: input.requestId } : {}),
     });

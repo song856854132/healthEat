@@ -6,27 +6,12 @@ import type { FormEvent } from "react";
 import { LogEntryCreateInput, MAX_LOG_GRAMS, MEALS } from "@healtheat/shared";
 import type { AllergenAlert, LogEntryView, Meal } from "@healtheat/shared";
 import { logFood } from "../../lib/foods";
-import { MEAL_LABELS, formatLogDate } from "../../lib/logs";
+import { MEAL_LABELS, formatLogDate, mealForHour, newRequestId } from "../../lib/logs";
 import { formatAmount } from "../../lib/nutrients";
 import styles from "../../foods.module.css";
 
 /** The smallest amount the form logs (matches the custom amount input's min). */
 const MIN_GRAMS = 0.1;
-
-/** crypto.randomUUID needs a secure context (https or localhost); without it, log without an id. */
-function newRequestId(): string | undefined {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : undefined;
-}
-
-/** A starting meal from the browser's clock; the user can change it. */
-export function mealForHour(hour: number): Meal {
-  if (hour >= 5 && hour < 11) return "breakfast";
-  if (hour >= 11 && hour < 15) return "lunch";
-  if (hour >= 17 && hour < 22) return "dinner";
-  return "snack";
-}
 
 type Outcome =
   | { kind: "logged"; entry: LogEntryView; alerts: AllergenAlert[] }

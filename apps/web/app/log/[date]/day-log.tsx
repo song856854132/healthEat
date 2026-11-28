@@ -19,6 +19,7 @@ import {
   updateLog,
 } from "../../lib/logs";
 import { foodHref } from "../../lib/foods";
+import { PhotoConfirm } from "./photo-confirm";
 import styles from "./day-log.module.css";
 
 type Load =
@@ -27,17 +28,33 @@ type Load =
   | { kind: "future"; today: string }
   | { kind: "ready"; today: string; entries: LogEntryView[] };
 
+/** Adds an entry to a day's list unless it is already there (a replayed log answers the same entry). */
+function withEntry(entries: LogEntryView[], entry: LogEntryView): LogEntryView[] {
+  return entries.some((e) => e.id === entry.id) ? entries : [...entries, entry];
+}
+
 /**
  * One day of the member's log: entries by meal, each editable (grams and meal) and deletable, with
- * previous/next day, a date picker and "Add food", which carries the date through search to Details
- * so a past day can be backfilled. "Today" is the member's time zone's, as on the API.
+ * previous/next day, a date picker, "Add food", which carries the date through search to Details
+ * so a past day can be backfilled, and "Log by photo" (T13), which opens the photo panel (also opened
+ * by ?photo=1, Home's link). "Today" is the member's time zone's, as on the API.
  */
-export function DayLog({ date }: { date: string }) {
+export function DayLog({ date, photo = false }: { date: string; photo?: boolean }) {
   const { me } = useAuth();
   const router = useRouter();
   const [load, setLoad] = useState<Load>({ kind: "loading" });
+  const [photoOpen, setPhotoOpen] = useState(photo);
   const [attempt, setAttempt] = useState(0);
+  // Once the day has been shown, the photo panel stays open through any reload, failed or not.
+  const [dayShown, setDayShown] = useState(false);
+  // Photo items logged while the list was not shown: merged into the next list, once each.
+  const loggedMeanwhile = useRef<LogEntryView[]>([]);
+  const loadKind = useRef<Load["kind"]>("loading");
   const signedIn = Boolean(me);
+
+  useEffect(() => {
+    loadKind.current = load.kind;
+  }, [load.kind]);
 
   useEffect(() => {
     if (me === null) router.replace("/login");
@@ -52,11 +69,11 @@ export function DayLog({ date }: { date: string }) {
       const today = todayIn(tz.data);
       if (date > today) return setLoad({ kind: "future", today });
       const logs = await listLogs({ from: date, to: date }, controller.signal);
-      setLoad(
-        logs.ok
-          ? { kind: "ready", today, entries: logs.data.entries }
-          : { kind: "error", message: logs.failure.message },
-      );
+      if (!logs.ok) return setLoad({ kind: "error", message: logs.failure.message });
+      const meanwhile = loggedMeanwhile.current;
+      loggedMeanwhile.current = [];
+      setLoad({ kind: "ready", today, entries: meanwhile.reduce(withEntry, logs.data.entries) });
+      setDayShown(true);
     })().catch(() => {
       // Aborted: the date changed or the page closed. Anything else (a time zone this browser does
       // not know) must not leave the page on "Loading…".
@@ -112,9 +129,26 @@ export function DayLog({ date }: { date: string }) {
           <Link href={`/log/${load.today}`}>Go to today</Link>
         </p>
       ) : null}
+      {photoOpen && dayShown ? (
+        <PhotoConfirm
+          date={date}
+          onLogged={(entry) => {
+            if (loadKind.current !== "ready") loggedMeanwhile.current.push(entry);
+            setLoad((l) =>
+              l.kind === "ready" ? { ...l, entries: withEntry(l.entries, entry) } : l,
+            );
+          }}
+          onClose={() => {
+            setPhotoOpen(false);
+            if (photo) router.replace(`/log/${date}`, { scroll: false });
+          }}
+        />
+      ) : null}
       {load.kind === "ready" ? (
         <Entries
           date={date}
+          photoOpen={photoOpen}
+          onPhoto={() => setPhotoOpen(true)}
           entries={load.entries}
           // An updater, not a list: two rows can settle in either order, and each must apply to the
           // entries as they are then, not as they were when its request started.
@@ -168,11 +202,15 @@ function DayNav({ date, today }: { date: string; today?: string }) {
 
 function Entries({
   date,
+  photoOpen,
+  onPhoto,
   entries,
   onChange,
   onStale,
 }: {
   date: string;
+  photoOpen: boolean;
+  onPhoto: () => void;
   entries: LogEntryView[];
   onChange: (update: (entries: LogEntryView[]) => LogEntryView[]) => void;
   onStale: () => void;
@@ -190,9 +228,16 @@ function Entries({
             ? "Nothing logged on this day."
             : `${entries.length} ${entries.length === 1 ? "entry" : "entries"} · ${formatGrams(totalGrams)} g in all`}
         </p>
-        <Link href={`/search?date=${date}`} className="button-link" data-testid="day-add-food">
-          Add food
-        </Link>
+        <div className={styles.addActions}>
+          <Link href={`/search?date=${date}`} className="button-link" data-testid="day-add-food">
+            Add food
+          </Link>
+          {photoOpen ? null : (
+            <button type="button" onClick={onPhoto} data-testid="day-add-photo">
+              Log by photo
+            </button>
+          )}
+        </div>
       </div>
       {MEALS.map((meal) => {
         const items = entries.filter((e) => e.meal === meal);

@@ -130,3 +130,113 @@
   border-color: var(--danger);
   color: var(--paper);
 }
+
+/* "Add food" and "Log by photo" side by side. */
+.addActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.addActions button {
+  margin-right: 0;
+}
+
+/* The photo panel (T13): plain, like the rest of the page. */
+.photoPanel {
+  margin-top: 16px;
+}
+.photoHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.photoHeader button {
+  margin-right: 0;
+}
+.photoPick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.photoPick label {
+  cursor: pointer;
+}
+/* The file input stays in the page (keyboard and screen readers reach it through its label). */
+.photoInput {
+  max-width: 100%;
+}
+.photoWait {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.photoWait p {
+  margin: 0;
+}
+.photoItems {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+}
+.photoItem {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.photoItem p {
+  margin: 0 0 8px;
+}
+.photoItemHead {
+  overflow-wrap: anywhere;
+}
+.photoActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0;
+}
+.photoActions button {
+  margin-right: 0;
+}
+.photoActions input,
+.photoActions select {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: inherit;
+  min-width: 0;
+  max-width: 100%;
+}
+.photoActions input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.photoGrams {
+  width: 6em;
+}
+.matchList {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.matchList legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 4px;
+}
+.matchOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
+.matchOption input {
+  margin-top: 4px;
+}

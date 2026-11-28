@@ -54,23 +54,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMeState(next);
   }, []);
 
-  const recheck = useCallback(async (): Promise<Session> => {
+  // The newest check, so one that a later check cut short can answer with that one's result.
+  const latest = useRef<{ gen: number; check: Promise<Session> } | null>(null);
+
+  const recheck = useCallback((): Promise<Session> => {
     const gen = ++generation.current;
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
-    try {
-      const result = await fetchMe(controller.signal);
-      if (gen !== generation.current) return undefined;
-      setCheckFailed(false);
-      setMeState(result);
-      return result;
-    } catch {
-      if (gen === generation.current) setCheckFailed(true);
-      return undefined;
-    } finally {
-      if (inFlight.current === controller) inFlight.current = null;
-    }
+    const check: Promise<Session> = (async () => {
+      try {
+        const result = await fetchMe(controller.signal);
+        if (gen === generation.current) {
+          setCheckFailed(false);
+          setMeState(result);
+          return result;
+        }
+      } catch {
+        if (gen === generation.current) {
+          setCheckFailed(true);
+          return undefined;
+        }
+      } finally {
+        if (inFlight.current === controller) inFlight.current = null;
+      }
+      // A newer check replaced this one (the window took focus or the tab became visible): answer with its
+      // result, so a caller that must know the session (confirmSession before a write) is not refused
+      // for nothing. After an explicit session change there is no newer check: undefined, as before.
+      const newer = latest.current;
+      return newer && newer.gen !== gen ? newer.check : undefined;
+    })();
+    latest.current = { gen, check };
+    return check;
   }, []);
 
   useEffect(() => {
