@@ -268,7 +268,6 @@
 /* "Map waits until…": its own line under the row's buttons. */
 .queueActions .waits {
   flex: 1 1 100%;
-  order: 1;
   margin: 0;
 }
 .mapForm {

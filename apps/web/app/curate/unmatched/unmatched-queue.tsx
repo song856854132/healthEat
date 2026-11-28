@@ -55,7 +55,7 @@ export function UnmatchedQueue({ query }: { query: UnmatchedPageQuery }) {
 
 function Queue({ query }: { query: UnmatchedPageQuery }) {
   const [list, retry] = useLoad((signal) => listUnmatched(query, signal), unmatchedHref(query));
-  // The dictionary feeds each row's "Map to" choice; only the new and ignored phrases can be mapped, so
+  // The dictionary feeds each row's allergen choice; only the new and ignored phrases can be mapped, so
   // the Mapped tab does not load it.
   const [dictionary, retryDictionary] = useLoad(
     (signal) =>
@@ -150,9 +150,9 @@ function Results({
   );
   const mappable = query.status !== "mapped";
   // One heavy write (a map, or a Continue re-match) at a time on this page: each re-matches every cached
-  // food for up to 60 seconds, and two passes over one allergen restart each other. A set of the rows
-  // running one, so each row clears only its own entry.
-  // Each running row's allergen name, so a waiting row can say which re-match it waits for.
+  // food for up to 60 seconds, and two passes over one allergen restart each other. The rows running
+  // one, each with its allergen's name, so a waiting row can say which re-match it waits for and each
+  // row clears only its own entry.
   const [heavy, setHeavy] = useState<ReadonlyMap<string, string>>(() => new Map());
   // Rows with a request in flight: reloading the page meanwhile would drop their answers.
   const [inFlight, setInFlight] = useState(0);
@@ -170,13 +170,21 @@ function Results({
       ) : null}
       {data.tokens.length === 0 ? (
         <p className={styles.status} data-testid="unmatched-empty">
-          {data.total > 0 ? (
+          {data.total === 0 ? (
+            EMPTY[query.status]
+          ) : query.page > pages ? (
             <>
               Page {query.page} is past the end of this list.{" "}
               <Link href={unmatchedHref({ status: query.status, page: 1 })}>Go to page 1</Link>
             </>
           ) : (
-            EMPTY[query.status]
+            // Phrases reviewed elsewhere between the count and the list can empty a page that exists.
+            <>
+              No phrases on this page.{" "}
+              {query.page > 1 ? (
+                <Link href={unmatchedHref({ status: query.status, page: 1 })}>Go to page 1</Link>
+              ) : null}
+            </>
           )}
         </p>
       ) : (
@@ -266,6 +274,7 @@ function TokenRow({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const busy = useRef(false);
   const rowRef = useRef<HTMLLIElement>(null);
+  const waits = heavyElsewhere !== null && pending === null;
   const id = `token-${token.token.replace(/[^a-z0-9]+/gi, "-")}`;
   // The pressed button is replaced by the outcome: focus moves there, not back to the top of the page.
   // Only while the Curator is still here: a map can answer up to a minute later, after they have moved
@@ -283,7 +292,7 @@ function TokenRow({
     setPending(input.action);
     setError(null);
     if (input.action === "map")
-      onHeavy(allergens?.find((a) => a.id === input.allergenId)?.displayName ?? "allergen");
+      onHeavy(allergens?.find((a) => a.id === input.allergenId)?.displayName ?? "other");
     onInFlight(true);
     try {
       const result = await actOnUnmatched(token.token, input);
@@ -389,6 +398,8 @@ function TokenRow({
                 setError(null);
               }}
               disabled={!allergens || pending !== null}
+              // The disabled Map button is skipped by Tab, so the reason it waits is read here.
+              aria-describedby={waits ? `${id}-waits` : undefined}
             >
               <option value="">
                 {allergens
@@ -407,23 +418,12 @@ function TokenRow({
               type="submit"
               className="primary"
               disabled={!allergens || pending !== null || heavyElsewhere !== null}
-              aria-describedby={heavyElsewhere !== null ? `${id}-waits` : undefined}
               aria-busy={pending === "map" || undefined}
               aria-label={`Map “${token.token}”`}
             >
               {pending === "map" ? "Mapping…" : "Map"}
             </button>
           </form>
-          {heavyElsewhere !== null && pending === null ? (
-            // Two re-match passes restart each other, so a second map waits; Ignore does not re-match.
-            <p
-              className={`${styles.note} ${styles.waits}`}
-              id={`${id}-waits`}
-              data-testid="unmatched-map-waits"
-            >
-              Map waits until the {heavyElsewhere} re-match finishes.
-            </p>
-          ) : null}
           {token.status === "new" ? (
             <button
               type="button"
@@ -434,6 +434,16 @@ function TokenRow({
             >
               {pending === "ignore" ? "Ignoring…" : "Ignore"}
             </button>
+          ) : null}
+          {waits ? (
+            // Two re-match passes restart each other, so a second map waits; Ignore does not re-match.
+            <p
+              className={`${styles.note} ${styles.waits}`}
+              id={`${id}-waits`}
+              data-testid="unmatched-map-waits"
+            >
+              Map waits until the {heavyElsewhere} re-match finishes.
+            </p>
           ) : null}
         </div>
       )}

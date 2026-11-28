@@ -365,6 +365,17 @@ test("tabs and pages live in the URL; ignored phrases can still be mapped, mappe
   await expect(page).toHaveURL(/\/curate\/unmatched$/);
 });
 
+test("a page that exists but comes back empty says so without claiming it is past the end", async ({
+  page,
+}) => {
+  // Phrases reviewed elsewhere between the count and the list: page 1 of 2 holds nothing.
+  await asCurator(page, { lists: { new: { tokens: [], total: 25 } } });
+  await page.goto("/curate/unmatched");
+  const empty = page.getByTestId("unmatched-empty");
+  await expect(empty).toHaveText("No phrases on this page.", { timeout: 30_000 });
+  await expect(empty.getByRole("link")).toHaveCount(0);
+});
+
 test("empty lists say so, and a failed load offers Try again", async ({ page }) => {
   const control = await asCurator(page, { dictionaryFails: true, lists: { new: { tokens: NEW } } });
   await page.goto("/curate/unmatched");
@@ -536,6 +547,10 @@ test("one map at a time: the other rows wait while a map re-matches, and focus l
     "Map waits until the Milk re-match finishes.",
   );
   await expect(rows.nth(0).getByTestId("unmatched-map-waits")).toHaveCount(0);
+  // The disabled Map is skipped by Tab, so the select, which keeps focus, carries the reason.
+  await expect(rows.nth(1).getByLabel(/^Allergen for /)).toHaveAccessibleDescription(
+    "Map waits until the Milk re-match finishes.",
+  );
   await expect(rows.nth(1).getByRole("button", { name: /^Ignore/ })).toBeEnabled();
   release();
   await expect(rows.nth(0).getByTestId("unmatched-mapped")).toBeFocused();
