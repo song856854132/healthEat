@@ -592,35 +592,64 @@ test("a session switched to another account in another tab stops the log and the
     "You are no longer signed in as this account here",
     { timeout: 30_000 },
   );
+  // Trying again would be refused the same way, so Log and Start over wait: only a reload helps.
   await expect(page.getByTestId("photo-reload")).toHaveText("Reload the page");
+  await expect(page.getByTestId("photo-log")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Start over" })).toBeDisabled();
   expect(posts).toHaveLength(0);
 
-  // Trying again is refused too: the panel stays with the account whose day this page shows, not the
-  // one the session now names, until the page is reloaded.
-  const checkedAgain = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/auth/me");
-  await page.getByTestId("photo-log").click();
-  await checkedAgain;
-  await expect(page.getByTestId("photo-log")).toHaveText("Log 1 item");
-  await expect(page.getByTestId("photo-review")).toContainText(
-    "You are no longer signed in as this account here",
-  );
-  expect(posts).toHaveLength(0);
+  // Reloading shows the day as the account the session now names, with the panel closed.
+  await page.getByTestId("photo-reload").click();
+  await expect(page.getByTestId("photo-panel")).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByTestId("day-add-photo")).toBeVisible({ timeout: 30_000 });
 
-  // And before a photo is sent: Start over and a new photo are not analysed as the other account.
-  await page.getByRole("button", { name: "Start over" }).click();
+  // And before a photo is sent: with the panel open for this account, another tab switches again, and
+  // the next photo is not analysed as the other account.
+  await page.getByTestId("day-add-photo").click();
+  await signUp(page);
   await page.getByTestId("photo-input").setInputFiles(await photoFile(page, 400, 300));
   await expect(page.getByTestId("photo-error")).toContainText(
     "You are no longer signed in as this account here",
     { timeout: 30_000 },
   );
-  // Try again would be refused the same way: only a reload helps.
   await expect(page.getByTestId("photo-retry")).toHaveCount(0);
   await expect(page.getByTestId("photo-reload")).toBeVisible();
   expect(visionBodies).toHaveLength(1);
+});
 
-  // Reloading shows the page as the account the session now names: the photo panel is gone.
-  await page.getByTestId("photo-reload").click();
-  await expect(page.getByTestId("photo-error")).toHaveCount(0, { timeout: 30_000 });
+// Value: protects=a sign-out part way through a photo's items marks every item not yet sent as not
+//   logged, so none of them looks untouched; fails_when=the loop stops at the 401 and leaves the later
+//   items as plain cards with no outline, while the note counts only the first; why_new=the part-way
+//   test answered a 503 for one item and logged the rest; seam=none; no_claim=the log POST is mocked
+test("a sign-out part way through marks every item not yet sent as not logged", async ({
+  page,
+}) => {
+  await signUp(page);
+  await mockVision(page, [
+    analysed([
+      { query: "banana", grams: 120, confidence: 0.9 },
+      { query: "oat milk", grams: 200, confidence: 0.5 },
+    ]),
+  ]);
+  await mockSearch(page);
+  const posts = await mockLogPosts(page, [401]);
+  await openPanel(page);
+  await page.getByTestId("photo-input").setInputFiles(await photoFile(page, 400, 300));
+  await expect(
+    page.getByTestId("photo-item").nth(1).getByRole("radio", { name: "Mock oat milk" }),
+  ).toBeChecked({ timeout: 30_000 });
+
+  await page.getByTestId("photo-log").click();
+  await expect(page.getByTestId("photo-review")).toContainText("0 logged, 2 not", {
+    timeout: 30_000,
+  });
+  expect(posts).toHaveLength(1); // the second item is not sent after the 401
+  const items = page.getByTestId("photo-item");
+  await expect(items.nth(0)).toHaveAttribute("data-state", "failed");
+  await expect(items.nth(1)).toHaveAttribute("data-state", "failed");
+  await expect(items.nth(1).getByRole("alert")).toContainText(
+    "This item was not logged. Not sent: you are signed out.",
+  );
 });
 
 // Value: protects=a confirmed photo item is accepted by the real log route and, after a reload, is

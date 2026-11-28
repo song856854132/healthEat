@@ -201,6 +201,12 @@
 .photoItemError {
   border-color: var(--danger);
 }
+/* The card's gap spaces its rows; their own margins would double it. */
+.photoItem p,
+.photoItem .photoActions,
+.photoItem .matchList {
+  margin: 0;
+}
 /* A logged or removed item collapses to one line. */
 .photoItemCollapsed {
   display: flex;
@@ -210,16 +216,16 @@
   padding: 8px 12px;
   border: 1px dashed var(--line);
   border-radius: 8px;
+  overflow-wrap: anywhere;
 }
+/* A text-styled button that is still a 44px target on a phone. */
 .linkButton {
+  min-height: 44px;
   margin: 0;
-  padding: 0;
+  padding: 0 4px;
   border: 0;
   background: none;
   text-decoration: underline;
-}
-.photoItem p {
-  margin: 0 0 8px;
 }
 .photoItemHead {
   overflow-wrap: anywhere;

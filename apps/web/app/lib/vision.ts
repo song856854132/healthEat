@@ -27,6 +27,8 @@ export type PhotoProblem = {
   search: boolean;
   /** Link to the profile (the member profile must exist before photos are counted). */
   profile?: boolean;
+  /** Another tab changed the session: only reloading the page helps. */
+  reload?: boolean;
 };
 
 /** The API's own sentence (its `details`), finished with a full stop, or null when it sent none. */
