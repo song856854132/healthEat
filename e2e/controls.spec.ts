@@ -30,8 +30,11 @@ test("inputs and buttons have the darker control border; section outlines keep t
   expect(control).not.toBe(line);
   await expect(page.getByLabel("Username")).toBeVisible({ timeout: 30_000 });
   expect(await style(page.getByLabel("Username"), "borderTopColor")).toBe(control);
+  // A plain button (the privacy notice's) takes the control border; the page's one primary button
+  // keeps its filled ink look.
+  expect(await style(page.getByRole("button", { name: "Got it" }), "borderTopColor")).toBe(control);
   expect(await style(page.getByRole("button", { name: "Create account" }), "borderTopColor")).toBe(
-    control,
+    await cssVar(page, "--ink"),
   );
   expect(await style(page.locator(".site-header"), "borderTopColor")).not.toBe(control);
 
