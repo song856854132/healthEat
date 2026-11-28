@@ -2,7 +2,7 @@ import type { MeResponse } from "@healtheat/shared";
 
 // Shared by the /profile sections that write: each acts on whatever account the session cookie names.
 
-const SWITCHED =
+export const SWITCHED =
   "You are no longer signed in as this account here (another tab changed the session). Reload the page.";
 
 /**

@@ -1463,7 +1463,13 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
   - Verify: Playwright on the real stack: avoid one allergen and track one with a threshold, reload, see it on Home's exposure meter, then unset it; body details validated before any request, then Home's calorie meter replaces the prompt; an own band wins and clearing it goes back to the computed one; an unknown time zone is refused and the browser's is one click away
   - Not yet: imperial units (the API stores cm and kg); the public profile page `/profile/[username]`
 
-_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24, T29, T30 and T31 are lane B GitHub issues; their entries above were added by their PRs)._
+- [ ] **T33 (P2, human: ~half day / CC: ~30 min)** — apps/web + e2e — The photo panel and the day log in the v2 UI design's words (Claude Design canvas "healthEat full UI design", artboards "7. Day log" and "8. Photo logging panel", and its change list; a reference, not a spec, per the owner, 2026-11-28): a photo entry reads "Photo estimate, likely" or "not sure" on its own line (the panel's words and cut-off, not a percentage); each suggested item is a card, a logged one collapses to "Bananas, raw, 120 g: logged.", a removed one to "napkin removed." with Add back, and one with a problem gets a danger outline, a failed log adding "This item was not logged."; "Reload the page" when another tab changed the session (Try again is not offered, since it would be refused the same way); the Cancelled note ends "toward today's 20 photos"; Add food and Log by photo step aside while the panel is open (number proposed 2026-11-28, owner to confirm)
+  - Surfaced by: the v2 UI design (2026-11-27)
+  - Files: apps/web/app/log/[date]/photo-confirm.tsx, apps/web/app/log/[date]/day-log.tsx, apps/web/app/log/[date]/day-log.module.css, apps/web/app/profile/session.ts (`SWITCHED` exported), e2e/photo-log.spec.ts, e2e/day-log.spec.ts
+  - Verify: Playwright: the entry's confidence words on the day log (mocked and from the real log route); the part-way failure's collapsed and failed cards, told apart by outline and words; Reload the page after a session switch, in review and before sending, and no Try again there; the Cancelled note; Add food and Log by photo hidden while the panel is open
+  - Not in it: the design's "preview before sending" step (marked Proposed: it changes the flow, so it waits for the owner)
+
+_No new tasks from Performance beyond T9 and T10. T21 and T22 added by the D18 scope revision. T25 to T28 added by the 2026-11-18 eng review (T23, T24, T29, T30, T31 and T33 are lane B tasks; their entries above were added by their PRs)._
 
 ## Implementation Tasks: order and dependencies
 

@@ -360,7 +360,9 @@ test("Cancel while the photo is analysed, a photo with nothing recognised, and a
   // the hanging answer would be left for the next photo; that case has its own test).
   await expect.poll(() => bodies.length, { timeout: 30_000 }).toBe(1);
   await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByTestId("photo-panel")).toContainText("Cancelled");
+  await expect(page.getByTestId("photo-panel")).toContainText(
+    "Cancelled. If the server had already started, the photo may still count toward today’s 20 photos.",
+  );
   await expect(page.getByTestId("photo-analysing")).toHaveCount(0);
 
   await page.getByTestId("photo-input").setInputFiles(file);
@@ -404,6 +406,20 @@ test("a log that fails part way keeps the rest for a retry with the same request
   await expect(page.getByTestId("photo-review")).toContainText("1 logged, 1 not", {
     timeout: 30_000,
   });
+  // The logged item collapses to what was logged; the failed one keeps its card, outlined in danger,
+  // and says it was not logged.
+  const [banana, oatMilk] = [0, 1].map((i) => page.getByTestId("photo-item").nth(i));
+  await expect(banana).toHaveAttribute("data-state", "logged");
+  await expect(banana).toHaveText("Mock banana, 120 g: logged.");
+  await expect(oatMilk).toHaveAttribute("data-state", "failed");
+  await expect(oatMilk.getByRole("alert")).toContainText("This item was not logged.");
+  const danger = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue("--danger").trim(),
+  );
+  expect(danger).not.toBe("");
+  expect(await oatMilk.evaluate((el) => getComputedStyle(el).borderTopColor)).not.toBe(
+    await banana.evaluate((el) => getComputedStyle(el).borderTopColor),
+  );
   // Value: protects=the allergens of items logged before a part-way failure are named at once and
   //   still named after the retry; fails_when=the first try's alerts are dropped, so closing the panel
   //   leaves an avoided allergen in the log unnamed and the done message names only the retried items;
@@ -429,10 +445,14 @@ test("Home's Log by photo opens today's log with the panel; Close takes ?photo o
   await page.getByTestId("log-bar-photo").click({ timeout: 30_000 });
   await expect(page).toHaveURL(new RegExp(`/log/${today()}\\?photo=1$`), { timeout: 30_000 });
   await expect(page.getByTestId("photo-panel")).toBeVisible({ timeout: 30_000 });
+  // While the panel is open the day's own Add food and Log by photo step aside.
+  await expect(page.getByTestId("day-add-food")).toHaveCount(0);
+  await expect(page.getByTestId("day-add-photo")).toHaveCount(0);
   await page.getByTestId("photo-close").click();
   await expect(page).toHaveURL(new RegExp(`/log/${today()}$`));
   await expect(page.getByTestId("photo-panel")).toHaveCount(0);
   await expect(page.getByTestId("day-add-photo")).toBeVisible();
+  await expect(page.getByTestId("day-add-food")).toBeVisible();
 });
 
 test("the photo review fits a phone screen", async ({ page }) => {
@@ -572,6 +592,7 @@ test("a session switched to another account in another tab stops the log and the
     "You are no longer signed in as this account here",
     { timeout: 30_000 },
   );
+  await expect(page.getByTestId("photo-reload")).toHaveText("Reload the page");
   expect(posts).toHaveLength(0);
 
   // Trying again is refused too: the panel stays with the account whose day this page shows, not the
@@ -592,7 +613,14 @@ test("a session switched to another account in another tab stops the log and the
     "You are no longer signed in as this account here",
     { timeout: 30_000 },
   );
+  // Try again would be refused the same way: only a reload helps.
+  await expect(page.getByTestId("photo-retry")).toHaveCount(0);
+  await expect(page.getByTestId("photo-reload")).toBeVisible();
   expect(visionBodies).toHaveLength(1);
+
+  // Reloading shows the page as the account the session now names: the photo panel is gone.
+  await page.getByTestId("photo-reload").click();
+  await expect(page.getByTestId("photo-error")).toHaveCount(0, { timeout: 30_000 });
 });
 
 // Value: protects=a confirmed photo item is accepted by the real log route and, after a reload, is
@@ -628,7 +656,7 @@ test("a confirmed photo item goes through the real log route and is a photo esti
   await page.reload();
   const row = page.getByTestId("meal-breakfast").getByTestId("log-entry");
   await expect(row).toHaveCount(1, { timeout: 30_000 });
-  await expect(row).toContainText("Photo estimate, 90% confidence");
+  await expect(row.getByTestId("entry-photo")).toHaveText("Photo estimate, likely");
   await expect(row.getByTestId("entry-grams")).toHaveText("30 g");
   const day = await page.request.get(`/api/users/me/logs?from=${today()}&to=${today()}`);
   const [entry] = LogListResponse.parse(await day.json()).entries;

@@ -19,6 +19,7 @@ import {
   updateLog,
 } from "../../lib/logs";
 import { foodHref } from "../../lib/foods";
+import { confidenceWord } from "../../lib/vision";
 import { PhotoConfirm } from "./photo-confirm";
 import styles from "./day-log.module.css";
 
@@ -229,13 +230,20 @@ function Entries({
             : `${entries.length} ${entries.length === 1 ? "entry" : "entries"} · ${formatGrams(totalGrams)} g in all`}
         </p>
         <div className={styles.addActions}>
-          <Link href={`/search?date=${date}`} className="button-link" data-testid="day-add-food">
-            Add food
-          </Link>
+          {/* Hidden while the photo panel is open, so its Log button is the one filled action. */}
           {photoOpen ? null : (
-            <button type="button" onClick={onPhoto} data-testid="day-add-photo">
-              Log by photo
-            </button>
+            <>
+              <Link
+                href={`/search?date=${date}`}
+                className="button-link"
+                data-testid="day-add-food"
+              >
+                Add food
+              </Link>
+              <button type="button" onClick={onPhoto} data-testid="day-add-photo">
+                Log by photo
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -352,8 +360,11 @@ function EntryRow({
         <span className={styles.entryMeta}>
           <span data-testid="entry-grams">{formatGrams(entry.grams)} g</span>
           {entry.source === "photo" ? (
-            // Display only (design doc C5: per-entry vision confidence is not used in any formula).
-            <span> · Photo estimate, {Math.round(entry.confidence * 100)}% confidence</span>
+            // Display only (design doc C5: per-entry vision confidence is not used in any formula),
+            // in the photo panel's own words and cut-off.
+            <span className={styles.entryPhoto} data-testid="entry-photo">
+              Photo estimate, {confidenceWord(entry.confidence)}
+            </span>
           ) : null}
         </span>
       </div>
