@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { TOKEN_STATUSES, UNMATCHED_PAGE_SIZE } from "@healtheat/shared";
 import type {
@@ -154,6 +154,23 @@ function Results({
   // one, each with its allergen's name, so a waiting row can say which re-match it waits for and each
   // row clears only its own entry.
   const [heavy, setHeavy] = useState<ReadonlyMap<string, string>>(() => new Map());
+  // One live message for screen readers, rather than one per waiting row: said when a re-match starts
+  // to hold Map, and when Map is free again.
+  const [announcement, setAnnouncement] = useState("");
+  const wasHeavy = useRef(false);
+  useEffect(() => {
+    const running = [...heavy.values()][0];
+    if (running !== undefined) setAnnouncement(waitsText(running));
+    else if (wasHeavy.current) setAnnouncement("The re-match finished. Map is available again.");
+    wasHeavy.current = running !== undefined;
+  }, [heavy]);
+  const setRowHeavy = (token: string, name: string | null) =>
+    setHeavy((h) => {
+      const next = new Map(h);
+      if (name === null) next.delete(token);
+      else next.set(token, name);
+      return next;
+    });
   // Rows with a request in flight: reloading the page meanwhile would drop their answers.
   const [inFlight, setInFlight] = useState(0);
   return (
@@ -161,8 +178,12 @@ function Results({
       <p className={styles.sub} data-testid="unmatched-total">
         {data.total} phrase{data.total === 1 ? "" : "s"}
       </p>
+      <p className={styles.srOnly} role="status" data-testid="unmatched-announce">
+        {announcement}
+      </p>
       {mappable && dictionary.kind === "error" ? (
         <LoadError
+          lead="Could not load the allergens to map to."
           failure={dictionary.failure}
           retry={retryDictionary}
           testId="unmatched-dictionary-error"
@@ -175,6 +196,14 @@ function Results({
           ) : query.page > pages ? (
             <>
               Page {query.page} is past the end of this list.{" "}
+              {pages > 1 ? (
+                <>
+                  <Link href={unmatchedHref({ status: query.status, page: pages })}>
+                    Go to page {pages}
+                  </Link>{" "}
+                  or{" "}
+                </>
+              ) : null}
               <Link href={unmatchedHref({ status: query.status, page: 1 })}>Go to page 1</Link>
             </>
           ) : (
@@ -196,14 +225,7 @@ function Results({
               allergens={dictionary.kind === "done" ? dictionary.data.allergens : null}
               dictionaryFailed={dictionary.kind === "error"}
               heavyElsewhere={[...heavy].find(([k]) => k !== t.token)?.[1] ?? null}
-              onHeavy={(name) =>
-                setHeavy((h) => {
-                  const next = new Map(h);
-                  if (name === null) next.delete(t.token);
-                  else next.set(t.token, name);
-                  return next;
-                })
-              }
+              onHeavy={(name) => setRowHeavy(t.token, name)}
               onInFlight={(on) => setInFlight((n) => n + (on ? 1 : -1))}
               onActed={onActed}
             />
@@ -241,6 +263,11 @@ function Results({
       ) : null}
     </section>
   );
+}
+
+/** "Map waits until the Milk re-match finishes.", or with no name, "…until the running re-match…". */
+function waitsText(name: string): string {
+  return `Map waits until the ${name || "running"} re-match finishes.`;
 }
 
 type Outcome =
@@ -292,7 +319,8 @@ function TokenRow({
     setPending(input.action);
     setError(null);
     if (input.action === "map")
-      onHeavy(allergens?.find((a) => a.id === input.allergenId)?.displayName ?? "other");
+      // An empty name when the allergen is not in the list: the note then names no allergen.
+      onHeavy(allergens?.find((a) => a.id === input.allergenId)?.displayName ?? "");
     onInFlight(true);
     try {
       const result = await actOnUnmatched(token.token, input);
@@ -442,7 +470,7 @@ function TokenRow({
               id={`${id}-waits`}
               data-testid="unmatched-map-waits"
             >
-              Map waits until the {heavyElsewhere} re-match finishes.
+              {waitsText(heavyElsewhere ?? "")}
             </p>
           ) : null}
         </div>

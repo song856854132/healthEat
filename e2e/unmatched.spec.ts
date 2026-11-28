@@ -361,6 +361,11 @@ test("tabs and pages live in the URL; ignored phrases can still be mapped, mappe
     "Page 9 is past the end of this list.",
     { timeout: 30_000 },
   );
+  // The last page that has phrases is one link away, as well as the first.
+  await expect(page.getByRole("link", { name: "Go to page 3" })).toHaveAttribute(
+    "href",
+    "/curate/unmatched?page=3",
+  );
   await page.getByRole("link", { name: "Go to page 1" }).click();
   await expect(page).toHaveURL(/\/curate\/unmatched$/);
 });
@@ -381,8 +386,11 @@ test("empty lists say so, and a failed load offers Try again", async ({ page }) 
   await page.goto("/curate/unmatched");
   // The dictionary failed: the phrases still show, mapping waits for it.
   await expect(page.getByTestId("unmatched-dictionary-error")).toContainText(
-    "The database is not answering right now.",
+    "Could not load the allergens to map to.",
     { timeout: 30_000 },
+  );
+  await expect(page.getByTestId("unmatched-dictionary-error")).toContainText(
+    "The database is not answering right now.",
   );
   await expect(
     page
@@ -551,11 +559,18 @@ test("one map at a time: the other rows wait while a map re-matches, and focus l
   await expect(rows.nth(1).getByLabel(/^Allergen for /)).toHaveAccessibleDescription(
     "Map waits until the Milk re-match finishes.",
   );
+  // One live message says it once for the page, rather than once per waiting row.
+  await expect(page.getByTestId("unmatched-announce")).toHaveText(
+    "Map waits until the Milk re-match finishes.",
+  );
   await expect(rows.nth(1).getByRole("button", { name: /^Ignore/ })).toBeEnabled();
   release();
   await expect(rows.nth(0).getByTestId("unmatched-mapped")).toBeFocused();
   await expect(rows.nth(1).getByRole("button", { name: /^Map/ })).toBeEnabled();
   await expect(rows.nth(1).getByTestId("unmatched-map-waits")).toHaveCount(0);
+  await expect(page.getByTestId("unmatched-announce")).toHaveText(
+    "The re-match finished. Map is available again.",
+  );
 });
 
 test("the Mapped tab, where nothing can be mapped, does not load the dictionary", async ({
